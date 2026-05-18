@@ -28,7 +28,6 @@ from open_mythos.moda import (
     MoDAModel,
     RMSNorm,
     RotaryEmbedding,
-    _SharedFFN,
     apply_rotary_emb,
 )
 

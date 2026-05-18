@@ -113,6 +113,7 @@ Pre-configured scales from 1B to 1T parameters:
 from open_mythos import (
     mythos_1b,
     mythos_3b,
+    mythos_7b,
     mythos_10b,
     mythos_50b,
     mythos_100b,
@@ -132,6 +133,7 @@ print(f"Parameters: {total:,}")
 |---|---|---|---|---|---|---|
 | `mythos_1b` | 2048 | 64 | 2048 | 16 | 4k | 4k |
 | `mythos_3b` | 3072 | 64 | 4096 | 16 | 4k | 4k |
+| `mythos_7b` | 3584 | 128 | 5632 | 20 | 8k | 4k |
 | `mythos_10b` | 4096 | 128 | 5632 | 24 | 8k | 4k |
 | `mythos_50b` | 6144 | 256 | 9728 | 32 | 8k | 4k |
 | `mythos_100b` | 8192 | 256 | 13568 | 32 | 1M | 128k |

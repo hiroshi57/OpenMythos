@@ -259,9 +259,13 @@ class TestRoPEExtended:
 class TestGQAttention:
     def setup_method(self):
         self.cfg = gqa_cfg()
-        self.freqs = precompute_rope_freqs(
+        # precompute_rope_freqs returns shape (max_seq_len, head_dim//2).
+        # GQAttention.forward expects freqs_cis already sliced to (T, head_dim//2),
+        # matching the actual sequence length being processed.
+        freqs_full = precompute_rope_freqs(
             self.cfg.dim // self.cfg.n_heads, self.cfg.max_seq_len
         )
+        self.freqs = freqs_full[:T]  # pre-slice to the test sequence length
         self.attn = GQAttention(self.cfg)
 
     def test_output_shape(self):
@@ -295,9 +299,11 @@ class TestGQAttention:
 class TestMLAttention:
     def setup_method(self):
         self.cfg = mla_cfg()
-        self.freqs = precompute_rope_freqs(
+        # Pre-slice to T so shape is (T, rope_dim//2) as expected by MLAttention.forward.
+        freqs_full = precompute_rope_freqs(
             self.cfg.qk_rope_head_dim, self.cfg.max_seq_len
         )
+        self.freqs = freqs_full[:T]
         self.attn = MLAttention(self.cfg)
 
     def test_output_shape(self):
@@ -430,21 +436,21 @@ class TestTransformerBlock:
     def test_gqa_output_shape(self):
         cfg = gqa_cfg()
         block = TransformerBlock(cfg, use_moe=False)
-        freqs = precompute_rope_freqs(cfg.dim // cfg.n_heads, cfg.max_seq_len)
+        freqs = precompute_rope_freqs(cfg.dim // cfg.n_heads, cfg.max_seq_len)[:T]
         x = torch.randn(B, T, cfg.dim)
         assert block(x, freqs).shape == (B, T, cfg.dim)
 
     def test_mla_output_shape(self):
         cfg = mla_cfg()
         block = TransformerBlock(cfg, use_moe=False)
-        freqs = precompute_rope_freqs(cfg.qk_rope_head_dim, cfg.max_seq_len)
+        freqs = precompute_rope_freqs(cfg.qk_rope_head_dim, cfg.max_seq_len)[:T]
         x = torch.randn(B, T, cfg.dim)
         assert block(x, freqs).shape == (B, T, cfg.dim)
 
     def test_moe_block_output_shape(self):
         cfg = gqa_cfg()
         block = TransformerBlock(cfg, use_moe=True)
-        freqs = precompute_rope_freqs(cfg.dim // cfg.n_heads, cfg.max_seq_len)
+        freqs = precompute_rope_freqs(cfg.dim // cfg.n_heads, cfg.max_seq_len)[:T]
         x = torch.randn(B, T, cfg.dim)
         assert block(x, freqs).shape == (B, T, cfg.dim)
 
@@ -519,9 +525,12 @@ class TestRecurrentBlock:
     def setup_method(self):
         self.cfg = gqa_cfg()
         self.block = RecurrentBlock(self.cfg)
-        self.freqs = precompute_rope_freqs(
+        # Pre-slice to T: RecurrentBlock passes freqs_cis straight to TransformerBlock
+        # which passes it to the attention layer, so it must be (T, head_dim//2).
+        freqs_full = precompute_rope_freqs(
             self.cfg.dim // self.cfg.n_heads, self.cfg.max_seq_len
         )
+        self.freqs = freqs_full[:T]
 
     def test_output_shape(self):
         h = torch.randn(B, T, self.cfg.dim)
