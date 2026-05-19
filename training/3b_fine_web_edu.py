@@ -7,11 +7,22 @@ Single GPU:
 
 Multi-GPU:
     torchrun --nproc_per_node=$(python -c "import torch; print(torch.cuda.device_count())") training/3b_fine_web_edu.py
+
+Improvements over initial version:
+  - Perplexity (ppl) in every log line for human-readable loss tracking
+  - ETA estimation based on rolling average of recent step times
+  - Persistent loguru file sink (logs/train_<run_id>.log)
+  - Held-out eval step every `eval_every` steps using a disjoint FineWeb-Edu shard
+  - Loop curriculum: ramp n_loops from 1 → max_loop_iters over first `loop_ramp_steps`
 """
 
 import os
 import math
 import time
+from collections import deque
+from datetime import datetime
+from contextlib import nullcontext
+
 import torch
 import torch.nn as nn
 import torch.distributed as dist
@@ -25,7 +36,6 @@ from torch.distributed.fsdp import (
 )
 from torch.distributed.fsdp.wrap import ModuleWrapPolicy
 from torch.utils.data import IterableDataset, DataLoader, get_worker_info
-from contextlib import nullcontext
 
 from datasets import load_dataset
 
@@ -111,6 +121,112 @@ class FineWebEduDataset(IterableDataset):
 # ---------------------------------------------------------------------------
 # LR schedule: linear warmup → cosine decay
 # ---------------------------------------------------------------------------
+
+
+def _fmt_eta(seconds: float) -> str:
+    """Format remaining seconds as Xh Ym Zs for log readability."""
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = int(seconds % 60)
+    if h > 0:
+        return f"{h}h {m:02d}m"
+    if m > 0:
+        return f"{m}m {s:02d}s"
+    return f"{s}s"
+
+
+def curriculum_loops(step: int, ramp_steps: int, max_loops: int) -> int:
+    """Linearly ramp n_loops from 1 → max_loops over the first ramp_steps steps.
+
+    Starting training with fewer recurrent loops improves early stability: with
+    only 1 loop, gradients flow through a shallower graph, reducing exploding /
+    vanishing gradient risk during the critical early warm-up period. As the
+    model stabilises, gradually increasing the loop depth lets the recurrent
+    block learn to use the additional computational budget.
+
+    Args:
+        step       -- current global optimizer step (0-indexed)
+        ramp_steps -- number of steps over which to ramp from 1 to max_loops
+        max_loops  -- final loop count after ramp_steps
+
+    Returns:
+        Integer loop count in [1, max_loops].
+    """
+    if ramp_steps <= 0 or step >= ramp_steps:
+        return max_loops
+    fraction = step / ramp_steps
+    return max(1, round(1 + fraction * (max_loops - 1)))
+
+
+@torch.no_grad()
+def run_eval(
+    model,
+    encoding,
+    seq_len: int,
+    subset: str,
+    device,
+    vocab_size: int,
+    rank: int,
+    world_size: int,
+    ddp: bool,
+    n_batches: int = 20,
+    micro_batch: int = 4,
+) -> float:
+    """Evaluate cross-entropy loss on a held-out shard of FineWeb-Edu.
+
+    Uses shard indices in range [world_size, 2*world_size-1] — adjacent to but
+    disjoint from the training shards [0, world_size-1] — so validation tokens
+    are never seen during training.
+
+    Under FSDP, all ranks must call this together to avoid collective hangs.
+    Only rank 0 logs the result; other ranks discard theirs.
+
+    Args:
+        model       -- FSDP-wrapped (ddp=True) or raw model in eval mode
+        encoding    -- tokenizer
+        seq_len     -- sequence length (same as training)
+        subset      -- FineWeb-Edu config name
+        device      -- target device string or torch.device
+        vocab_size  -- tokenizer vocabulary size
+        rank        -- current process rank
+        world_size  -- total number of distributed processes
+        ddp         -- True if FSDP is active
+        n_batches   -- number of micro-batches to average over
+        micro_batch -- batch size for each eval step
+
+    Returns:
+        Mean cross-entropy loss over n_batches × micro_batch sequences.
+        All ranks return the same scalar (no reduce across ranks; each rank
+        evaluates its own disjoint shard independently for speed).
+    """
+    was_training = model.training
+    model.eval()
+
+    # Eval shard is adjacent to training shards (never overlaps)
+    eval_n_shards = world_size * 2
+    eval_shard_idx = world_size + rank
+
+    eval_ds = FineWebEduDataset(
+        encoding, seq_len, subset, eval_shard_idx, eval_n_shards
+    )
+    eval_loader = DataLoader(eval_ds, batch_size=micro_batch, num_workers=0)
+
+    total_loss = 0.0
+    n_seen = 0
+    for i, (x, y) in enumerate(eval_loader):
+        if i >= n_batches:
+            break
+        x = x.to(device, non_blocking=True)
+        y = y.to(device, non_blocking=True)
+        logits = model(x)
+        loss = nn.functional.cross_entropy(logits.view(-1, vocab_size), y.view(-1))
+        total_loss += loss.item()
+        n_seen += 1
+
+    if was_training:
+        model.train()
+
+    return total_loss / max(n_seen, 1)
 
 
 def get_lr(step: int, warmup: int, total: int, max_lr: float, min_lr: float) -> float:
@@ -354,7 +470,19 @@ def main():
 
     master = rank == 0
 
+    # ------------------------------------------------------------------
+    # Persistent file logging (rank 0 only — avoid duplicated log files)
+    # ------------------------------------------------------------------
     if master:
+        logs_dir = "logs"
+        os.makedirs(logs_dir, exist_ok=True)
+        run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+        logger.add(
+            f"{logs_dir}/train_{run_id}.log",
+            rotation="500 MB",
+            retention="10 days",
+            level="INFO",
+        )
         logger.info(
             f"GPUs: {torch.cuda.device_count()}  |  World size: {world_size}  |  Device: {device}"
         )
@@ -384,6 +512,12 @@ def main():
     ckpt_every = 1000
     ckpt_dir = "checkpoints"
     dataset_subset = "sample-10BT"  # → sample-100BT or "default" for full run
+    # Held-out evaluation: run every eval_every steps; 0 disables eval entirely
+    eval_every = 500
+    eval_batches = 20
+    # Loop curriculum: ramp n_loops from 1 → max_loop_iters over this many steps.
+    # Set to 0 to disable (always train at full depth).
+    loop_ramp_steps = warmup_steps  # align ramp with LR warmup
 
     if master:
         logger.info(
@@ -469,13 +603,18 @@ def main():
 
     model.train()
     data_iter = iter(loader)
-    t0 = time.perf_counter()
+    # Rolling window of (step_time, tokens) for smooth ETA / tok/s estimation
+    _step_times: deque = deque(maxlen=log_every * 5)
+    t_step_start = time.perf_counter()
     step = start_step
 
     while step < total_steps:
         cur_lr = get_lr(step, warmup_steps, total_steps, lr, lr * 0.1)
         for g in optimizer.param_groups:
             g["lr"] = cur_lr
+
+        # Loop curriculum: gradually increase recurrent depth during warm-up
+        cur_loops = curriculum_loops(step, loop_ramp_steps, cfg.max_loop_iters)
 
         optimizer.zero_grad()
         loss_accum = 0.0
@@ -496,7 +635,7 @@ def main():
                 else model.no_sync()
             )
             with sync, amp_ctx:
-                logits = model(x)
+                logits = model(x, n_loops=cur_loops)
                 loss = nn.functional.cross_entropy(
                     logits.view(-1, vocab_size), y.view(-1)
                 )
@@ -515,17 +654,47 @@ def main():
         optimizer.step()
         step += 1
 
+        # Track per-step timing for rolling-window ETA and tok/s
+        dt_step = time.perf_counter() - t_step_start
+        _step_times.append(dt_step)
+        t_step_start = time.perf_counter()
+
         if master and step % log_every == 0:
-            dt = time.perf_counter() - t0
-            tok_per_sec = global_batch_tok * log_every / dt
+            # Use rolling average for smoother ETA (avoids spikes from checkpoint I/O)
+            avg_step_time = sum(_step_times) / len(_step_times)
+            tok_per_sec = global_batch_tok / avg_step_time
             tokens_seen = step * global_batch_tok
+            # Perplexity: cap loss at 88 before exp to prevent float overflow
+            ppl = math.exp(min(loss_accum, 88.0))
+            eta_secs = (total_steps - step) * avg_step_time
             logger.info(
-                f"step {step:6d}/{total_steps} | loss {loss_accum:.4f} "
-                f"| gnorm {float(grad_norm):.2f} | lr {cur_lr:.2e} "
-                f"| {tok_per_sec / 1e6:.2f}M tok/s "
-                f"| {tokens_seen / 1e9:.1f}B tokens seen"
+                f"step {step:6d}/{total_steps} | loss {loss_accum:.4f} | ppl {ppl:7.1f}"
+                f" | gnorm {float(grad_norm):.2f} | lr {cur_lr:.2e}"
+                f" | loops {cur_loops}/{cfg.max_loop_iters}"
+                f" | {tok_per_sec / 1e6:.2f}M tok/s"
+                f" | {tokens_seen / 1e9:.1f}B tok seen"
+                f" | eta {_fmt_eta(eta_secs)}"
             )
-            t0 = time.perf_counter()
+
+        # Held-out evaluation step
+        if master and eval_every > 0 and step % eval_every == 0:
+            eval_loss = run_eval(
+                model,
+                encoding,
+                seq_len,
+                dataset_subset,
+                device if not ddp else f"cuda:{local_rank}",
+                vocab_size,
+                rank,
+                world_size,
+                ddp,
+                n_batches=eval_batches,
+                micro_batch=micro_batch,
+            )
+            eval_ppl = math.exp(min(eval_loss, 88.0))
+            logger.info(
+                f"[eval @ step {step}] loss {eval_loss:.4f} | ppl {eval_ppl:.1f}"
+            )
 
         if step % ckpt_every == 0:
             save_checkpoint(

@@ -393,7 +393,7 @@ def main() -> None:
     # ------------------------------------------------------------------
     # Data: streamed train + held-out eval splits
     # ------------------------------------------------------------------
-    print(f"[setup] dataset={args.dataset}  config={args.dataset_config or '∅'}")
+    print(f"[setup] dataset={args.dataset}  config={args.dataset_config or '(none)'}")
     raw_train = load_text_ds(args.dataset, args.dataset_config, args.train_split)
     train_ds = PackedLMDataset(
         raw_train, tokenizer, args.seq_len, args.train_tokens, args.text_field
@@ -494,7 +494,7 @@ def main() -> None:
             eval_history.append((step, eval_m, eval_b))
             print(
                 f"  [eval @ step {step}]  mythos {eval_m:.4f}   baseline {eval_b:.4f}   "
-                f"(Δ = {eval_m - eval_b:+.4f})"
+                f"(delta = {eval_m - eval_b:+.4f})"
             )
 
     total_wall = time.perf_counter() - t_total
@@ -549,13 +549,13 @@ def main() -> None:
         )
     trained_loss = next((loss for nl, loss in sweep if nl == cfg.max_loop_iters), None)
     print(f"  OpenMythos (trained at n_loops={cfg.max_loop_iters}):")
-    print(f"    {'n_loops':>8}  {'eval loss':>10}  {'Δ vs trained':>14}")
+    print(f"    {'n_loops':>8}  {'eval loss':>10}  {'delta vs trained':>14}")
     for nl, loss in sweep:
         if trained_loss is None or nl == cfg.max_loop_iters:
             delta_str = ""
         else:
             delta_str = f"{loss - trained_loss:+.4f}"
-        marker = " ←trained" if nl == cfg.max_loop_iters else ""
+        marker = " [trained]" if nl == cfg.max_loop_iters else ""
         print(f"    {nl:>8}  {loss:>10.4f}  {delta_str:>14}{marker}")
 
 

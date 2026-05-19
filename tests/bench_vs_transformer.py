@@ -379,11 +379,11 @@ def main() -> None:
     )
     print(
         f"  OpenMythos : total={fmt_count(m_params.total):>10}   "
-        f"active/tok≈{fmt_count(m_params.moe_active_est):>10}"
+        f"active/tok~{fmt_count(m_params.moe_active_est):>10}"
     )
     print(
         f"  Baseline   : total={fmt_count(b_params.total):>10}   "
-        f"active/tok≈{fmt_count(b_params.moe_active_est):>10}"
+        f"active/tok~{fmt_count(b_params.moe_active_est):>10}"
     )
     print(
         f"  Baseline unique layers = {baseline_n_layers}  "
@@ -459,7 +459,7 @@ def main() -> None:
             seq_lens[0], args.batch
         )
     )
-    print(f"  {'n_loops':>8} {'sec':>10} {'tok/s':>12} {'Δ vs loops=1':>14}")
+    print(f"  {'n_loops':>8} {'sec':>10} {'tok/s':>12} {'rel vs loops=1':>14}")
     base_secs = None
     for nl in n_loops_sweep:
         reset_mem(device)
