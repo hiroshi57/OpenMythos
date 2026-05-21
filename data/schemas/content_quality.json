@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ContentQualityRecord",
+  "description": "コンテンツの質・関連性スコアリングタスク用データフォーマット。SEO/LLMOのE-E-A-T評価自動化に使用。",
+  "type": "object",
+  "required": ["record_id", "source_type", "input_text", "label"],
+  "properties": {
+    "record_id":    { "type": "string", "description": "例: cq_20260521_001" },
+    "source_type":  { "type": "string", "enum": ["web_content", "ad_creative", "survey"] },
+    "collected_at": { "type": "string", "format": "date-time" },
+    "industry":     { "type": "string", "enum": ["advertising", "seo", "production", "llmo", "marketing", "market_research"] },
+    "input_text":   { "type": "string", "description": "評価対象のコンテンツ本文" },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "url":           { "type": "string" },
+        "page_title":    { "type": "string" },
+        "target_keyword":{ "type": "string", "description": "SEO/LLMO対象キーワード" },
+        "content_type":  { "type": "string", "enum": ["article", "landing_page", "ad_copy", "product_desc", "faq", "report"] },
+        "word_count":    { "type": "integer" },
+        "language":      { "type": "string", "default": "ja" },
+        "published_at":  { "type": "string", "format": "date" }
+      }
+    },
+    "label": {
+      "type": "object",
+      "required": ["quality_score", "relevance_score", "eeat_score"],
+      "properties": {
+        "quality_score":   { "type": "number", "minimum": 0.0, "maximum": 5.0, "description": "総合品質スコア（5点満点）" },
+        "relevance_score": { "type": "number", "minimum": 0.0, "maximum": 5.0, "description": "キーワード関連性スコア" },
+        "eeat_score": {
+          "type": "object",
+          "description": "E-E-A-T各軸スコア（Googleガイドライン準拠）",
+          "properties": {
+            "experience":   { "type": "number", "minimum": 0.0, "maximum": 5.0 },
+            "expertise":    { "type": "number", "minimum": 0.0, "maximum": 5.0 },
+            "authority":    { "type": "number", "minimum": 0.0, "maximum": 5.0 },
+            "trustworthiness": { "type": "number", "minimum": 0.0, "maximum": 5.0 }
+          }
+        },
+        "llmo_visibility": { "type": "number", "minimum": 0.0, "maximum": 1.0, "description": "LLM引用可能性スコア（0=引用されにくい, 1=引用されやすい）" },
+        "improvement_tags": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["needs_more_depth", "poor_structure", "missing_sources", "thin_content", "good", "excellent"] }
+        },
+        "labeled_by":  { "type": "string", "enum": ["human", "model_assisted", "rule_based"] },
+        "labeled_at":  { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

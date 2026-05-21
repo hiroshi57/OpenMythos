@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PersonaSegmentRecord",
+  "description": "ユーザーのペルソナ・セグメント分類タスク用データフォーマット。広告ターゲティング・LLMOパーソナライズに使用。",
+  "type": "object",
+  "required": ["record_id", "source_type", "input_text", "label"],
+  "properties": {
+    "record_id":    { "type": "string", "description": "レコードの一意ID (例: ps_20260521_001)" },
+    "source_type":  { "type": "string", "enum": ["web_content", "ad_creative", "behavior_log", "survey"], "description": "データソース種別" },
+    "collected_at": { "type": "string", "format": "date-time" },
+    "industry":     { "type": "string", "enum": ["advertising", "seo", "production", "llmo", "marketing", "market_research"] },
+    "input_text":   { "type": "string", "description": "モデルへの入力テキスト（本文・行動サマリー・回答など）" },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "url":            { "type": "string" },
+        "page_title":     { "type": "string" },
+        "session_id":     { "type": "string" },
+        "device_type":    { "type": "string", "enum": ["pc", "mobile", "tablet"] },
+        "region":         { "type": "string" },
+        "age_group":      { "type": "string", "enum": ["10s", "20s", "30s", "40s", "50s", "60s+", "unknown"] },
+        "gender":         { "type": "string", "enum": ["male", "female", "other", "unknown"] }
+      }
+    },
+    "label": {
+      "type": "object",
+      "required": ["persona_segment", "confidence"],
+      "properties": {
+        "persona_segment": {
+          "type": "string",
+          "enum": [
+            "early_adopter",
+            "price_sensitive",
+            "brand_loyal",
+            "researcher",
+            "impulse_buyer",
+            "b2b_decision_maker",
+            "other"
+          ],
+          "description": "ペルソナセグメント（ラベル）"
+        },
+        "confidence":  { "type": "number", "minimum": 0.0, "maximum": 1.0, "description": "ラベル付与者の確信度" },
+        "labeled_by":  { "type": "string", "enum": ["human", "model_assisted", "rule_based"] },
+        "labeled_at":  { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

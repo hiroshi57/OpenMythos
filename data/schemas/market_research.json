@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MarketResearchRecord",
+  "description": "市場調査レポート自動生成・要約タスク用データフォーマット。競合分析・トレンド抽出に使用。",
+  "type": "object",
+  "required": ["record_id", "source_type", "input_text", "label"],
+  "properties": {
+    "record_id":    { "type": "string", "description": "例: mr_20260521_001" },
+    "source_type":  { "type": "string", "enum": ["web_content", "survey", "ad_creative"] },
+    "collected_at": { "type": "string", "format": "date-time" },
+    "industry":     { "type": "string", "enum": ["advertising", "seo", "production", "llmo", "marketing", "market_research"] },
+    "input_text":   { "type": "string", "description": "調査対象テキスト（記事本文・アンケート自由回答・競合サイト本文など）" },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "research_topic":  { "type": "string", "description": "調査テーマ（例: '生成AI活用状況2026'）" },
+        "target_market":   { "type": "string" },
+        "data_period":     { "type": "string", "description": "調査対象期間（例: '2026-01〜2026-03'）" },
+        "source_name":     { "type": "string" },
+        "respondent_count":{ "type": "integer", "description": "アンケート回答者数（surveyの場合）" },
+        "competitor_name": { "type": "string", "description": "競合企業名（競合分析の場合）" }
+      }
+    },
+    "label": {
+      "type": "object",
+      "required": ["summary", "sentiment", "trend_tags"],
+      "properties": {
+        "summary": { "type": "string", "description": "人手またはモデル生成の要約文（ファインチューニングのターゲット）" },
+        "sentiment": {
+          "type": "string",
+          "enum": ["positive", "neutral", "negative", "mixed"],
+          "description": "市場センチメント"
+        },
+        "trend_tags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "抽出されたトレンドキーワード（例: ['生成AI', 'LLMO', 'パーソナライゼーション']）"
+        },
+        "importance_score": { "type": "number", "minimum": 0.0, "maximum": 5.0, "description": "この情報の重要度スコア" },
+        "report_section":   { "type": "string", "enum": ["executive_summary", "market_size", "competitor", "consumer_insight", "trend", "recommendation"] },
+        "labeled_by":  { "type": "string", "enum": ["human", "model_assisted", "rule_based"] },
+        "labeled_at":  { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: ["master", "main"]
+  pull_request:
+    branches: ["master", "main"]
+
+jobs:
+  test:
+    name: pytest (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Use requirements.txt for flexible torch version, then install package
+          pip install -r requirements.txt
+          pip install -e .
+          pip install pytest pytest-cov
+
+      - name: Run core model tests (no network)
+        run: |
+          pytest tests/test_main.py tests/test_moda.py \
+            --tb=short \
+            --cov=open_mythos \
+            --cov-report=term-missing \
+            -v
+
+      - name: Upload coverage report
+        if: matrix.python-version == '3.11'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: .coverage
+
+  lint:
+    name: Lint (ruff + black)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install lint tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff black
+
+      - name: ruff check
+        run: ruff check open_mythos/ tests/
+
+      - name: black check
+        run: black --check open_mythos/ tests/

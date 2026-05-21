@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AdPerformanceRecord",
+  "description": "広告・マーケ効果予測タスク用データフォーマット。CTR/CVR/ROASの事前予測に使用。",
+  "type": "object",
+  "required": ["record_id", "source_type", "input_text", "label"],
+  "properties": {
+    "record_id":    { "type": "string", "description": "例: ap_20260521_001" },
+    "source_type":  { "type": "string", "enum": ["ad_creative", "behavior_log"] },
+    "collected_at": { "type": "string", "format": "date-time" },
+    "industry":     { "type": "string", "enum": ["advertising", "seo", "production", "llmo", "marketing", "market_research"] },
+    "input_text":   { "type": "string", "description": "広告見出し＋説明文を結合したテキスト（例: '見出し: {headline} | 説明: {description}'）" },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "campaign_id":    { "type": "string" },
+        "ad_format":      { "type": "string", "enum": ["search", "display", "social", "video", "native"] },
+        "platform":       { "type": "string", "enum": ["google", "meta", "line", "twitter_x", "tiktok", "other"] },
+        "target_segment": { "type": "string" },
+        "budget_jpy":     { "type": "integer", "description": "キャンペーン予算（円）" },
+        "industry_vertical": { "type": "string" },
+        "creative_id":    { "type": "string" },
+        "landing_url":    { "type": "string" }
+      }
+    },
+    "label": {
+      "type": "object",
+      "required": ["performance_tier"],
+      "properties": {
+        "performance_tier": {
+          "type": "string",
+          "enum": ["high", "medium", "low"],
+          "description": "実績CTR/CVRに基づく3段階評価（high: 上位25%, medium: 中50%, low: 下位25%）"
+        },
+        "actual_ctr":  { "type": "number", "description": "実績CTR（0.0〜1.0）" },
+        "actual_cvr":  { "type": "number", "description": "実績CVR（0.0〜1.0）" },
+        "actual_roas": { "type": "number", "description": "実績ROAS" },
+        "predicted_ctr":  { "type": "number", "description": "モデル予測CTR（推論後に記録）" },
+        "labeled_by":  { "type": "string", "enum": ["human", "model_assisted", "rule_based"] },
+        "labeled_at":  { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}
