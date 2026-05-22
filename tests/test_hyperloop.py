@@ -532,5 +532,196 @@ class TestHyperloopGenerateStream:
         assert isinstance(gen, types.GeneratorType)
 
 
+# ---------------------------------------------------------------------------
+# HyperloopMythos: repetition_penalty — 2.1.2
+# ---------------------------------------------------------------------------
+
+
+class TestHyperloopRepetitionPenalty:
+    """Tests for repetition_penalty in HyperloopMythos.generate() and _sample_token()."""
+
+    def setup_method(self):
+        self.cfg = tiny_cfg()
+        self.model = HyperloopMythos(self.cfg)
+        self.ids = torch.randint(0, VOCAB, (1, T))
+
+    def test_generate_accepts_repetition_penalty(self):
+        """generate() must accept repetition_penalty without error."""
+        out = self.model.generate(
+            self.ids,
+            max_new_tokens=3,
+            outer_loops=1,
+            inner_loops=1,
+            repetition_penalty=1.3,
+        )
+        assert out.shape == (1, T + 3)
+
+    def test_repetition_penalty_one_unchanged(self):
+        """repetition_penalty=1.0 must produce the same output as no penalty."""
+        torch.manual_seed(7)
+        out_default = self.model.generate(
+            self.ids.clone(),
+            max_new_tokens=3,
+            outer_loops=1,
+            inner_loops=1,
+            temperature=1e-6,
+        )
+        torch.manual_seed(7)
+        out_pen1 = self.model.generate(
+            self.ids.clone(),
+            max_new_tokens=3,
+            outer_loops=1,
+            inner_loops=1,
+            temperature=1e-6,
+            repetition_penalty=1.0,
+        )
+        assert torch.equal(out_default, out_pen1)
+
+    def test_repetition_penalty_tokens_in_vocab(self):
+        out = self.model.generate(
+            self.ids,
+            max_new_tokens=3,
+            outer_loops=1,
+            inner_loops=1,
+            repetition_penalty=1.5,
+        )
+        assert out.min().item() >= 0
+        assert out.max().item() < VOCAB
+
+    def test_repetition_penalty_no_nan(self):
+        out = self.model.generate(
+            self.ids,
+            max_new_tokens=3,
+            outer_loops=1,
+            inner_loops=1,
+            repetition_penalty=2.0,
+        )
+        assert not torch.isnan(out.float()).any()
+
+    def test_stream_accepts_repetition_penalty(self):
+        tokens = list(
+            self.model.generate_stream(
+                self.ids,
+                max_new_tokens=3,
+                outer_loops=1,
+                inner_loops=1,
+                repetition_penalty=1.2,
+            )
+        )
+        assert len(tokens) == 3
+
+
+# ---------------------------------------------------------------------------
+# HyperloopMythos: beam_search — 2.1.1
+# ---------------------------------------------------------------------------
+
+
+class TestHyperloopBeamSearch:
+    """Tests for HyperloopMythos.beam_search()."""
+
+    def setup_method(self):
+        self.cfg = tiny_cfg()
+        self.model = HyperloopMythos(self.cfg)
+        self.ids = torch.randint(0, VOCAB, (1, T))
+
+    def test_output_shape(self):
+        out = self.model.beam_search(
+            self.ids, max_new_tokens=3, outer_loops=1, inner_loops=1, beam_width=2
+        )
+        assert out.shape == (1, T + 3)
+
+    def test_tokens_in_vocab(self):
+        out = self.model.beam_search(
+            self.ids, max_new_tokens=3, outer_loops=1, inner_loops=1, beam_width=2
+        )
+        assert out.min().item() >= 0
+        assert out.max().item() < VOCAB
+
+    def test_no_nan(self):
+        out = self.model.beam_search(
+            self.ids, max_new_tokens=3, outer_loops=1, inner_loops=1, beam_width=2
+        )
+        assert not torch.isnan(out.float()).any()
+
+    def test_beam_width_one_same_shape(self):
+        out_beam = self.model.beam_search(
+            self.ids, max_new_tokens=3, outer_loops=1, inner_loops=1, beam_width=1
+        )
+        out_gen = self.model.generate(
+            self.ids, max_new_tokens=3, outer_loops=1, inner_loops=1
+        )
+        assert out_beam.shape == out_gen.shape
+
+    def test_batch_size_one_constraint(self):
+        ids_b2 = torch.randint(0, VOCAB, (2, T))
+        with pytest.raises(AssertionError):
+            self.model.beam_search(ids_b2, max_new_tokens=2, beam_width=2)
+
+    def test_prompt_preserved(self):
+        out = self.model.beam_search(
+            self.ids, max_new_tokens=3, outer_loops=1, inner_loops=1, beam_width=2
+        )
+        assert torch.equal(out[:, :T], self.ids)
+
+
+# ---------------------------------------------------------------------------
+# HyperloopMythos: generate_batch — 2.2.2
+# ---------------------------------------------------------------------------
+
+
+class TestHyperloopGenerateBatch:
+    """Tests for HyperloopMythos.generate_batch()."""
+
+    def setup_method(self):
+        self.cfg = tiny_cfg()
+        self.model = HyperloopMythos(self.cfg)
+
+    def test_single_prompt(self):
+        ids = torch.randint(0, VOCAB, (1, T))
+        results = self.model.generate_batch(
+            [ids], max_new_tokens=3, outer_loops=1, inner_loops=1
+        )
+        assert len(results) == 1
+        assert results[0].shape == (1, T + 3)
+
+    def test_multiple_prompts_count(self):
+        prompts = [torch.randint(0, VOCAB, (1, T)) for _ in range(3)]
+        results = self.model.generate_batch(
+            prompts, max_new_tokens=2, outer_loops=1, inner_loops=1
+        )
+        assert len(results) == 3
+
+    def test_different_length_prompts(self):
+        prompts = [
+            torch.randint(0, VOCAB, (1, 3)),
+            torch.randint(0, VOCAB, (1, 5)),
+        ]
+        results = self.model.generate_batch(
+            prompts, max_new_tokens=2, outer_loops=1, inner_loops=1
+        )
+        assert results[0].shape == (1, 5)
+        assert results[1].shape == (1, 7)
+
+    def test_tokens_in_vocab(self):
+        prompts = [torch.randint(0, VOCAB, (1, T)) for _ in range(2)]
+        results = self.model.generate_batch(
+            prompts, max_new_tokens=2, outer_loops=1, inner_loops=1
+        )
+        for out in results:
+            assert out.min().item() >= 0
+            assert out.max().item() < VOCAB
+
+    def test_with_repetition_penalty(self):
+        ids = torch.randint(0, VOCAB, (1, T))
+        results = self.model.generate_batch(
+            [ids],
+            max_new_tokens=2,
+            outer_loops=1,
+            inner_loops=1,
+            repetition_penalty=1.2,
+        )
+        assert results[0].shape == (1, T + 2)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "--verbose"])

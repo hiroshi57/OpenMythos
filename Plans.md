@@ -26,11 +26,11 @@
 
 | task-id | 説明 | 担当 | 状態 | DoD |
 |---------|------|------|------|-----|
-| 2.1.1 | beam search 実装 | Worker | cc:TODO | (a) beam_width パラメータ追加 (b) テスト追加 (c) 既存テスト全 PASS |
-| 2.1.2 | temperature / repetition_penalty 強化 | Worker | cc:TODO | (a) repetition_penalty 実装 (b) テスト追加 |
+| 2.1.1 | beam search 実装 | Worker | cc:完了 [Sprint2] | (a) beam_width パラメータ追加 (b) テスト追加 (c) 既存テスト全 PASS |
+| 2.1.2 | repetition_penalty 実装 | Worker | cc:完了 [Sprint2] | (a) repetition_penalty を _sample_token/generate/generate_stream に追加 (b) テスト追加 |
 | 2.1.3 | KV cache 最適化 (sliding window) | Worker | cc:TODO | (a) メモリ使用量 20% 削減 (b) ベンチマーク比較 |
 | 2.2.1 | INT8 / FP16 量子化サポート | Worker | cc:TODO | (a) torch.quantization 対応 (b) ベンチマーク追加 |
-| 2.2.2 | バッチ推論 API | Worker | cc:TODO | (a) generate_batch() 実装 (b) 並列実行テスト |
+| 2.2.2 | バッチ推論 API | Worker | cc:完了 [Sprint2] | (a) generate_batch() 実装 (b) テスト追加 264 PASS |
 
 ---
 

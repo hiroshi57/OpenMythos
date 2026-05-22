@@ -1062,12 +1062,37 @@ class OpenMythos(nn.Module):
         temperature: float,
         top_k: int,
         top_p: float,
+        repetition_penalty: float = 1.0,
+        generated_ids: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Sample the next token from a logits tensor of shape (B, vocab_size).
 
-        Applies temperature scaling → top-k filtering → top-p (nucleus) filtering
-        → multinomial sampling in order.  Returns a (B, 1) integer tensor.
+        Applies repetition penalty → temperature scaling → top-k filtering →
+        top-p (nucleus) filtering → multinomial sampling in order.
+        Returns a (B, 1) integer tensor.
+
+        Args:
+            logits            -- raw logits, shape (B, vocab_size)
+            temperature       -- softmax temperature (lower = more greedy)
+            top_k             -- keep only the top-K logits (0 = disabled)
+            top_p             -- nucleus threshold (1.0 = disabled)
+            repetition_penalty-- divide logits of already-generated tokens by
+                                 this value (>1.0 discourages repetition,
+                                 1.0 = disabled).
+            generated_ids     -- previously generated token ids, shape (B, T).
+                                 Required for repetition_penalty to take effect.
         """
+        logits = logits.clone()  # avoid in-place modification of caller's tensor
+        if repetition_penalty != 1.0 and generated_ids is not None:
+            for b in range(logits.shape[0]):
+                unique_ids = generated_ids[b].unique()
+                scores = logits[b, unique_ids]
+                scores = torch.where(
+                    scores > 0,
+                    scores / repetition_penalty,
+                    scores * repetition_penalty,
+                )
+                logits[b, unique_ids] = scores
         logits = logits / max(temperature, 1e-8)
         if top_k > 0:
             v, _ = logits.topk(top_k)
@@ -1092,6 +1117,7 @@ class OpenMythos(nn.Module):
         temperature: float = 1.0,
         top_k: int = 50,
         top_p: float = 1.0,
+        repetition_penalty: float = 1.0,
     ) -> torch.Tensor:
         """
         Autoregressive token generation with KV caching.
@@ -1143,6 +1169,8 @@ class OpenMythos(nn.Module):
             top_p          -- nucleus sampling threshold in (0, 1]; 1.0 = disabled.
                               E.g. top_p=0.9 keeps the smallest token set whose
                               cumulative probability covers 90% of the mass.
+            repetition_penalty -- penalise already-generated tokens; divide their
+                              logits by this value (>1.0 = more penalty, 1.0 = off).
 
         Returns:
             Token indices of shape (B, T + max_new_tokens)
@@ -1162,7 +1190,14 @@ class OpenMythos(nn.Module):
             logits = self.forward(
                 cur_ids, n_loops=cur_loops, kv_cache=kv_cache, start_pos=start_pos
             )
-            next_tok = self._sample_token(logits[:, -1, :], temperature, top_k, top_p)
+            next_tok = self._sample_token(
+                logits[:, -1, :],
+                temperature,
+                top_k,
+                top_p,
+                repetition_penalty=repetition_penalty,
+                generated_ids=input_ids,
+            )
             input_ids = torch.cat([input_ids, next_tok], dim=1)
         return input_ids
 
@@ -1176,6 +1211,7 @@ class OpenMythos(nn.Module):
         temperature: float = 1.0,
         top_k: int = 50,
         top_p: float = 1.0,
+        repetition_penalty: float = 1.0,
     ):
         """Streaming autoregressive generation — yields one token per step.
 
@@ -1190,13 +1226,14 @@ class OpenMythos(nn.Module):
                 print(tokenizer.decode(tok[0].tolist()), end="", flush=True)
 
         Args:
-            input_ids      -- prompt token indices of shape (B, T)
-            max_new_tokens -- maximum tokens to stream
-            n_loops        -- recurrent loop depth for prefill (step 0)
-            decode_loops   -- loop depth for decode steps; None = n_loops
-            temperature    -- softmax temperature
-            top_k          -- top-K filtering (0 = disabled)
-            top_p          -- nucleus sampling threshold (1.0 = disabled)
+            input_ids         -- prompt token indices of shape (B, T)
+            max_new_tokens    -- maximum tokens to stream
+            n_loops           -- recurrent loop depth for prefill (step 0)
+            decode_loops      -- loop depth for decode steps; None = n_loops
+            temperature       -- softmax temperature
+            top_k             -- top-K filtering (0 = disabled)
+            top_p             -- nucleus sampling threshold (1.0 = disabled)
+            repetition_penalty-- penalise already-generated tokens (1.0 = off)
 
         Yields:
             ``(B, 1)`` integer tensors, one per generated token
@@ -1216,7 +1253,14 @@ class OpenMythos(nn.Module):
             logits = self.forward(
                 cur_ids, n_loops=cur_loops, kv_cache=kv_cache, start_pos=start_pos
             )
-            next_tok = self._sample_token(logits[:, -1, :], temperature, top_k, top_p)
+            next_tok = self._sample_token(
+                logits[:, -1, :],
+                temperature,
+                top_k,
+                top_p,
+                repetition_penalty=repetition_penalty,
+                generated_ids=input_ids,
+            )
             input_ids = torch.cat([input_ids, next_tok], dim=1)
             yield next_tok
 
@@ -1359,3 +1403,129 @@ class OpenMythos(nn.Module):
                 generated += 1
 
         return input_ids
+
+    @torch.no_grad()
+    def beam_search(
+        self,
+        input_ids: torch.Tensor,
+        max_new_tokens: int = 64,
+        n_loops: int = 8,
+        beam_width: int = 4,
+        repetition_penalty: float = 1.0,
+    ) -> torch.Tensor:
+        """Beam search decoding.
+
+        Maintains ``beam_width`` candidate sequences and selects the one with
+        the highest cumulative log-probability.  Each step runs a full forward
+        pass per active beam (no shared KV cache across diverged beams), so
+        beam search is slower than :meth:`generate` but typically produces
+        higher-quality output when ``beam_width > 1``.
+
+        ``beam_width=1`` is equivalent to greedy decoding.
+
+        Args:
+            input_ids         -- prompt token indices, shape **(1, T)**.
+                                 Batch size must be 1; use
+                                 :meth:`generate_batch` for multi-prompt work.
+            max_new_tokens    -- number of tokens to generate
+            n_loops           -- recurrent loop depth
+            beam_width        -- number of beams to maintain (1 = greedy)
+            repetition_penalty-- penalise already-generated tokens (1.0 = off)
+
+        Returns:
+            Best beam as shape (1, T + max_new_tokens).
+        """
+        assert input_ids.shape[0] == 1, "beam_search requires batch_size=1"
+        device = input_ids.device
+        V = self.cfg.vocab_size
+
+        # beams  : (beam_width, T + steps)
+        # scores : (beam_width,) cumulative log-probabilities
+        beams = input_ids.repeat(beam_width, 1)  # (beam_width, T)
+        scores = torch.zeros(beam_width, device=device)
+
+        for step in range(max_new_tokens):
+            # Step 0: expand from 1 beam only (all beams are identical)
+            n_active = 1 if step == 0 else beam_width
+
+            # Collect log-probs for each active beam → (n_active, V)
+            log_probs_list: list[torch.Tensor] = []
+            for b in range(n_active):
+                logits = self.forward(beams[b : b + 1], n_loops=n_loops)[
+                    :, -1, :
+                ]  # (1, V)
+                if repetition_penalty != 1.0:
+                    logits = logits.clone()
+                    unique_ids = beams[b].unique()
+                    tok_scores = logits[0, unique_ids]
+                    tok_scores = torch.where(
+                        tok_scores > 0,
+                        tok_scores / repetition_penalty,
+                        tok_scores * repetition_penalty,
+                    )
+                    logits[0, unique_ids] = tok_scores
+                log_probs_list.append(F.log_softmax(logits[0], dim=-1))  # (V,)
+
+            lp = torch.stack(log_probs_list, dim=0)  # (n_active, V)
+
+            # Candidate scores: score[b] + log_p[b, v]
+            candidate = scores[:n_active].unsqueeze(1) + lp  # (n_active, V)
+
+            # Top-beam_width candidates flattened across beams × vocab
+            flat = candidate.view(-1)
+            k = min(beam_width, flat.numel())
+            top_scores, top_flat = flat.topk(k)
+            parent = top_flat // V
+            token = top_flat % V
+
+            beams = torch.cat([beams[parent], token.unsqueeze(1)], dim=1)
+            scores = top_scores
+
+        best = scores.argmax()
+        return beams[best : best + 1]
+
+    @torch.no_grad()
+    def generate_batch(
+        self,
+        prompts: list[torch.Tensor],
+        max_new_tokens: int = 64,
+        n_loops: int = 8,
+        decode_loops: Optional[int] = None,
+        temperature: float = 1.0,
+        top_k: int = 50,
+        top_p: float = 1.0,
+        repetition_penalty: float = 1.0,
+    ) -> list[torch.Tensor]:
+        """Independent autoregressive generation for a list of prompts.
+
+        Each prompt is generated independently with its own KV cache, which
+        allows prompts of different lengths.  For a batch of same-length
+        prompts you can also stack them and call :meth:`generate` directly
+        with ``batch_size > 1``.
+
+        Args:
+            prompts           -- list of prompt tensors, each shape (1, T_i)
+            max_new_tokens    -- tokens to generate per prompt
+            n_loops           -- recurrent loop depth (prefill)
+            decode_loops      -- loop depth for decode steps (None = n_loops)
+            temperature       -- softmax temperature
+            top_k             -- top-K filtering (0 = disabled)
+            top_p             -- nucleus sampling threshold (1.0 = disabled)
+            repetition_penalty-- repetition penalty (1.0 = disabled)
+
+        Returns:
+            List of tensors, each shape (1, T_i + max_new_tokens).
+        """
+        return [
+            self.generate(
+                ids,
+                max_new_tokens=max_new_tokens,
+                n_loops=n_loops,
+                decode_loops=decode_loops,
+                temperature=temperature,
+                top_k=top_k,
+                top_p=top_p,
+                repetition_penalty=repetition_penalty,
+            )
+            for ids in prompts
+        ]
