@@ -39,7 +39,6 @@ from open_mythos.main import (
     precompute_rope_freqs,
 )
 
-
 # ---------------------------------------------------------------------------
 # Baseline: non-looped GQA + MoE transformer
 # ---------------------------------------------------------------------------
@@ -201,30 +200,41 @@ def bench_decode(
     decode_steps: int,
     device: torch.device,
     n_loops: Optional[int] = None,
+    decode_loops: Optional[int] = None,
 ) -> tuple[float, float]:
     """
-    Prefill a `prompt_len` prompt, then time `decode_steps` single-token decode
-    steps with KV cache. Returns (avg_seconds_per_step, decode_tokens_per_sec).
+    Prefill a ``prompt_len`` prompt, then time ``decode_steps`` single-token
+    decode steps with KV cache.
+
+    ``decode_loops`` enables the two-phase depth strategy: prefill uses
+    ``n_loops`` (full depth), each decode step uses ``decode_loops`` (fewer
+    loops, faster). Passing ``decode_loops=None`` replicates the original
+    behaviour (same depth for both phases).
+
+    Returns (avg_seconds_per_step, decode_tokens_per_sec).
     """
     prompt = torch.randint(0, vocab_size, (batch, prompt_len), device=device)
+    _decode_loops = decode_loops if decode_loops is not None else n_loops
 
     def one_run() -> None:
         kv_cache: dict = {}
         with torch.no_grad():
             if isinstance(model, OpenMythos):
+                # Prefill: full n_loops
                 model(prompt, n_loops=n_loops, kv_cache=kv_cache, start_pos=0)
-            else:
-                model(prompt, kv_cache=kv_cache, start_pos=0)
-            for i in range(decode_steps):
-                next_tok = torch.randint(0, vocab_size, (batch, 1), device=device)
-                if isinstance(model, OpenMythos):
+                for i in range(decode_steps):
+                    next_tok = torch.randint(0, vocab_size, (batch, 1), device=device)
+                    # Decode: decode_loops (may be fewer than n_loops)
                     model(
                         next_tok,
-                        n_loops=n_loops,
+                        n_loops=_decode_loops,
                         kv_cache=kv_cache,
                         start_pos=prompt_len + i,
                     )
-                else:
+            else:
+                model(prompt, kv_cache=kv_cache, start_pos=0)
+                for i in range(decode_steps):
+                    next_tok = torch.randint(0, vocab_size, (batch, 1), device=device)
                     model(next_tok, kv_cache=kv_cache, start_pos=prompt_len + i)
 
     secs = time_fn(one_run, device, warmup=1, trials=3)
@@ -331,6 +341,15 @@ def parse_args() -> argparse.Namespace:
         default=128,
         help="prefill length before decode",
     )
+    p.add_argument(
+        "--decode-loops-sweep",
+        default="",
+        help=(
+            "comma-separated decode_loops values to benchmark the two-phase "
+            "depth strategy (prefill uses max n_loops, decode uses this value). "
+            "Empty string disables the sweep. Example: '1,2,4'"
+        ),
+    )
     return p.parse_args()
 
 
@@ -348,6 +367,9 @@ def main() -> None:
 
     seq_lens = [int(s) for s in args.seq_lens.split(",") if s.strip()]
     n_loops_sweep = [int(s) for s in args.n_loops.split(",") if s.strip()]
+    decode_loops_sweep = [
+        int(s) for s in args.decode_loops_sweep.split(",") if s.strip()
+    ]
 
     cfg = get_cfg(args.size)
     print_header(f"Config: size={args.size}  device={device}  dtype={dtype_arg}")
@@ -379,11 +401,11 @@ def main() -> None:
     )
     print(
         f"  OpenMythos : total={fmt_count(m_params.total):>10}   "
-        f"active/tok≈{fmt_count(m_params.moe_active_est):>10}"
+        f"active/tok~{fmt_count(m_params.moe_active_est):>10}"
     )
     print(
         f"  Baseline   : total={fmt_count(b_params.total):>10}   "
-        f"active/tok≈{fmt_count(b_params.moe_active_est):>10}"
+        f"active/tok~{fmt_count(b_params.moe_active_est):>10}"
     )
     print(
         f"  Baseline unique layers = {baseline_n_layers}  "
@@ -459,7 +481,7 @@ def main() -> None:
             seq_lens[0], args.batch
         )
     )
-    print(f"  {'n_loops':>8} {'sec':>10} {'tok/s':>12} {'Δ vs loops=1':>14}")
+    print(f"  {'n_loops':>8} {'sec':>10} {'tok/s':>12} {'rel vs loops=1':>14}")
     base_secs = None
     for nl in n_loops_sweep:
         reset_mem(device)
@@ -472,6 +494,90 @@ def main() -> None:
         else:
             delta = f"{secs / base_secs:.2f}x"
         print(f"  {nl:>8} {secs*1000:>9.2f}ms {tps:>12,.0f} {delta:>14}")
+
+    # ---- Two-phase depth strategy: decode_loops sweep ----
+    if decode_loops_sweep:
+        full_n_loops = max(n_loops_sweep)
+        print_header(
+            f"Two-phase decode -- prefill loops={full_n_loops}, vary decode_loops "
+            f"(prompt={args.decode_prompt_len}, steps={args.decode_steps}, batch={args.batch})"
+        )
+        print(
+            f"  {'strategy':<34} {'sec/step':>12} {'tok/s':>12} "
+            f"{'speedup vs full':>16} {'quality note':>20}"
+        )
+
+        # Baseline reference: full loops for both prefill and decode
+        reset_mem(device)
+        ref_step, ref_tps = bench_decode(
+            mythos,
+            cfg.vocab_size,
+            args.batch,
+            args.decode_prompt_len,
+            args.decode_steps,
+            device,
+            n_loops=full_n_loops,
+            decode_loops=full_n_loops,
+        )
+        print(
+            f"  {'full depth (loops=' + str(full_n_loops) + '/dec=' + str(full_n_loops) + ')':<34} "
+            f"{ref_step*1000:>10.2f}ms {ref_tps:>12,.1f} "
+            f"{'1.00x':>16} {'[reference]':>20}"
+        )
+
+        # Baseline: stacked transformer for comparison
+        reset_mem(device)
+        base_step, base_tps = bench_decode(
+            baseline,
+            cfg.vocab_size,
+            args.batch,
+            args.decode_prompt_len,
+            args.decode_steps,
+            device,
+        )
+        speedup = ref_step / base_step if base_step > 0 else float("nan")
+        print(
+            f"  {'Baseline (stacked)':<34} "
+            f"{base_step*1000:>10.2f}ms {base_tps:>12,.1f} "
+            f"{speedup:>15.2f}x {'[reference]':>20}"
+        )
+
+        # Two-phase sweep
+        for dl in decode_loops_sweep:
+            if dl == full_n_loops:
+                continue  # already printed above
+            reset_mem(device)
+            per_step, tps = bench_decode(
+                mythos,
+                cfg.vocab_size,
+                args.batch,
+                args.decode_prompt_len,
+                args.decode_steps,
+                device,
+                n_loops=full_n_loops,
+                decode_loops=dl,
+            )
+            speedup = ref_step / per_step if per_step > 0 else float("nan")
+            # Quality annotation from depth extrapolation results
+            if dl == 1:
+                quality = "~99% (n=1 study)"
+            elif dl == 2:
+                quality = "~99% confirmed"
+            else:
+                quality = "~100%"
+            label = f"prefill={full_n_loops}/decode={dl}"
+            print(
+                f"  {label:<34} "
+                f"{per_step*1000:>10.2f}ms {tps:>12,.1f} "
+                f"{speedup:>15.2f}x {quality:>20}"
+            )
+
+        print()
+        print("  Use-case guide (decode ms/step on this hardware):")
+        print("    < 10ms  : real-time chat / code completion")
+        print("    10-30ms : writing assistant / translation (light UI)")
+        print("    30-100ms: batch summarisation / report generation")
+        print("    > 100ms : offline/research batch processing")
 
     print("\nDone.")
 

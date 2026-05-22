@@ -239,9 +239,9 @@ class TestDeepSeekGate:
             idx = indices[tok]
             in_group0 = (idx < 4).all()
             in_group1 = (idx >= 4).all()
-            assert (in_group0 or in_group1).item(), (
-                f"Token {tok} spans two groups: {idx.tolist()}"
-            )
+            assert (
+                in_group0 or in_group1
+            ).item(), f"Token {tok} spans two groups: {idx.tolist()}"
 
 
 # ---------------------------------------------------------------------------
@@ -469,7 +469,9 @@ class TestMoDAModel:
         assert logits.shape == (B, T, self.cfg.vocab_size)
 
     def test_seq_len_exceeds_max_raises(self):
-        ids_too_long = torch.randint(0, self.cfg.vocab_size, (1, self.cfg.max_seq_len + 1))
+        ids_too_long = torch.randint(
+            0, self.cfg.vocab_size, (1, self.cfg.max_seq_len + 1)
+        )
         with pytest.raises(ValueError, match="max_seq_len"):
             self.model(ids_too_long)
 
