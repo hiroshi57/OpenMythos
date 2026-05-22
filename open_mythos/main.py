@@ -1038,6 +1038,32 @@ class OpenMythos(nn.Module):
 
         return self.head(self.norm(x))
 
+    @staticmethod
+    def _sample_token(
+        logits: torch.Tensor,
+        temperature: float,
+        top_k: int,
+        top_p: float,
+    ) -> torch.Tensor:
+        """Sample the next token from a logits tensor of shape (B, vocab_size).
+
+        Applies temperature scaling → top-k filtering → top-p (nucleus) filtering
+        → multinomial sampling in order.  Returns a (B, 1) integer tensor.
+        """
+        logits = logits / max(temperature, 1e-8)
+        if top_k > 0:
+            v, _ = logits.topk(top_k)
+            logits[logits < v[:, -1:]] = float("-inf")
+        if top_p < 1.0:
+            sorted_logits, sorted_idx = torch.sort(logits, descending=True)
+            cum_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
+            remove_mask = cum_probs - F.softmax(sorted_logits, dim=-1) > top_p
+            sorted_logits[remove_mask] = float("-inf")
+            logits = torch.full_like(logits, float("-inf")).scatter(
+                1, sorted_idx, sorted_logits
+            )
+        return torch.multinomial(F.softmax(logits, dim=-1), num_samples=1)
+
     @torch.no_grad()
     def generate(
         self,
@@ -1118,22 +1144,60 @@ class OpenMythos(nn.Module):
             logits = self.forward(
                 cur_ids, n_loops=cur_loops, kv_cache=kv_cache, start_pos=start_pos
             )
-            logits = logits[:, -1, :] / max(temperature, 1e-8)
-            if top_k > 0:
-                v, _ = logits.topk(top_k)
-                logits[logits < v[:, -1:]] = float("-inf")
-            if top_p < 1.0:
-                sorted_logits, sorted_idx = torch.sort(logits, descending=True)
-                cum_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
-                # Keep the smallest set of tokens whose cumulative prob >= top_p.
-                # Shift right by one so the token that first crosses the threshold
-                # is included (not removed), then scatter back to original order.
-                remove_mask = cum_probs - F.softmax(sorted_logits, dim=-1) > top_p
-                sorted_logits[remove_mask] = float("-inf")
-                logits = torch.full_like(logits, float("-inf")).scatter(
-                    1, sorted_idx, sorted_logits
-                )
-            probs = F.softmax(logits, dim=-1)
-            next_tok = torch.multinomial(probs, num_samples=1)
+            next_tok = self._sample_token(logits[:, -1, :], temperature, top_k, top_p)
             input_ids = torch.cat([input_ids, next_tok], dim=1)
         return input_ids
+
+    @torch.no_grad()
+    def generate_stream(
+        self,
+        input_ids: torch.Tensor,
+        max_new_tokens: int = 64,
+        n_loops: int = 8,
+        decode_loops: Optional[int] = None,
+        temperature: float = 1.0,
+        top_k: int = 50,
+        top_p: float = 1.0,
+    ):
+        """Streaming autoregressive generation — yields one token per step.
+
+        Identical to :meth:`generate` in sampling behaviour and KV-cache
+        strategy, but ``yield``s each new token as a ``(B, 1)`` integer tensor
+        the moment it is sampled instead of accumulating the full sequence.
+        This enables real-time display in chat UIs or token-by-token pipelines.
+
+        Usage::
+
+            for tok in model.generate_stream(ids, max_new_tokens=32):
+                print(tokenizer.decode(tok[0].tolist()), end="", flush=True)
+
+        Args:
+            input_ids      -- prompt token indices of shape (B, T)
+            max_new_tokens -- maximum tokens to stream
+            n_loops        -- recurrent loop depth for prefill (step 0)
+            decode_loops   -- loop depth for decode steps; None = n_loops
+            temperature    -- softmax temperature
+            top_k          -- top-K filtering (0 = disabled)
+            top_p          -- nucleus sampling threshold (1.0 = disabled)
+
+        Yields:
+            ``(B, 1)`` integer tensors, one per generated token
+        """
+        kv_cache: dict = {}
+        prompt_len = input_ids.shape[1]
+        _decode_loops = decode_loops if decode_loops is not None else n_loops
+        for step in range(max_new_tokens):
+            if step == 0:
+                cur_ids = input_ids
+                start_pos = 0
+                cur_loops = n_loops
+            else:
+                cur_ids = input_ids[:, -1:]
+                start_pos = prompt_len + step - 1
+                cur_loops = _decode_loops
+            logits = self.forward(
+                cur_ids, n_loops=cur_loops, kv_cache=kv_cache, start_pos=start_pos
+            )
+            next_tok = self._sample_token(logits[:, -1, :], temperature, top_k, top_p)
+            input_ids = torch.cat([input_ids, next_tok], dim=1)
+            yield next_tok

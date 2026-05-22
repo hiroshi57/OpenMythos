@@ -800,5 +800,79 @@ class TestTopPSampling:
         assert out.min().item() >= 0
 
 
+# ---------------------------------------------------------------------------
+# generate_stream
+# ---------------------------------------------------------------------------
+
+
+class TestGenerateStream:
+    """Tests for OpenMythos.generate_stream() streaming generation."""
+
+    def setup_method(self):
+        self.cfg = gqa_cfg()
+        self.model = OpenMythos(self.cfg)
+        self.ids = torch.randint(0, self.cfg.vocab_size, (1, T))
+
+    def test_stream_yields_correct_count(self):
+        """generate_stream must yield exactly max_new_tokens tensors."""
+        tokens = list(self.model.generate_stream(self.ids, max_new_tokens=5, n_loops=1))
+        assert len(tokens) == 5
+
+    def test_stream_token_shape(self):
+        """Each yielded tensor must be shape (B, 1)."""
+        for tok in self.model.generate_stream(self.ids, max_new_tokens=3, n_loops=1):
+            assert tok.shape == (1, 1)
+
+    def test_stream_tokens_in_vocab(self):
+        """Every streamed token must be within [0, vocab_size)."""
+        for tok in self.model.generate_stream(self.ids, max_new_tokens=4, n_loops=1):
+            assert tok.min().item() >= 0
+            assert tok.max().item() < self.cfg.vocab_size
+
+    def test_stream_matches_generate(self):
+        """Concatenated stream output must equal generate() with the same seed."""
+        torch.manual_seed(99)
+        streamed = torch.cat(
+            list(
+                self.model.generate_stream(
+                    self.ids.clone(),
+                    max_new_tokens=5,
+                    n_loops=1,
+                    temperature=1e-6,
+                )
+            ),
+            dim=1,
+        )
+        torch.manual_seed(99)
+        full = self.model.generate(
+            self.ids.clone(), max_new_tokens=5, n_loops=1, temperature=1e-6
+        )
+        assert torch.equal(streamed, full[:, T:])
+
+    def test_stream_with_decode_loops(self):
+        """generate_stream must work with the two-phase decode_loops strategy."""
+        tokens = list(
+            self.model.generate_stream(
+                self.ids, max_new_tokens=4, n_loops=2, decode_loops=1
+            )
+        )
+        assert len(tokens) == 4
+        assert all(t.shape == (1, 1) for t in tokens)
+
+    def test_stream_with_top_p(self):
+        """generate_stream must accept top_p without error."""
+        tokens = list(
+            self.model.generate_stream(self.ids, max_new_tokens=3, n_loops=1, top_p=0.9)
+        )
+        assert len(tokens) == 3
+
+    def test_stream_is_generator(self):
+        """generate_stream must return a generator (lazy evaluation)."""
+        import types
+
+        gen = self.model.generate_stream(self.ids, max_new_tokens=4, n_loops=1)
+        assert isinstance(gen, types.GeneratorType)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "--verbose"])
