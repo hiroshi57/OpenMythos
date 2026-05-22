@@ -1061,3 +1061,46 @@ class MoDAModel(nn.Module):
             f"(top-{c.n_activated_experts}), "
             f"params={self.num_parameters():,}"
         )
+
+    @torch.no_grad()
+    def generate(
+        self,
+        input_ids: torch.Tensor,
+        max_new_tokens: int = 64,
+        temperature: float = 1.0,
+        top_k: int = 50,
+    ) -> torch.Tensor:
+        """Autoregressive token generation (no KV cache — full re-prefill each step).
+
+        MoDAModel does not maintain an incremental KV cache because its depth
+        KV cache is rebuilt layer-by-layer inside each ``forward`` call (it is
+        a local list, not stored on ``self``).  Generation is therefore O(T²)
+        in sequence length, which is acceptable for short outputs.  For long
+        generations at production scale, a cached variant would be needed.
+
+        The input sequence is truncated to ``cfg.max_seq_len`` before each step
+        so the model never exceeds its trained context window.
+
+        Args:
+            input_ids      -- prompt token indices of shape (B, T).
+            max_new_tokens -- number of new tokens to append.
+            temperature    -- softmax temperature; 1.0 = default, lower = greedier.
+            top_k          -- restrict sampling to the top-K logits; 0 disables.
+
+        Returns:
+            Token indices of shape (B, T + max_new_tokens).
+        """
+        self.eval()
+        for _ in range(max_new_tokens):
+            # Truncate to context window if the sequence has grown too long
+            ctx = input_ids[:, -self.cfg.max_seq_len :]
+            logits, _ = self.forward(ctx)
+            # Take only the last position
+            logits = logits[:, -1, :] / max(temperature, 1e-8)
+            if top_k > 0:
+                v, _ = logits.topk(top_k)
+                logits[logits < v[:, -1:]] = float("-inf")
+            probs = F.softmax(logits, dim=-1)
+            next_tok = torch.multinomial(probs, num_samples=1)
+            input_ids = torch.cat([input_ids, next_tok], dim=1)
+        return input_ids

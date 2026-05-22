@@ -16,6 +16,8 @@ from open_mythos.main import (
     precompute_rope_freqs,
 )
 from open_mythos.tokenizer import MythosTokenizer, load_tokenizer, get_vocab_size
+from open_mythos.moda import MoDAConfig, MoDAModel
+from open_mythos.hyperloop import HyperloopConfig, HyperloopBlock, HyperloopMythos
 from open_mythos.variants import (
     mythos_1b,
     mythos_1t,
@@ -54,4 +56,9 @@ __all__ = [
     "load_tokenizer",
     "get_vocab_size",
     "MythosTokenizer",
+    "MoDAConfig",
+    "MoDAModel",
+    "HyperloopConfig",
+    "HyperloopBlock",
+    "HyperloopMythos",
 ]
