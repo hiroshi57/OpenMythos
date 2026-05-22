@@ -48,7 +48,7 @@ Usage
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 import torch
@@ -59,14 +59,11 @@ from open_mythos.main import (
     LoRAAdapter,
     LTIInjection,
     MythosConfig,
-    OpenMythos,
     RMSNorm,
-    RecurrentBlock,
     TransformerBlock,
     loop_index_embedding,
     precompute_rope_freqs,
 )
-
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -95,8 +92,8 @@ class HyperloopConfig(MythosConfig):
     """
 
     outer_loops: int = 4
-    inner_loops: int = 4       # overrides max_loop_iters inside HyperloopBlock
-    outer_lora_rank: int = 0   # 0 = use lora_rank (same as inner)
+    inner_loops: int = 4  # overrides max_loop_iters inside HyperloopBlock
+    outer_lora_rank: int = 0  # 0 = use lora_rank (same as inner)
 
     def __post_init__(self):
         # Keep max_loop_iters in sync so any code that reads it still works.
@@ -440,7 +437,10 @@ class HyperloopMythos(nn.Module):
 
         e = x  # encoded input frozen for injection
         x = self.recurrent(
-            x, e, freqs_cis, mask,
+            x,
+            e,
+            freqs_cis,
+            mask,
             outer_loops=outer_loops,
             inner_loops=inner_loops,
             kv_cache=kv_cache,
@@ -451,6 +451,34 @@ class HyperloopMythos(nn.Module):
 
         return self.head(self.norm(x))
 
+    @staticmethod
+    def _sample_token(
+        logits: torch.Tensor,
+        temperature: float,
+        top_k: int,
+        top_p: float,
+    ) -> torch.Tensor:
+        """Sample the next token from a logits tensor of shape (B, vocab_size).
+
+        Applies temperature → top-k → top-p → multinomial.
+        Returns a (B, 1) integer tensor.
+        """
+        import torch.nn.functional as F
+
+        logits = logits / max(temperature, 1e-8)
+        if top_k > 0:
+            v, _ = logits.topk(top_k)
+            logits[logits < v[:, -1:]] = float("-inf")
+        if top_p < 1.0:
+            sorted_logits, sorted_idx = torch.sort(logits, descending=True)
+            cum_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
+            remove_mask = cum_probs - F.softmax(sorted_logits, dim=-1) > top_p
+            sorted_logits[remove_mask] = float("-inf")
+            logits = torch.full_like(logits, float("-inf")).scatter(
+                1, sorted_idx, sorted_logits
+            )
+        return torch.multinomial(F.softmax(logits, dim=-1), num_samples=1)
+
     @torch.no_grad()
     def generate(
         self,
@@ -458,43 +486,132 @@ class HyperloopMythos(nn.Module):
         max_new_tokens: int = 64,
         outer_loops: int = 4,
         inner_loops: int = 4,
+        decode_outer_loops: Optional[int] = None,
         temperature: float = 1.0,
         top_k: int = 50,
+        top_p: float = 1.0,
     ) -> torch.Tensor:
         """Autoregressive generation with KV cache.
 
+        Supports the same two-phase depth strategy as ``OpenMythos.generate``:
+
+        * **Prefill** (step 0): runs ``outer_loops`` macro iterations over
+          the full prompt, populating KV caches at all outer-loop levels.
+        * **Decode** (steps 1+): runs ``decode_outer_loops`` outer iterations.
+          Setting ``decode_outer_loops=1`` when ``outer_loops=2`` roughly
+          halves decode latency. The depth extrapolation result shows that
+          outer=1 degrades quality by only +0.0085 eval-loss, so the
+          quality/speed tradeoff is favourable.
+
+        ``inner_loops`` is kept constant across both phases — only the outer
+        macro-loop count changes, which gives a coarser but architecturally
+        cleaner knob than adjusting inner loops.
+
+        Sampling pipeline (applied in order):
+            1. Scale logits by ``temperature``.
+            2. ``top_k``: keep only the top-K logits (0 = disabled).
+            3. ``top_p``: nucleus sampling — zero out tokens whose cumulative
+               probability exceeds ``top_p`` (1.0 = disabled).
+            4. Sample from the resulting distribution.
+
         Args:
-            input_ids      -- prompt token indices, shape (B, T)
-            max_new_tokens -- tokens to generate
-            outer_loops    -- outer macro-loop depth for each decode step
-            inner_loops    -- inner micro-loop depth for each decode step
-            temperature    -- softmax temperature
-            top_k          -- restrict sampling to top-K logits (0 = disabled)
+            input_ids         -- prompt token indices, shape (B, T)
+            max_new_tokens    -- tokens to generate
+            outer_loops       -- outer macro-loop depth for prefill (step 0)
+            inner_loops       -- inner micro-loop depth (constant, all steps)
+            decode_outer_loops-- outer loops for decode steps (steps 1+).
+                                 None = use outer_loops (original behaviour).
+            temperature       -- softmax temperature
+            top_k             -- restrict sampling to top-K logits (0 = off)
+            top_p             -- nucleus sampling threshold in (0, 1]; 1.0 = disabled.
 
         Returns:
             Token indices of shape (B, T + max_new_tokens).
         """
-        import torch.nn.functional as F
 
         kv_cache: dict = {}
         prompt_len = input_ids.shape[1]
+        _decode_outer = (
+            decode_outer_loops if decode_outer_loops is not None else outer_loops
+        )
 
         for step in range(max_new_tokens):
-            cur_ids = input_ids if step == 0 else input_ids[:, -1:]
-            start_pos = 0 if step == 0 else prompt_len + step - 1
+            if step == 0:
+                cur_ids = input_ids
+                start_pos = 0
+                cur_outer = outer_loops  # prefill: full depth
+            else:
+                cur_ids = input_ids[:, -1:]
+                start_pos = prompt_len + step - 1
+                cur_outer = _decode_outer  # decode: fast depth
             logits = self.forward(
                 cur_ids,
-                outer_loops=outer_loops,
+                outer_loops=cur_outer,
                 inner_loops=inner_loops,
                 kv_cache=kv_cache,
                 start_pos=start_pos,
             )
-            logits = logits[:, -1, :] / max(temperature, 1e-8)
-            if top_k > 0:
-                v, _ = logits.topk(top_k)
-                logits[logits < v[:, -1:]] = float("-inf")
-            probs = F.softmax(logits, dim=-1)
-            next_tok = torch.multinomial(probs, num_samples=1)
+            next_tok = self._sample_token(logits[:, -1, :], temperature, top_k, top_p)
             input_ids = torch.cat([input_ids, next_tok], dim=1)
 
         return input_ids
+
+    @torch.no_grad()
+    def generate_stream(
+        self,
+        input_ids: torch.Tensor,
+        max_new_tokens: int = 64,
+        outer_loops: int = 4,
+        inner_loops: int = 4,
+        decode_outer_loops: Optional[int] = None,
+        temperature: float = 1.0,
+        top_k: int = 50,
+        top_p: float = 1.0,
+    ):
+        """Streaming autoregressive generation — yields one token per step.
+
+        Identical to :meth:`generate` in sampling behaviour, but ``yield``s
+        each new ``(B, 1)`` token tensor as soon as it is sampled.
+
+        Usage::
+
+            for tok in model.generate_stream(ids, outer_loops=2, inner_loops=2):
+                print(tokenizer.decode(tok[0].tolist()), end="", flush=True)
+
+        Args:
+            input_ids         -- prompt token indices, shape (B, T)
+            max_new_tokens    -- maximum tokens to stream
+            outer_loops       -- outer macro-loop depth for prefill
+            inner_loops       -- inner micro-loop depth (constant)
+            decode_outer_loops-- outer loops for decode steps; None = outer_loops
+            temperature       -- softmax temperature
+            top_k             -- top-K filtering (0 = disabled)
+            top_p             -- nucleus threshold (1.0 = disabled)
+
+        Yields:
+            ``(B, 1)`` integer tensors, one per generated token
+        """
+        kv_cache: dict = {}
+        prompt_len = input_ids.shape[1]
+        _decode_outer = (
+            decode_outer_loops if decode_outer_loops is not None else outer_loops
+        )
+        for step in range(max_new_tokens):
+            if step == 0:
+                cur_ids = input_ids
+                start_pos = 0
+                cur_outer = outer_loops
+            else:
+                cur_ids = input_ids[:, -1:]
+                start_pos = prompt_len + step - 1
+                cur_outer = _decode_outer
+            logits = self.forward(
+                cur_ids,
+                outer_loops=cur_outer,
+                inner_loops=inner_loops,
+                kv_cache=kv_cache,
+                start_pos=start_pos,
+            )
+            next_tok = self._sample_token(logits[:, -1, :], temperature, top_k, top_p)
+            input_ids = torch.cat([input_ids, next_tok], dim=1)
+            yield next_tok

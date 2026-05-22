@@ -1,0 +1,13 @@
+# Force LF for all text files (avoids CRLF/LF black formatting differences between Windows and CI)
+* text=auto eol=lf
+
+# Explicitly binary
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.pyc binary
+*.pyd binary
+*.so binary
+*.dll binary
+*.whl binary
