@@ -1,0 +1,44 @@
+{
+  "changes_this_session": [],
+  "cwd": "C:\\Users\\hiroshi_takizawa\\OpenMythos",
+  "duration_minutes": 167,
+  "ended_at": "2026-05-22T04:59:22Z",
+  "event_seq": 47,
+  "fork_count": 0,
+  "git": {
+    "branch": "feature/hyperloop-benchmark",
+    "last_commit": "040b174",
+    "uncommitted_changes": 0
+  },
+  "harness_mem": {
+    "healthy": true,
+    "last_checked": "2026-05-22T05:04:51Z",
+    "last_error": null
+  },
+  "intent": "literal",
+  "last_event_id": "event-000047",
+  "last_message_hash": "138743c142f0454a",
+  "last_message_length": 1804,
+  "memory_logged": true,
+  "orchestration": {
+    "max_state_retries": 3,
+    "retry_backoff_seconds": 10
+  },
+  "parent_session_id": null,
+  "plans": {
+    "completed_tasks": 0,
+    "exists": false,
+    "last_modified": 0,
+    "pending_tasks": 0,
+    "todo_tasks": 0,
+    "wip_tasks": 0
+  },
+  "project_name": "OpenMythos",
+  "prompt_seq": 40,
+  "resume_token": "resume-1779415929284935000",
+  "session_id": "session-1779415929284935000",
+  "started_at": "2026-05-22T02:12:09Z",
+  "state": "stopped",
+  "state_version": 1,
+  "updated_at": "2026-05-22T05:05:09Z"
+}
