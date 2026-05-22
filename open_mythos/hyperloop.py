@@ -461,6 +461,7 @@ class HyperloopMythos(nn.Module):
         decode_outer_loops: Optional[int] = None,
         temperature: float = 1.0,
         top_k: int = 50,
+        top_p: float = 1.0,
     ) -> torch.Tensor:
         """Autoregressive generation with KV cache.
 
@@ -478,6 +479,13 @@ class HyperloopMythos(nn.Module):
         macro-loop count changes, which gives a coarser but architecturally
         cleaner knob than adjusting inner loops.
 
+        Sampling pipeline (applied in order):
+            1. Scale logits by ``temperature``.
+            2. ``top_k``: keep only the top-K logits (0 = disabled).
+            3. ``top_p``: nucleus sampling — zero out tokens whose cumulative
+               probability exceeds ``top_p`` (1.0 = disabled).
+            4. Sample from the resulting distribution.
+
         Args:
             input_ids         -- prompt token indices, shape (B, T)
             max_new_tokens    -- tokens to generate
@@ -487,6 +495,7 @@ class HyperloopMythos(nn.Module):
                                  None = use outer_loops (original behaviour).
             temperature       -- softmax temperature
             top_k             -- restrict sampling to top-K logits (0 = off)
+            top_p             -- nucleus sampling threshold in (0, 1]; 1.0 = disabled.
 
         Returns:
             Token indices of shape (B, T + max_new_tokens).
@@ -517,6 +526,14 @@ class HyperloopMythos(nn.Module):
             if top_k > 0:
                 v, _ = logits.topk(top_k)
                 logits[logits < v[:, -1:]] = float("-inf")
+            if top_p < 1.0:
+                sorted_logits, sorted_idx = torch.sort(logits, descending=True)
+                cum_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
+                remove_mask = cum_probs - F.softmax(sorted_logits, dim=-1) > top_p
+                sorted_logits[remove_mask] = float("-inf")
+                logits = torch.full_like(logits, float("-inf")).scatter(
+                    1, sorted_idx, sorted_logits
+                )
             probs = F.softmax(logits, dim=-1)
             next_tok = torch.multinomial(probs, num_samples=1)
             input_ids = torch.cat([input_ids, next_tok], dim=1)

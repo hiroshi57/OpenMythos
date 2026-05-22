@@ -1047,6 +1047,7 @@ class OpenMythos(nn.Module):
         decode_loops: Optional[int] = None,
         temperature: float = 1.0,
         top_k: int = 50,
+        top_p: float = 1.0,
     ) -> torch.Tensor:
         """
         Autoregressive token generation with KV caching.
@@ -1077,6 +1078,14 @@ class OpenMythos(nn.Module):
         self-consistent because each decode step only reads/writes the caches
         for loop levels 0 … decode_loops-1.
 
+        Sampling pipeline (applied in order):
+            1. Scale logits by ``temperature`` (lower → more peaked).
+            2. ``top_k``: zero out all but the top-K logits (0 = disabled).
+            3. ``top_p``: nucleus sampling — keep the smallest set of tokens
+               whose cumulative softmax probability ≥ ``top_p``, zero out
+               the rest (1.0 = disabled).
+            4. Sample from the resulting distribution.
+
         Args:
             input_ids      -- prompt token indices of shape (B, T)
             max_new_tokens -- number of tokens to generate
@@ -1087,6 +1096,9 @@ class OpenMythos(nn.Module):
                               speedup with <1% quality loss.
             temperature    -- softmax temperature; lower = more greedy
             top_k          -- restrict sampling to top-K logits (0 = disabled)
+            top_p          -- nucleus sampling threshold in (0, 1]; 1.0 = disabled.
+                              E.g. top_p=0.9 keeps the smallest token set whose
+                              cumulative probability covers 90% of the mass.
 
         Returns:
             Token indices of shape (B, T + max_new_tokens)
@@ -1106,10 +1118,21 @@ class OpenMythos(nn.Module):
             logits = self.forward(
                 cur_ids, n_loops=cur_loops, kv_cache=kv_cache, start_pos=start_pos
             )
-            logits = logits[:, -1, :] / temperature
+            logits = logits[:, -1, :] / max(temperature, 1e-8)
             if top_k > 0:
                 v, _ = logits.topk(top_k)
                 logits[logits < v[:, -1:]] = float("-inf")
+            if top_p < 1.0:
+                sorted_logits, sorted_idx = torch.sort(logits, descending=True)
+                cum_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
+                # Keep the smallest set of tokens whose cumulative prob >= top_p.
+                # Shift right by one so the token that first crosses the threshold
+                # is included (not removed), then scatter back to original order.
+                remove_mask = cum_probs - F.softmax(sorted_logits, dim=-1) > top_p
+                sorted_logits[remove_mask] = float("-inf")
+                logits = torch.full_like(logits, float("-inf")).scatter(
+                    1, sorted_idx, sorted_logits
+                )
             probs = F.softmax(logits, dim=-1)
             next_tok = torch.multinomial(probs, num_samples=1)
             input_ids = torch.cat([input_ids, next_tok], dim=1)

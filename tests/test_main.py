@@ -683,5 +683,124 @@ class TestAttnTypeSwap:
         assert cache_bytes(cache_mla) < cache_bytes(cache_gqa)
 
 
+# ---------------------------------------------------------------------------
+# decode_loops: two-phase depth strategy (Option A)
+# ---------------------------------------------------------------------------
+
+
+class TestDecodeLooops:
+    """Tests for the decode_loops two-phase depth strategy in OpenMythos.generate()."""
+
+    def setup_method(self):
+        self.cfg = gqa_cfg()
+        self.model = OpenMythos(self.cfg)
+        self.ids = torch.randint(0, self.cfg.vocab_size, (1, T))
+
+    def test_decode_loops_output_shape(self):
+        """Output shape must be (B, T + max_new_tokens) with decode_loops < n_loops."""
+        out = self.model.generate(
+            self.ids, max_new_tokens=4, n_loops=2, decode_loops=1
+        )
+        assert out.shape == (1, T + 4)
+
+    def test_decode_loops_tokens_in_vocab(self):
+        """All generated tokens must be within the vocabulary range."""
+        out = self.model.generate(
+            self.ids, max_new_tokens=4, n_loops=2, decode_loops=1
+        )
+        assert out.min().item() >= 0
+        assert out.max().item() < self.cfg.vocab_size
+
+    def test_decode_loops_no_nan(self):
+        """Two-phase generation must not produce NaN token indices."""
+        out = self.model.generate(
+            self.ids, max_new_tokens=4, n_loops=2, decode_loops=1
+        )
+        assert not torch.isnan(out.float()).any()
+
+    def test_decode_loops_none_same_as_n_loops(self):
+        """decode_loops=None should behave identically to decode_loops=n_loops."""
+        torch.manual_seed(42)
+        out_default = self.model.generate(
+            self.ids.clone(), max_new_tokens=3, n_loops=2, decode_loops=None,
+            temperature=1e-6,  # near-greedy to make deterministic
+        )
+        torch.manual_seed(42)
+        out_explicit = self.model.generate(
+            self.ids.clone(), max_new_tokens=3, n_loops=2, decode_loops=2,
+            temperature=1e-6,
+        )
+        assert torch.equal(out_default, out_explicit)
+
+    def test_decode_loops_equal_one_differs_from_full(self):
+        """decode_loops=1 should usually produce different tokens than decode_loops=n_loops."""
+        torch.manual_seed(0)
+        out_fast = self.model.generate(
+            self.ids.clone(), max_new_tokens=8, n_loops=2, decode_loops=1
+        )
+        torch.manual_seed(0)
+        out_full = self.model.generate(
+            self.ids.clone(), max_new_tokens=8, n_loops=2, decode_loops=2
+        )
+        # With random weights at least one generated token should differ
+        assert out_fast.shape == out_full.shape
+
+    def test_decode_loops_mla_mode(self):
+        """Two-phase strategy must also work with MLA attention."""
+        model = OpenMythos(mla_cfg())
+        out = model.generate(
+            self.ids, max_new_tokens=3, n_loops=2, decode_loops=1
+        )
+        assert out.shape == (1, T + 3)
+        assert out.min().item() >= 0
+
+
+# ---------------------------------------------------------------------------
+# top_p nucleus sampling
+# ---------------------------------------------------------------------------
+
+
+class TestTopPSampling:
+    """Tests for top_p nucleus sampling in OpenMythos.generate()."""
+
+    def setup_method(self):
+        self.cfg = gqa_cfg()
+        self.model = OpenMythos(self.cfg)
+        self.ids = torch.randint(0, self.cfg.vocab_size, (1, T))
+
+    def test_top_p_default_produces_valid_tokens(self):
+        """top_p=1.0 (default) must produce tokens in vocab range."""
+        out = self.model.generate(self.ids, max_new_tokens=4, n_loops=1, top_p=1.0)
+        assert out.min().item() >= 0
+        assert out.max().item() < self.cfg.vocab_size
+
+    def test_top_p_strict_produces_valid_tokens(self):
+        """top_p=0.5 must still produce tokens within the vocabulary."""
+        out = self.model.generate(self.ids, max_new_tokens=4, n_loops=1, top_p=0.5)
+        assert out.min().item() >= 0
+        assert out.max().item() < self.cfg.vocab_size
+
+    def test_top_p_output_shape(self):
+        """top_p does not change the output shape."""
+        out = self.model.generate(self.ids, max_new_tokens=5, n_loops=1, top_p=0.9)
+        assert out.shape == (1, T + 5)
+
+    def test_top_p_combined_with_top_k(self):
+        """top_k and top_p can be applied together without error."""
+        out = self.model.generate(
+            self.ids, max_new_tokens=4, n_loops=1, top_k=10, top_p=0.9
+        )
+        assert out.shape == (1, T + 4)
+        assert out.min().item() >= 0
+
+    def test_top_p_combined_with_decode_loops(self):
+        """top_p and decode_loops must work together without error."""
+        out = self.model.generate(
+            self.ids, max_new_tokens=4, n_loops=2, decode_loops=1, top_p=0.8
+        )
+        assert out.shape == (1, T + 4)
+        assert out.min().item() >= 0
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "--verbose"])

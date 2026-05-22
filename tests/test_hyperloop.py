@@ -327,5 +327,104 @@ class TestHyperloopVsOpenMythos:
         assert not torch.allclose(hl_out, om_out)
 
 
+# ---------------------------------------------------------------------------
+# decode_outer_loops: two-phase depth strategy for HyperloopMythos
+# ---------------------------------------------------------------------------
+
+
+class TestHyperloopDecodeOuterLoops:
+    """Tests for decode_outer_loops two-phase strategy in HyperloopMythos.generate()."""
+
+    def setup_method(self):
+        self.cfg = tiny_cfg()
+        self.model = HyperloopMythos(self.cfg)
+        self.ids = torch.randint(0, VOCAB, (1, 4))
+
+    def test_decode_outer_loops_output_shape(self):
+        """Output shape must be (B, T + max_new_tokens) with decode_outer_loops < outer_loops."""
+        out = self.model.generate(
+            self.ids, max_new_tokens=4, outer_loops=2, inner_loops=2,
+            decode_outer_loops=1
+        )
+        assert out.shape == (1, 8)
+
+    def test_decode_outer_loops_tokens_in_vocab(self):
+        """All generated tokens must be within the vocabulary range."""
+        out = self.model.generate(
+            self.ids, max_new_tokens=4, outer_loops=2, inner_loops=2,
+            decode_outer_loops=1
+        )
+        assert out.min().item() >= 0
+        assert out.max().item() < VOCAB
+
+    def test_decode_outer_loops_no_nan(self):
+        """Two-phase generation must not produce NaN token indices."""
+        out = self.model.generate(
+            self.ids, max_new_tokens=4, outer_loops=2, inner_loops=2,
+            decode_outer_loops=1
+        )
+        assert not torch.isnan(out.float()).any()
+
+    def test_decode_outer_loops_none_same_as_outer_loops(self):
+        """decode_outer_loops=None should behave identically to decode_outer_loops=outer_loops."""
+        torch.manual_seed(7)
+        out_default = self.model.generate(
+            self.ids.clone(), max_new_tokens=3, outer_loops=2, inner_loops=2,
+            decode_outer_loops=None, temperature=1e-6,
+        )
+        torch.manual_seed(7)
+        out_explicit = self.model.generate(
+            self.ids.clone(), max_new_tokens=3, outer_loops=2, inner_loops=2,
+            decode_outer_loops=2, temperature=1e-6,
+        )
+        assert torch.equal(out_default, out_explicit)
+
+
+# ---------------------------------------------------------------------------
+# top_p nucleus sampling for HyperloopMythos
+# ---------------------------------------------------------------------------
+
+
+class TestHyperloopTopP:
+    """Tests for top_p nucleus sampling in HyperloopMythos.generate()."""
+
+    def setup_method(self):
+        self.cfg = tiny_cfg()
+        self.model = HyperloopMythos(self.cfg)
+        self.ids = torch.randint(0, VOCAB, (1, 4))
+
+    def test_top_p_default_produces_valid_tokens(self):
+        """top_p=1.0 (default) must produce tokens in vocab range."""
+        out = self.model.generate(
+            self.ids, max_new_tokens=4, outer_loops=1, inner_loops=1, top_p=1.0
+        )
+        assert out.min().item() >= 0
+        assert out.max().item() < VOCAB
+
+    def test_top_p_strict_produces_valid_tokens(self):
+        """top_p=0.5 must still produce tokens within the vocabulary."""
+        out = self.model.generate(
+            self.ids, max_new_tokens=4, outer_loops=1, inner_loops=1, top_p=0.5
+        )
+        assert out.min().item() >= 0
+        assert out.max().item() < VOCAB
+
+    def test_top_p_output_shape(self):
+        """top_p does not change the output shape."""
+        out = self.model.generate(
+            self.ids, max_new_tokens=5, outer_loops=1, inner_loops=1, top_p=0.9
+        )
+        assert out.shape == (1, 9)
+
+    def test_top_p_combined_with_decode_outer_loops(self):
+        """top_p and decode_outer_loops must work together without error."""
+        out = self.model.generate(
+            self.ids, max_new_tokens=4, outer_loops=2, inner_loops=2,
+            decode_outer_loops=1, top_p=0.8
+        )
+        assert out.shape == (1, 8)
+        assert out.min().item() >= 0
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "--verbose"])
