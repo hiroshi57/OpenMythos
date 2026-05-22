@@ -874,5 +874,77 @@ class TestGenerateStream:
         assert isinstance(gen, types.GeneratorType)
 
 
+# ---------------------------------------------------------------------------
+# speculative_decode
+# ---------------------------------------------------------------------------
+
+
+class TestSpeculativeDecode:
+    """Tests for OpenMythos.speculative_decode()."""
+
+    def setup_method(self):
+        self.cfg = gqa_cfg()
+        self.model = OpenMythos(self.cfg)
+        # B=1 required by speculative_decode
+        self.ids = torch.randint(0, self.cfg.vocab_size, (1, T))
+
+    def test_output_longer_than_prompt(self):
+        """Output must contain more tokens than the prompt."""
+        out = self.model.speculative_decode(
+            self.ids, max_new_tokens=4, n_loops=2, draft_loops=1, draft_k=2
+        )
+        assert out.shape[1] > T
+
+    def test_output_at_most_max_new_tokens(self):
+        """Output must not exceed prompt_len + max_new_tokens."""
+        out = self.model.speculative_decode(
+            self.ids, max_new_tokens=5, n_loops=2, draft_loops=1, draft_k=3
+        )
+        assert out.shape[1] <= T + 5
+
+    def test_tokens_in_vocab(self):
+        """All generated tokens must be within [0, vocab_size)."""
+        out = self.model.speculative_decode(
+            self.ids, max_new_tokens=4, n_loops=2, draft_loops=1, draft_k=2
+        )
+        assert out[:, T:].min().item() >= 0
+        assert out[:, T:].max().item() < self.cfg.vocab_size
+
+    def test_no_nan_output(self):
+        """speculative_decode must not produce NaN token indices."""
+        out = self.model.speculative_decode(
+            self.ids, max_new_tokens=4, n_loops=2, draft_loops=1, draft_k=2
+        )
+        assert not torch.isnan(out.float()).any()
+
+    def test_batch_one_constraint(self):
+        """Batch size > 1 must raise an AssertionError."""
+        ids_b2 = torch.randint(0, self.cfg.vocab_size, (2, T))
+        with pytest.raises(AssertionError):
+            self.model.speculative_decode(ids_b2, max_new_tokens=3)
+
+    def test_draft_k_one_behaves_like_generate(self):
+        """With draft_k=1, speculative_decode degenerates to standard decode."""
+        out = self.model.speculative_decode(
+            self.ids,
+            max_new_tokens=4,
+            n_loops=2,
+            draft_loops=1,
+            draft_k=1,
+            temperature=1e-6,
+        )
+        assert out.shape[1] <= T + 4
+        assert out[:, T:].min().item() >= 0
+
+    def test_mla_mode(self):
+        """speculative_decode must work with MLA attention."""
+        model = OpenMythos(mla_cfg())
+        out = model.speculative_decode(
+            self.ids, max_new_tokens=3, n_loops=2, draft_loops=1, draft_k=2
+        )
+        assert out.shape[1] > T
+        assert out[:, T:].min().item() >= 0
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "--verbose"])

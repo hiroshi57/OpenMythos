@@ -972,27 +972,41 @@ class OpenMythos(nn.Module):
 
     @staticmethod
     def _causal_mask(
-        seq_len: int, device: torch.device, dtype: torch.dtype
+        seq_len: int,
+        device: torch.device,
+        dtype: torch.dtype,
+        cache_len: int = 0,
     ) -> torch.Tensor:
         """
-        Build an additive causal mask: 0 on and below the diagonal, -inf above.
+        Build an additive causal mask of shape (1, 1, seq_len, cache_len + seq_len).
+
+        Each of the ``seq_len`` query positions can attend to:
+          - all ``cache_len`` cached key positions (full attention, value 0), and
+          - all preceding + current positions within the current window (causal, value 0);
+          - future positions within the current window (-inf).
+
+        When ``cache_len == 0`` (no KV cache / prefill) the mask is square
+        and equal to the standard upper-triangular causal mask.
 
         Args:
-            seq_len -- sequence length
-            device  -- target device
-            dtype   -- tensor dtype (must match activation dtype so the additive
-                       mask doesn't upcast the attention logits in the fallback
-                       attention path — e.g. bf16 weights with an fp32 mask
-                       promotes attn to fp32 and then breaks the fp32-vs-bf16
-                       matmul against V)
+            seq_len   -- number of query (current) tokens
+            device    -- target device
+            dtype     -- tensor dtype (must match activations to avoid precision promotion)
+            cache_len -- number of tokens already in the KV cache (default 0)
 
         Returns:
-            Tensor of shape (1, 1, seq_len, seq_len) broadcastable over (B, H, T, S)
+            Tensor of shape (1, 1, seq_len, cache_len + seq_len)
         """
-        mask = torch.full(
-            (1, 1, seq_len, seq_len), float("-inf"), device=device, dtype=dtype
+        # Cache block: queries can always attend to all cached keys → zeros
+        cache_block = torch.zeros(1, 1, seq_len, cache_len, device=device, dtype=dtype)
+        # Causal block: upper-triangular -inf within the current window
+        causal_block = torch.triu(
+            torch.full(
+                (1, 1, seq_len, seq_len), float("-inf"), device=device, dtype=dtype
+            ),
+            diagonal=1,
         )
-        return torch.triu(mask, diagonal=1)
+        return torch.cat([cache_block, causal_block], dim=-1)
 
     def forward(
         self,
@@ -1025,7 +1039,11 @@ class OpenMythos(nn.Module):
         freqs_cis = (
             self.freqs_cis_mla if self.cfg.attn_type == "mla" else self.freqs_cis
         )[start_pos : start_pos + T]
-        mask = self._causal_mask(T, device, x.dtype) if T > 1 else None
+        mask = (
+            self._causal_mask(T, device, x.dtype, cache_len=start_pos)
+            if T > 1
+            else None
+        )
 
         for i, layer in enumerate(self.prelude):
             x = layer(x, freqs_cis, mask, kv_cache, cache_key=f"prelude_{i}")
@@ -1201,3 +1219,143 @@ class OpenMythos(nn.Module):
             next_tok = self._sample_token(logits[:, -1, :], temperature, top_k, top_p)
             input_ids = torch.cat([input_ids, next_tok], dim=1)
             yield next_tok
+
+    @torch.no_grad()
+    def speculative_decode(
+        self,
+        input_ids: torch.Tensor,
+        max_new_tokens: int = 64,
+        n_loops: int = 8,
+        draft_loops: int = 1,
+        draft_k: int = 4,
+        temperature: float = 1.0,
+        top_k: int = 50,
+        top_p: float = 1.0,
+    ) -> torch.Tensor:
+        """Speculative decoding using self as both draft and target model.
+
+        Leverages the depth-extrapolation property of OpenMythos: the same
+        model run at ``draft_loops`` iterations acts as a lightweight *draft*,
+        and run at ``n_loops`` iterations acts as the *target* verifier.
+
+        Algorithm (per outer iteration):
+            1. **Draft**: run ``draft_k`` autoregressive steps with
+               ``draft_loops`` depth, collecting sampled tokens and their
+               probabilities (cheap — shallow depth).
+            2. **Verify**: run one forward pass at full ``n_loops`` depth over
+               the prefix + all ``draft_k`` draft tokens in a single batch,
+               obtaining target probabilities for every draft position in
+               parallel (one expensive call instead of ``draft_k``).
+            3. **Accept/reject**: for each position ``i``, accept draft token
+               ``x_i`` with probability ``min(1, p_target(x_i) / p_draft(x_i))``
+               (standard speculative sampling).  Stop at the first rejection
+               and resample that position from the adjusted target distribution.
+            4. Repeat until ``max_new_tokens`` are produced.
+
+        When the shallow draft distribution is close to the deep target
+        distribution (as depth extrapolation suggests), acceptance rates are
+        high and the method produces ≈ ``draft_k`` tokens per expensive
+        target call — amortising the deep-model cost over multiple tokens.
+
+        Note: This implementation runs without a KV cache for correctness
+        simplicity (avoids cache-size book-keeping across accept/reject
+        boundaries). The depth savings (``draft_loops`` << ``n_loops``) still
+        apply for the draft phase.  Batch size is restricted to B=1.
+
+        Args:
+            input_ids      -- prompt token indices of shape (B=1, T)
+            max_new_tokens -- maximum new tokens to produce
+            n_loops        -- target (verifier) loop depth
+            draft_loops    -- draft loop depth; should be < n_loops (1 = fastest)
+            draft_k        -- number of tokens to speculate before each target call
+            temperature    -- sampling temperature (applied to both draft & target)
+            top_k          -- top-K filtering (0 = disabled)
+            top_p          -- nucleus sampling threshold (1.0 = disabled)
+
+        Returns:
+            Token indices of shape (B=1, T + generated) where generated ≤ max_new_tokens.
+        """
+        assert input_ids.shape[0] == 1, "speculative_decode supports B=1 only"
+        generated = 0
+
+        while generated < max_new_tokens:
+            k = min(draft_k, max_new_tokens - generated)
+
+            # ----------------------------------------------------------------
+            # 1. Draft phase: sample k tokens with the shallow draft model.
+            # ----------------------------------------------------------------
+            draft_tokens: list[torch.Tensor] = []  # each (1, 1)
+            draft_probs: list[torch.Tensor] = []  # each (1, V)
+            draft_ids = input_ids
+
+            for _ in range(k):
+                logits_d = self.forward(draft_ids, n_loops=draft_loops)
+                lgt = logits_d[:, -1, :].clone()
+                # apply same sampling filters as _sample_token but keep probs
+                lgt = lgt / max(temperature, 1e-8)
+                if top_k > 0:
+                    v, _ = lgt.topk(top_k)
+                    lgt[lgt < v[:, -1:]] = float("-inf")
+                if top_p < 1.0:
+                    sl, si = torch.sort(lgt, descending=True)
+                    cp = torch.cumsum(F.softmax(sl, dim=-1), dim=-1)
+                    rm = cp - F.softmax(sl, dim=-1) > top_p
+                    sl[rm] = float("-inf")
+                    lgt = torch.full_like(lgt, float("-inf")).scatter(1, si, sl)
+                p_d = F.softmax(lgt, dim=-1)
+                tok = torch.multinomial(p_d, 1)
+                draft_tokens.append(tok)
+                draft_probs.append(p_d.detach())
+                draft_ids = torch.cat([draft_ids, tok], dim=1)
+
+            # ----------------------------------------------------------------
+            # 2. Verify phase: one deep forward over prefix + all draft tokens.
+            #    The target sees the full context (input_ids + k draft tokens)
+            #    and produces logits at positions len(input_ids) .. -1.
+            # ----------------------------------------------------------------
+            full_seq = torch.cat([input_ids] + draft_tokens, dim=1)  # (1, T+k)
+            logits_t = self.forward(full_seq, n_loops=n_loops)  # (1, T+k, V)
+            # logits for draft positions: indices T-1 .. T+k-2 (predict tokens T..T+k-1)
+            T_cur = input_ids.shape[1]
+            target_logits = logits_t[:, T_cur - 1 : T_cur - 1 + k, :]  # (1, k, V)
+
+            # ----------------------------------------------------------------
+            # 3. Accept / reject.
+            # ----------------------------------------------------------------
+            n_accepted = 0
+            for i in range(k):
+                x_i = draft_tokens[i]  # (1, 1)
+                p_target = F.softmax(
+                    target_logits[:, i, :] / max(temperature, 1e-8), dim=-1
+                )  # (1, V)
+                p_draft = draft_probs[i]  # (1, V)
+
+                ratio = (
+                    p_target[0, x_i[0, 0]] / (p_draft[0, x_i[0, 0]] + 1e-10)
+                ).clamp(max=1.0)
+
+                if torch.rand(1, device=input_ids.device).item() <= ratio.item():
+                    # Accept
+                    input_ids = torch.cat([input_ids, x_i], dim=1)
+                    n_accepted += 1
+                    generated += 1
+                    if generated >= max_new_tokens:
+                        break
+                else:
+                    # Reject: resample from adjusted target distribution
+                    adj = (p_target - p_draft).clamp(min=0)
+                    adj = adj / (adj.sum(dim=-1, keepdim=True) + 1e-10)
+                    bonus_tok = torch.multinomial(adj, 1)
+                    input_ids = torch.cat([input_ids, bonus_tok], dim=1)
+                    generated += 1
+                    break
+
+            if n_accepted == k and generated < max_new_tokens:
+                # All drafts accepted → one bonus token from the target's
+                # prediction at the position following the last draft token.
+                bonus_logits = logits_t[:, T_cur - 1 + k, :]  # (1, V)
+                bonus_tok = self._sample_token(bonus_logits, temperature, top_k, top_p)
+                input_ids = torch.cat([input_ids, bonus_tok], dim=1)
+                generated += 1
+
+        return input_ids
