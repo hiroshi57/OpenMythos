@@ -173,8 +173,7 @@ class TestHyperloopBlock:
     def test_inner_and_outer_share_block(self):
         """HyperloopBlock must have exactly one TransformerBlock shared by all levels."""
         transformer_blocks = [
-            m for m in self.block.modules()
-            if type(m).__name__ == "TransformerBlock"
+            m for m in self.block.modules() if type(m).__name__ == "TransformerBlock"
         ]
         assert len(transformer_blocks) == 1
 
@@ -282,6 +281,7 @@ class TestHyperloopVsOpenMythos:
         cfg = tiny_cfg()
         # Flat model equivalent: max_loop_iters = outer × inner = 2 × 2 = 4
         from open_mythos.main import MythosConfig
+
         return MythosConfig(
             vocab_size=cfg.vocab_size,
             dim=cfg.dim,
@@ -343,16 +343,22 @@ class TestHyperloopDecodeOuterLoops:
     def test_decode_outer_loops_output_shape(self):
         """Output shape must be (B, T + max_new_tokens) with decode_outer_loops < outer_loops."""
         out = self.model.generate(
-            self.ids, max_new_tokens=4, outer_loops=2, inner_loops=2,
-            decode_outer_loops=1
+            self.ids,
+            max_new_tokens=4,
+            outer_loops=2,
+            inner_loops=2,
+            decode_outer_loops=1,
         )
         assert out.shape == (1, 8)
 
     def test_decode_outer_loops_tokens_in_vocab(self):
         """All generated tokens must be within the vocabulary range."""
         out = self.model.generate(
-            self.ids, max_new_tokens=4, outer_loops=2, inner_loops=2,
-            decode_outer_loops=1
+            self.ids,
+            max_new_tokens=4,
+            outer_loops=2,
+            inner_loops=2,
+            decode_outer_loops=1,
         )
         assert out.min().item() >= 0
         assert out.max().item() < VOCAB
@@ -360,8 +366,11 @@ class TestHyperloopDecodeOuterLoops:
     def test_decode_outer_loops_no_nan(self):
         """Two-phase generation must not produce NaN token indices."""
         out = self.model.generate(
-            self.ids, max_new_tokens=4, outer_loops=2, inner_loops=2,
-            decode_outer_loops=1
+            self.ids,
+            max_new_tokens=4,
+            outer_loops=2,
+            inner_loops=2,
+            decode_outer_loops=1,
         )
         assert not torch.isnan(out.float()).any()
 
@@ -369,13 +378,21 @@ class TestHyperloopDecodeOuterLoops:
         """decode_outer_loops=None should behave identically to decode_outer_loops=outer_loops."""
         torch.manual_seed(7)
         out_default = self.model.generate(
-            self.ids.clone(), max_new_tokens=3, outer_loops=2, inner_loops=2,
-            decode_outer_loops=None, temperature=1e-6,
+            self.ids.clone(),
+            max_new_tokens=3,
+            outer_loops=2,
+            inner_loops=2,
+            decode_outer_loops=None,
+            temperature=1e-6,
         )
         torch.manual_seed(7)
         out_explicit = self.model.generate(
-            self.ids.clone(), max_new_tokens=3, outer_loops=2, inner_loops=2,
-            decode_outer_loops=2, temperature=1e-6,
+            self.ids.clone(),
+            max_new_tokens=3,
+            outer_loops=2,
+            inner_loops=2,
+            decode_outer_loops=2,
+            temperature=1e-6,
         )
         assert torch.equal(out_default, out_explicit)
 
@@ -419,8 +436,12 @@ class TestHyperloopTopP:
     def test_top_p_combined_with_decode_outer_loops(self):
         """top_p and decode_outer_loops must work together without error."""
         out = self.model.generate(
-            self.ids, max_new_tokens=4, outer_loops=2, inner_loops=2,
-            decode_outer_loops=1, top_p=0.8
+            self.ids,
+            max_new_tokens=4,
+            outer_loops=2,
+            inner_loops=2,
+            decode_outer_loops=1,
+            top_p=0.8,
         )
         assert out.shape == (1, 8)
         assert out.min().item() >= 0

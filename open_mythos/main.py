@@ -1110,11 +1110,11 @@ class OpenMythos(nn.Module):
             if step == 0:
                 cur_ids = input_ids
                 start_pos = 0
-                cur_loops = n_loops          # prefill: full depth
+                cur_loops = n_loops  # prefill: full depth
             else:
                 cur_ids = input_ids[:, -1:]
                 start_pos = prompt_len + step - 1
-                cur_loops = _decode_loops    # decode: fast depth
+                cur_loops = _decode_loops  # decode: fast depth
             logits = self.forward(
                 cur_ids, n_loops=cur_loops, kv_cache=kv_cache, start_pos=start_pos
             )

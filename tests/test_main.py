@@ -698,36 +698,36 @@ class TestDecodeLooops:
 
     def test_decode_loops_output_shape(self):
         """Output shape must be (B, T + max_new_tokens) with decode_loops < n_loops."""
-        out = self.model.generate(
-            self.ids, max_new_tokens=4, n_loops=2, decode_loops=1
-        )
+        out = self.model.generate(self.ids, max_new_tokens=4, n_loops=2, decode_loops=1)
         assert out.shape == (1, T + 4)
 
     def test_decode_loops_tokens_in_vocab(self):
         """All generated tokens must be within the vocabulary range."""
-        out = self.model.generate(
-            self.ids, max_new_tokens=4, n_loops=2, decode_loops=1
-        )
+        out = self.model.generate(self.ids, max_new_tokens=4, n_loops=2, decode_loops=1)
         assert out.min().item() >= 0
         assert out.max().item() < self.cfg.vocab_size
 
     def test_decode_loops_no_nan(self):
         """Two-phase generation must not produce NaN token indices."""
-        out = self.model.generate(
-            self.ids, max_new_tokens=4, n_loops=2, decode_loops=1
-        )
+        out = self.model.generate(self.ids, max_new_tokens=4, n_loops=2, decode_loops=1)
         assert not torch.isnan(out.float()).any()
 
     def test_decode_loops_none_same_as_n_loops(self):
         """decode_loops=None should behave identically to decode_loops=n_loops."""
         torch.manual_seed(42)
         out_default = self.model.generate(
-            self.ids.clone(), max_new_tokens=3, n_loops=2, decode_loops=None,
+            self.ids.clone(),
+            max_new_tokens=3,
+            n_loops=2,
+            decode_loops=None,
             temperature=1e-6,  # near-greedy to make deterministic
         )
         torch.manual_seed(42)
         out_explicit = self.model.generate(
-            self.ids.clone(), max_new_tokens=3, n_loops=2, decode_loops=2,
+            self.ids.clone(),
+            max_new_tokens=3,
+            n_loops=2,
+            decode_loops=2,
             temperature=1e-6,
         )
         assert torch.equal(out_default, out_explicit)
@@ -748,9 +748,7 @@ class TestDecodeLooops:
     def test_decode_loops_mla_mode(self):
         """Two-phase strategy must also work with MLA attention."""
         model = OpenMythos(mla_cfg())
-        out = model.generate(
-            self.ids, max_new_tokens=3, n_loops=2, decode_loops=1
-        )
+        out = model.generate(self.ids, max_new_tokens=3, n_loops=2, decode_loops=1)
         assert out.shape == (1, T + 3)
         assert out.min().item() >= 0
 

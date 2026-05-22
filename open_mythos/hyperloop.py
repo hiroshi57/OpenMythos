@@ -48,7 +48,7 @@ Usage
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 import torch
@@ -59,14 +59,11 @@ from open_mythos.main import (
     LoRAAdapter,
     LTIInjection,
     MythosConfig,
-    OpenMythos,
     RMSNorm,
-    RecurrentBlock,
     TransformerBlock,
     loop_index_embedding,
     precompute_rope_freqs,
 )
-
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -95,8 +92,8 @@ class HyperloopConfig(MythosConfig):
     """
 
     outer_loops: int = 4
-    inner_loops: int = 4       # overrides max_loop_iters inside HyperloopBlock
-    outer_lora_rank: int = 0   # 0 = use lora_rank (same as inner)
+    inner_loops: int = 4  # overrides max_loop_iters inside HyperloopBlock
+    outer_lora_rank: int = 0  # 0 = use lora_rank (same as inner)
 
     def __post_init__(self):
         # Keep max_loop_iters in sync so any code that reads it still works.
@@ -440,7 +437,10 @@ class HyperloopMythos(nn.Module):
 
         e = x  # encoded input frozen for injection
         x = self.recurrent(
-            x, e, freqs_cis, mask,
+            x,
+            e,
+            freqs_cis,
+            mask,
             outer_loops=outer_loops,
             inner_loops=inner_loops,
             kv_cache=kv_cache,
@@ -504,17 +504,19 @@ class HyperloopMythos(nn.Module):
 
         kv_cache: dict = {}
         prompt_len = input_ids.shape[1]
-        _decode_outer = decode_outer_loops if decode_outer_loops is not None else outer_loops
+        _decode_outer = (
+            decode_outer_loops if decode_outer_loops is not None else outer_loops
+        )
 
         for step in range(max_new_tokens):
             if step == 0:
                 cur_ids = input_ids
                 start_pos = 0
-                cur_outer = outer_loops        # prefill: full depth
+                cur_outer = outer_loops  # prefill: full depth
             else:
                 cur_ids = input_ids[:, -1:]
                 start_pos = prompt_len + step - 1
-                cur_outer = _decode_outer      # decode: fast depth
+                cur_outer = _decode_outer  # decode: fast depth
             logits = self.forward(
                 cur_ids,
                 outer_loops=cur_outer,
