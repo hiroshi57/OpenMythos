@@ -39,7 +39,6 @@ from open_mythos.main import (
     precompute_rope_freqs,
 )
 
-
 # ---------------------------------------------------------------------------
 # Baseline: non-looped GQA + MoE transformer
 # ---------------------------------------------------------------------------
@@ -575,10 +574,10 @@ def main() -> None:
 
         print()
         print("  Use-case guide (decode ms/step on this hardware):")
-        print(f"    < 10ms  : real-time chat / code completion")
-        print(f"    10-30ms : writing assistant / translation (light UI)")
-        print(f"    30-100ms: batch summarisation / report generation")
-        print(f"    > 100ms : offline/research batch processing")
+        print("    < 10ms  : real-time chat / code completion")
+        print("    10-30ms : writing assistant / translation (light UI)")
+        print("    30-100ms: batch summarisation / report generation")
+        print("    > 100ms : offline/research batch processing")
 
     print("\nDone.")
 

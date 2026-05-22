@@ -15,7 +15,6 @@ Verifies that both architectures:
 from __future__ import annotations
 
 import io
-from typing import Optional
 
 import pytest
 import torch
@@ -326,9 +325,9 @@ class TestDepthExtrapolationIsolation:
             _ = mythos(ids, n_loops=4)
             moda_out_after, _ = moda(ids)
 
-        assert torch.allclose(moda_out_before, moda_out_after), (
-            "MoDAModel output should not change when OpenMythos n_loops changes"
-        )
+        assert torch.allclose(
+            moda_out_before, moda_out_after
+        ), "MoDAModel output should not change when OpenMythos n_loops changes"
 
     def test_both_models_can_coexist_in_same_process(self):
         """Both models can be instantiated and run in the same process."""

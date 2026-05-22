@@ -65,7 +65,6 @@ from open_mythos.main import (
     precompute_rope_freqs,
 )
 
-
 # ---------------------------------------------------------------------------
 # Baseline: dense GQA + SwiGLU transformer
 # ---------------------------------------------------------------------------
@@ -495,7 +494,8 @@ def main() -> None:
     # ------------------------------------------------------------------
     cfg = build_tiny_cfg(vocab_size, args.seq_len)
     hl_cfg = build_tiny_hyperloop_cfg(
-        vocab_size, args.seq_len,
+        vocab_size,
+        args.seq_len,
         outer_loops=args.hl_outer_loops,
         inner_loops=args.hl_inner_loops,
     )
@@ -511,8 +511,14 @@ def main() -> None:
     torch.manual_seed(args.seed)
     baseline = BaselineTransformer(cfg, n_layers=baseline_layers).to(device)
 
-    n_m, n_hl, n_b = count_params(mythos), count_params(hyperloop), count_params(baseline)
-    hl_total_depth = cfg.prelude_layers + hl_cfg.outer_loops * hl_cfg.inner_loops + cfg.coda_layers
+    n_m, n_hl, n_b = (
+        count_params(mythos),
+        count_params(hyperloop),
+        count_params(baseline),
+    )
+    hl_total_depth = (
+        cfg.prelude_layers + hl_cfg.outer_loops * hl_cfg.inner_loops + cfg.coda_layers
+    )
     print(
         f"[setup] OpenMythos   params = {fmt_count(n_m)}  ({n_m:,})\n"
         f"[setup] HyperloopMythos params = {fmt_count(n_hl)}  ({n_hl:,})  "
@@ -582,15 +588,21 @@ def main() -> None:
             )
 
         if args.eval_every and step % args.eval_every == 0:
-            eval_m = evaluate(mythos, eval_loader, device, vocab_size, args.eval_batches)
-            eval_hl = evaluate(hyperloop, eval_loader, device, vocab_size, args.eval_batches)
-            eval_b = evaluate(baseline, eval_loader, device, vocab_size, args.eval_batches)
+            eval_m = evaluate(
+                mythos, eval_loader, device, vocab_size, args.eval_batches
+            )
+            eval_hl = evaluate(
+                hyperloop, eval_loader, device, vocab_size, args.eval_batches
+            )
+            eval_b = evaluate(
+                baseline, eval_loader, device, vocab_size, args.eval_batches
+            )
             eval_history.append((step, eval_m, eval_hl, eval_b))
             best = min(eval_m, eval_hl, eval_b)
             winner = (
-                "mythos" if best == eval_m else
-                "hyperloop" if best == eval_hl else
-                "baseline"
+                "mythos"
+                if best == eval_m
+                else "hyperloop" if best == eval_hl else "baseline"
             )
             print(
                 f"  [eval @ step {step}]  "
@@ -610,7 +622,9 @@ def main() -> None:
     print(f"Summary ({args.steps} steps, wall clock {total_wall:.1f}s)")
     print(bar)
     print(f"  {'':<28} {'OpenMythos':>14}   {'HyperloopMythos':>16}   {'Baseline':>12}")
-    print(f"  {'params':<28} {fmt_count(n_m):>14}   {fmt_count(n_hl):>16}   {fmt_count(n_b):>12}")
+    print(
+        f"  {'params':<28} {fmt_count(n_m):>14}   {fmt_count(n_hl):>16}   {fmt_count(n_b):>12}"
+    )
     print(
         f"  {'initial train (first 10)':<28} "
         f"{mm.initial_loss:>14.4f}   {hlm.initial_loss:>16.4f}   {bm.initial_loss:>12.4f}"
@@ -639,7 +653,7 @@ def main() -> None:
     )
 
     # Winner per metric
-    print(f"\n  Quality ranking (lower = better):")
+    print("\n  Quality ranking (lower = better):")
     models_final = [
         ("OpenMythos", mm.final_loss),
         ("HyperloopMythos", hlm.final_loss),
@@ -653,7 +667,7 @@ def main() -> None:
     # ------------------------------------------------------------------
     loops_sweep = sorted({int(s) for s in args.depth_sweep.split(",") if s.strip()})
     print(f"\n{bar}")
-    print(f"Depth extrapolation -- OpenMythos (vary n_loops, full eval set)")
+    print("Depth extrapolation -- OpenMythos (vary n_loops, full eval set)")
     print(bar)
     baseline_eval = evaluate(baseline, eval_loader, device, vocab_size)
     print(f"  Baseline (fixed depth)              : eval loss = {baseline_eval:.4f}")
@@ -722,20 +736,26 @@ def main() -> None:
     )
     eval_hl_trained = next(
         (loss for ol, loss in sweep_hl if ol == hl_cfg.outer_loops),
-        evaluate(hyperloop, eval_loader, device, vocab_size, n_loops=hl_cfg.outer_loops),
+        evaluate(
+            hyperloop, eval_loader, device, vocab_size, n_loops=hl_cfg.outer_loops
+        ),
     )
     delta = eval_hl_trained - eval_m_trained
     winner_str = (
-        f"HyperloopMythos wins by {-delta:.4f}" if delta < 0
-        else f"OpenMythos wins by {delta:.4f}" if delta > 0
-        else "tie"
+        f"HyperloopMythos wins by {-delta:.4f}"
+        if delta < 0
+        else f"OpenMythos wins by {delta:.4f}" if delta > 0 else "tie"
     )
-    print(f"  OpenMythos flat (depth {cfg.max_loop_iters})          : {eval_m_trained:.4f}")
+    print(
+        f"  OpenMythos flat (depth {cfg.max_loop_iters})          : {eval_m_trained:.4f}"
+    )
     print(
         f"  HyperloopMythos nested ({hl_cfg.outer_loops}x{hl_cfg.inner_loops}=depth {hl_cfg.outer_loops * hl_cfg.inner_loops}): {eval_hl_trained:.4f}"
     )
     print(f"  -> {winner_str}")
-    print(f"  Baseline (fixed depth {baseline_layers})             : {baseline_eval:.4f}")
+    print(
+        f"  Baseline (fixed depth {baseline_layers})             : {baseline_eval:.4f}"
+    )
 
 
 if __name__ == "__main__":
