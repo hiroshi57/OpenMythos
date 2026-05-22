@@ -15,7 +15,7 @@
 | 1.1.4 | generate_stream() + _sample_token() リファクタ | Worker | cc:完了 [fe7daba] | (a) ストリーミング生成 API 追加 (b) 220 PASS |
 | 1.1.5 | speculative_decode() + _causal_mask cache_len 修正 | Worker | cc:完了 [0431b15] | (a) speculative decode 実装 (b) 227 PASS |
 | 1.1.6 | lint 整備 (.gitattributes CRLF/LF 統一) | Worker | cc:完了 [040b174] | (a) ruff/black 全 pass (b) CI lint mismatch 解消 |
-| 1.2.1 | feature/hyperloop-benchmark → master merge | Worker | cc:WIP | (a) 227 PASS on master (b) ローカル merge 完了 |
+| 1.2.1 | feature/hyperloop-benchmark → master merge | Worker | cc:完了 [merge commit] | (a) 227 PASS on master (b) ローカル merge 完了 |
 | 1.2.2 | GitHub push & CI 確認 | Worker | cc:TODO | (a) GitHub Actions green (b) PR close |
 
 ---
