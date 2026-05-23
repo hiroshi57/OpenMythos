@@ -951,6 +951,53 @@ class TestSpeculativeDecode:
 # ---------------------------------------------------------------------------
 
 
+class TestQuantize:
+    """Tests for OpenMythos.quantize()."""
+
+    def setup_method(self):
+        self.cfg = gqa_cfg()
+        self.model = OpenMythos(self.cfg)
+        self.ids = torch.randint(0, self.cfg.vocab_size, (1, T))
+
+    def test_fp16_param_dtype(self):
+        """After quantize('fp16'), all float parameters must be float16."""
+        self.model.quantize("fp16")
+        for name, p in self.model.named_parameters():
+            assert p.dtype == torch.float16, f"{name} is {p.dtype}"
+
+    def test_fp16_generate(self):
+        """quantize('fp16') model must generate valid tokens."""
+        self.model.quantize("fp16")
+        ids_fp16 = self.ids.to(torch.float16) if False else self.ids  # input stays int
+        out = self.model.generate(ids_fp16, max_new_tokens=4, n_loops=1)
+        assert out.shape == (1, T + 4)
+        assert out[:, T:].min().item() >= 0
+        assert out[:, T:].max().item() < self.cfg.vocab_size
+
+    def test_fp16_returns_self(self):
+        """quantize() must return the model itself for chaining."""
+        ret = self.model.quantize("fp16")
+        assert ret is self.model
+
+    def test_int8_generate(self):
+        """quantize('int8') model must generate valid tokens."""
+        self.model.quantize("int8")
+        out = self.model.generate(self.ids, max_new_tokens=4, n_loops=1)
+        assert out.shape == (1, T + 4)
+        assert out[:, T:].min().item() >= 0
+        assert out[:, T:].max().item() < self.cfg.vocab_size
+
+    def test_int8_returns_self(self):
+        """quantize('int8') must return the model itself."""
+        ret = self.model.quantize("int8")
+        assert ret is self.model
+
+    def test_invalid_dtype_raises(self):
+        """Unknown dtype must raise ValueError."""
+        with pytest.raises(ValueError, match="unsupported dtype"):
+            self.model.quantize("bf16")
+
+
 class TestSlidingWindowCache:
     """Tests for sliding window KV cache (max_cache_len) in generate() and generate_stream()."""
 

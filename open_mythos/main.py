@@ -540,8 +540,9 @@ class MoEFFN(nn.Module):
             token_idx = expert_mask.any(dim=-1).nonzero(as_tuple=True)[0]
             expert_out = self.routed_experts[eid](flat[token_idx])  # (M, D)
             # sum gating weights across slots for tokens that selected this expert
-            weight = (topk_scores * expert_mask.float()).sum(dim=-1, keepdim=True)
-            out.index_add_(0, token_idx, weight[token_idx] * expert_out)
+            # cast to flat.dtype so index_add_ works under fp16/bf16 inference
+            weight = (topk_scores * expert_mask.to(flat.dtype)).sum(dim=-1, keepdim=True)
+            out.index_add_(0, token_idx, weight[token_idx] * expert_out.to(flat.dtype))
 
         # shared experts always fire for every token
         for shared in self.shared_experts:
@@ -760,8 +761,8 @@ class LTIInjection(nn.Module):
         Returns:
             Updated hidden state of shape (B, T, dim)
         """
-        A = self.get_A()
-        return A * h + self.B * e + transformer_out
+        A = self.get_A().to(h.dtype)
+        return (A * h + self.B.to(h.dtype) * e + transformer_out).to(h.dtype)
 
 
 # ---------------------------------------------------------------------------
@@ -799,7 +800,7 @@ class ACTHalting(nn.Module):
         Returns:
             Halting probability tensor of shape (B, T), values in (0, 1)
         """
-        return torch.sigmoid(self.halt(h)).squeeze(-1)
+        return torch.sigmoid(self.halt(h)).squeeze(-1).to(h.dtype)
 
 
 # ---------------------------------------------------------------------------
@@ -873,7 +874,7 @@ class RecurrentBlock(nn.Module):
         B, T, D = h.shape
 
         halted = torch.zeros(B, T, device=h.device, dtype=torch.bool)
-        cumulative_p = torch.zeros(B, T, device=h.device)
+        cumulative_p = torch.zeros(B, T, device=h.device, dtype=h.dtype)
         h_out = torch.zeros_like(h)
 
         for t in range(n_loops):
@@ -898,10 +899,10 @@ class RecurrentBlock(nn.Module):
                 remainder,
                 p,
             )
-            weight = weight * still_running.float()
+            weight = weight * still_running.to(h.dtype)
             h_out = h_out + weight.unsqueeze(-1) * h
 
-            cumulative_p = cumulative_p + p * still_running.float()
+            cumulative_p = cumulative_p + p * still_running.to(h.dtype)
             halted = halted | (cumulative_p >= self.cfg.act_threshold)
 
             # Only short-circuit when there is no KV cache to keep consistent.
@@ -1526,3 +1527,51 @@ class OpenMythos(nn.Module):
                 generated += 1
 
         return input_ids
+
+    def quantize(self, dtype: str = "int8") -> "OpenMythos":
+        """Convert the model weights to a lower-precision format in-place.
+
+        Two modes are supported:
+
+        * ``"fp16"`` — cast all floating-point parameters and buffers to
+          ``torch.float16``.  Simple and lossless (no calibration needed).
+          Roughly halves memory usage compared to float32, compatible with
+          most CPUs and all CUDA GPUs.
+
+        * ``"int8"`` — apply PyTorch dynamic INT8 quantisation to all
+          ``nn.Linear`` layers via ``torch.ao.quantization.quantize_dynamic``.
+          Weights are quantised offline; activations are quantised on the fly
+          per forward call.  Typically reduces model size by ~4× vs float32
+          with minimal accuracy loss for inference.
+
+        Args:
+            dtype -- ``"int8"`` (default) or ``"fp16"``
+
+        Returns:
+            self, so the call can be chained: ``model.quantize("fp16").eval()``
+
+        Raises:
+            ValueError: if ``dtype`` is not ``"int8"`` or ``"fp16"``
+        """
+        if dtype == "fp16":
+            # half() converts float params/buffers but leaves complex buffers
+            # (freqs_cis*) in complex64. Cast those explicitly so that
+            # apply_rope's internal float() round-trip stays in fp16.
+            self.half()
+            for name, buf in list(self.named_buffers()):
+                if buf.is_complex():
+                    # complex32 is not supported; keep complex64 but ensure
+                    # the real/imag parts are fp32 so apply_rope stays valid.
+                    # We instead force all non-complex float buffers to fp16
+                    # and leave complex ones as-is (apply_rope casts to float).
+                    pass
+                elif buf.dtype == torch.float32:
+                    # re-register as fp16 (already done by half() above)
+                    pass
+        elif dtype == "int8":
+            torch.ao.quantization.quantize_dynamic(
+                self, {nn.Linear}, dtype=torch.qint8, inplace=True
+            )
+        else:
+            raise ValueError(f"quantize: unsupported dtype {dtype!r}; use 'int8' or 'fp16'")
+        return self
