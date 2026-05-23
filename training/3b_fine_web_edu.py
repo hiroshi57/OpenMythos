@@ -536,6 +536,14 @@ def main():
 
     model = OpenMythos(cfg)
 
+    # Gradient checkpointing: recompute activations during backward to save memory.
+    # Enabled by default — disable by setting use_grad_ckpt=False for faster small runs.
+    use_grad_ckpt = True
+    if use_grad_ckpt:
+        for module in model.modules():
+            if isinstance(module, (TransformerBlock, RecurrentBlock)):
+                module.gradient_checkpointing = True  # type: ignore[attr-defined]
+
     if ddp:
         mp_policy = MixedPrecision(
             param_dtype=amp_dtype,

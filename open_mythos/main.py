@@ -667,6 +667,21 @@ class TransformerBlock(nn.Module):
         self.attn = MLAttention(cfg) if cfg.attn_type == "mla" else GQAttention(cfg)
         self.ffn = MoEFFN(cfg) if use_moe else Expert(cfg.dim, cfg.dim * 4 // 3)
         self.resid_drop = nn.Dropout(cfg.dropout)
+        self.gradient_checkpointing: bool = False
+
+    def _forward_impl(
+        self,
+        x: torch.Tensor,
+        freqs_cis: torch.Tensor,
+        mask: Optional[torch.Tensor],
+        kv_cache: Optional[dict],
+        cache_key: str,
+    ) -> torch.Tensor:
+        x = x + self.resid_drop(
+            self.attn(self.attn_norm(x), freqs_cis, mask, kv_cache, cache_key)
+        )
+        x = x + self.resid_drop(self.ffn(self.ffn_norm(x)))
+        return x
 
     def forward(
         self,
@@ -687,11 +702,15 @@ class TransformerBlock(nn.Module):
         Returns:
             Output tensor of shape (B, T, dim)
         """
-        x = x + self.resid_drop(
-            self.attn(self.attn_norm(x), freqs_cis, mask, kv_cache, cache_key)
-        )
-        x = x + self.resid_drop(self.ffn(self.ffn_norm(x)))
-        return x
+        # Gradient checkpointing only applies during training without a live KV cache
+        # (cache requires per-step stateful mutation incompatible with recomputation)
+        if self.gradient_checkpointing and self.training and kv_cache is None:
+            return torch.utils.checkpoint.checkpoint(
+                self._forward_impl,
+                x, freqs_cis, mask, kv_cache, cache_key,
+                use_reentrant=False,
+            )
+        return self._forward_impl(x, freqs_cis, mask, kv_cache, cache_key)
 
 
 # ---------------------------------------------------------------------------

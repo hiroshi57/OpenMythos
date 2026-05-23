@@ -19,6 +19,7 @@ from open_mythos.tokenizer import MythosTokenizer, load_tokenizer, get_vocab_siz
 from open_mythos.moda import MoDAConfig, MoDAModel
 from open_mythos.hyperloop import HyperloopConfig, HyperloopBlock, HyperloopMythos
 from open_mythos.variants import (
+    mythos_nano,
     mythos_1b,
     mythos_1t,
     mythos_3b,
@@ -45,6 +46,7 @@ __all__ = [
     "precompute_rope_freqs",
     "apply_rope",
     "loop_index_embedding",
+    "mythos_nano",
     "mythos_1b",
     "mythos_3b",
     "mythos_7b",

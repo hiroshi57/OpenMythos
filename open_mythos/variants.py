@@ -6,6 +6,28 @@ from open_mythos.main import MythosConfig
 # expert_dim is solved from the residual budget after all other terms.
 
 
+def mythos_nano() -> MythosConfig:
+    """Nano config for unit tests and CPU development. ~10M params, dim=128, 4 experts, 2 loop iters, 512 context."""
+    return MythosConfig(
+        vocab_size=1024,
+        dim=128,
+        n_heads=4,
+        n_kv_heads=2,
+        max_seq_len=512,
+        max_loop_iters=2,
+        prelude_layers=1,
+        coda_layers=1,
+        attn_type="gqa",
+        n_experts=4,
+        n_shared_experts=1,
+        n_experts_per_tok=2,
+        expert_dim=128,
+        act_threshold=0.99,
+        rope_theta=10000.0,
+        lora_rank=4,
+    )
+
+
 def mythos_1b() -> MythosConfig:
     """1B parameter config. Small research/fine-tuning model. dim=2048, 64 experts, 16 loop iters, 4k context."""
     return MythosConfig(
