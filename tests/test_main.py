@@ -951,6 +951,53 @@ class TestSpeculativeDecode:
 # ---------------------------------------------------------------------------
 
 
+class TestRepetitionPenalty:
+    """Tests for repetition_penalty in generate() and generate_stream()."""
+
+    def setup_method(self):
+        self.cfg = gqa_cfg()
+        self.model = OpenMythos(self.cfg)
+        self.ids = torch.randint(0, self.cfg.vocab_size, (1, T))
+
+    def test_penalty_one_no_change(self):
+        """repetition_penalty=1.0 must leave logits unchanged."""
+        from open_mythos.main import OpenMythos as OM
+        logits = torch.randn(1, self.cfg.vocab_size)
+        original = logits.clone()
+        result = OM._apply_repetition_penalty(logits.clone(), self.ids, 1.0)
+        assert torch.allclose(result, original)
+
+    def test_penalty_reduces_seen_tokens(self):
+        """Positive logits for seen tokens must decrease after penalty > 1."""
+        from open_mythos.main import OpenMythos as OM
+        logits = torch.ones(1, self.cfg.vocab_size)
+        seen = self.ids[0, 0].item()
+        result = OM._apply_repetition_penalty(logits.clone(), self.ids, 2.0)
+        assert result[0, seen] < logits[0, seen]
+
+    def test_generate_with_penalty(self):
+        """generate() with repetition_penalty must produce valid shape."""
+        out = self.model.generate(
+            self.ids, max_new_tokens=5, n_loops=1, repetition_penalty=1.3
+        )
+        assert out.shape == (1, T + 5)
+        assert out[:, T:].min().item() >= 0
+        assert out[:, T:].max().item() < self.cfg.vocab_size
+
+    def test_stream_with_penalty(self):
+        """generate_stream() with repetition_penalty must yield correct tokens."""
+        tokens = list(
+            self.model.generate_stream(
+                self.ids, max_new_tokens=4, n_loops=1, repetition_penalty=1.3
+            )
+        )
+        assert len(tokens) == 4
+        for tok in tokens:
+            assert tok.shape == (1, 1)
+            assert tok.min().item() >= 0
+            assert tok.max().item() < self.cfg.vocab_size
+
+
 class TestGenerateBeam:
     """Tests for OpenMythos.generate_beam()."""
 

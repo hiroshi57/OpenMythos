@@ -1063,17 +1063,55 @@ class OpenMythos(nn.Module):
         return self.head(self.norm(x))
 
     @staticmethod
+    def _apply_repetition_penalty(
+        logits: torch.Tensor,
+        input_ids: torch.Tensor,
+        repetition_penalty: float,
+    ) -> torch.Tensor:
+        """Penalise tokens that have already appeared in input_ids.
+
+        For each token present in the sequence, logits > 0 are divided by the
+        penalty and logits < 0 are multiplied by it — pushing previously-seen
+        tokens away from the distribution without zeroing them out entirely.
+
+        Args:
+            logits            -- shape (B, vocab_size)
+            input_ids         -- shape (B, S); tokens seen so far
+            repetition_penalty-- > 1 reduces repetition; 1.0 = no effect
+
+        Returns:
+            Logits tensor with the penalty applied in-place.
+        """
+        if repetition_penalty == 1.0:
+            return logits
+        for b in range(logits.shape[0]):
+            for token_id in input_ids[b].unique():
+                idx = token_id.long()
+                if logits[b, idx] > 0:
+                    logits[b, idx] /= repetition_penalty
+                else:
+                    logits[b, idx] *= repetition_penalty
+        return logits
+
+    @staticmethod
     def _sample_token(
         logits: torch.Tensor,
         temperature: float,
         top_k: int,
         top_p: float,
+        repetition_penalty: float = 1.0,
+        input_ids: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Sample the next token from a logits tensor of shape (B, vocab_size).
 
-        Applies temperature scaling → top-k filtering → top-p (nucleus) filtering
-        → multinomial sampling in order.  Returns a (B, 1) integer tensor.
+        Applies repetition penalty → temperature scaling → top-k filtering
+        → top-p (nucleus) filtering → multinomial sampling in order.
+        Returns a (B, 1) integer tensor.
         """
+        if repetition_penalty != 1.0 and input_ids is not None:
+            logits = OpenMythos._apply_repetition_penalty(
+                logits, input_ids, repetition_penalty
+            )
         logits = logits / max(temperature, 1e-8)
         if top_k > 0:
             v, _ = logits.topk(top_k)
@@ -1098,6 +1136,7 @@ class OpenMythos(nn.Module):
         temperature: float = 1.0,
         top_k: int = 50,
         top_p: float = 1.0,
+        repetition_penalty: float = 1.0,
     ) -> torch.Tensor:
         """
         Autoregressive token generation with KV caching.
@@ -1168,7 +1207,10 @@ class OpenMythos(nn.Module):
             logits = self.forward(
                 cur_ids, n_loops=cur_loops, kv_cache=kv_cache, start_pos=start_pos
             )
-            next_tok = self._sample_token(logits[:, -1, :], temperature, top_k, top_p)
+            next_tok = self._sample_token(
+                logits[:, -1, :], temperature, top_k, top_p,
+                repetition_penalty=repetition_penalty, input_ids=input_ids,
+            )
             input_ids = torch.cat([input_ids, next_tok], dim=1)
         return input_ids
 
@@ -1280,6 +1322,7 @@ class OpenMythos(nn.Module):
         temperature: float = 1.0,
         top_k: int = 50,
         top_p: float = 1.0,
+        repetition_penalty: float = 1.0,
     ):
         """Streaming autoregressive generation — yields one token per step.
 
@@ -1320,7 +1363,10 @@ class OpenMythos(nn.Module):
             logits = self.forward(
                 cur_ids, n_loops=cur_loops, kv_cache=kv_cache, start_pos=start_pos
             )
-            next_tok = self._sample_token(logits[:, -1, :], temperature, top_k, top_p)
+            next_tok = self._sample_token(
+                logits[:, -1, :], temperature, top_k, top_p,
+                repetition_penalty=repetition_penalty, input_ids=input_ids,
+            )
             input_ids = torch.cat([input_ids, next_tok], dim=1)
             yield next_tok
 
