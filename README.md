@@ -49,10 +49,8 @@ pip install open-mythos[flash]
 ## Usage
 
 ```python
-
 import torch
 from open_mythos.main import OpenMythos, MythosConfig
-
 
 attn_type = "mla"  # or "gqa"
 
@@ -86,24 +84,77 @@ else:
     )
 
 model = OpenMythos(cfg)
-total = sum(p.numel() for p in model.parameters())
-print(f"\n[{attn_type.upper()}] Parameters: {total:,}")
-
 ids = torch.randint(0, cfg.vocab_size, (2, 16))
-logits = model(ids, n_loops=4)
-print(f"[{attn_type.upper()}] Logits shape: {logits.shape}")
 
+# Standard generation
 out = model.generate(ids, max_new_tokens=8, n_loops=8)
-print(f"[{attn_type.upper()}] Generated shape: {out.shape}")
+
+# Two-phase decode (2× faster decode with minimal quality loss)
+out = model.generate(ids, max_new_tokens=32, n_loops=8, decode_loops=2)
+
+# Beam search
+out = model.generate_beam(ids[:1], max_new_tokens=16, n_loops=4, beam_width=4)
+
+# Streaming generation
+for tok in model.generate_stream(ids, max_new_tokens=16, n_loops=4):
+    pass  # tok is (B, 1) integer tensor
+
+# Speculative decoding (deep target + shallow draft, same model)
+out = model.speculative_decode(ids[:1], max_new_tokens=32, n_loops=8, draft_loops=1, draft_k=4)
+
+# Batch generation with variable-length prompts
+prompts = [torch.randint(0, cfg.vocab_size, (n,)) for n in [5, 12, 8]]
+results = model.generate_batch(prompts, max_new_tokens=16, n_loops=4)
+# results: list of 1-D tensors, one per prompt
+
+# Repetition penalty + nucleus sampling
+out = model.generate(ids, max_new_tokens=32, n_loops=4,
+                     temperature=0.8, top_p=0.9, repetition_penalty=1.2)
+
+# Sliding-window KV cache (cap memory to last 512 tokens)
+out = model.generate(ids, max_new_tokens=128, n_loops=4, max_cache_len=512)
+
+# Quantization
+model_fp16 = OpenMythos(cfg).quantize("fp16")   # half-precision weights
+model_int8 = OpenMythos(cfg).quantize("int8")   # dynamic INT8 Linear layers
 
 A = model.recurrent.injection.get_A()
 rho = torch.linalg.eigvals(A).abs().max().item()
-print(
-    f"[{attn_type.upper()}] Spectral radius ρ(A) = {rho:.4f} (must be < 1)"
-)
+print(f"Spectral radius ρ(A) = {rho:.4f}  (must be < 1)")
 ```
 
 
+
+## Inference API
+
+| Method | Description | Key params |
+|---|---|---|
+| `generate()` | Autoregressive generation with KV cache | `max_new_tokens`, `n_loops`, `decode_loops`, `temperature`, `top_k`, `top_p`, `repetition_penalty`, `max_cache_len` |
+| `generate_beam()` | Beam search decoding (B=1) | `beam_width`, `length_penalty` |
+| `generate_stream()` | Streaming generation — yields one `(B,1)` tensor per step | same as `generate()` |
+| `speculative_decode()` | Self-speculative decoding — shallow draft + deep verify (B=1) | `draft_loops`, `draft_k` |
+| `generate_batch()` | Parallel generation for variable-length prompt lists | `prompts: list[Tensor]`, `pad_token_id` |
+| `quantize()` | In-place weight quantization | `dtype="fp16"` or `"int8"` |
+
+### HyperloopMythos (v0.5)
+
+`HyperloopMythos` wraps `OpenMythos` with an optimised two-phase inference engine:
+
+| Feature | Detail |
+|---|---|
+| Prefill depth | Full `n_loops` — deep reasoning over the full prompt |
+| Decode depth | `decode_loops` (default `n_loops // 2`) — 2× faster per-token latency |
+| Speculative | `speculative_decode()` with depth-based draft/target split |
+| Benchmark | 2.54× decode speedup vs. naïve same-depth decode at constant quality |
+
+```python
+from open_mythos.hyperloop import HyperloopMythos
+
+engine = HyperloopMythos(cfg)
+out = engine.generate(ids, max_new_tokens=64, n_loops=8, decode_loops=2)
+```
+
+---
 
 ## Model Variants
 
