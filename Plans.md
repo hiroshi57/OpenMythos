@@ -38,10 +38,10 @@
 
 | task-id | 説明 | 担当 | 状態 | DoD |
 |---------|------|------|------|-----|
-| 3.1.1 | README.md 更新 (speculative decode / HyperloopMythos 追記) | Worker | cc:TODO | (a) 新機能セクション追加 (b) benchmark 結果グラフ追加 |
-| 3.1.2 | docs/architecture.md 作成 | Worker | cc:TODO | (a) アーキテクチャ図 (b) コンポーネント説明 |
-| 3.1.3 | PyPI パッケージ v0.6.0 リリース準備 | Worker | cc:TODO | (a) pyproject.toml version bump (b) CHANGELOG 更新 |
-| 3.2.1 | GitHub Actions CI 強化 (coverage report) | Worker | cc:TODO | (a) pytest-cov 追加 (b) coverage badge |
+| 3.1.1 | README.md 更新 (speculative decode / HyperloopMythos 追記) | Worker | cc:完了 | (a) Inference API 表追加 (b) 全生成メソッドのコード例追加 |
+| 3.1.2 | docs/architecture.md 作成 | Worker | cc:完了 | (a) コンポーネントマップ (b) アルゴリズム詳細 (c) 設定リファレンス |
+| 3.1.3 | PyPI パッケージ v0.6.0 リリース準備 | Worker | cc:完了 | (a) pyproject.toml 0.5.0→0.6.0 (b) CHANGELOG.md 作成 |
+| 3.2.1 | GitHub Actions CI 強化 (coverage report) | Worker | cc:完了 | (a) coverage XML 生成 (b) artifact upload |
 
 ---
 
