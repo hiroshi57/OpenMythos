@@ -240,6 +240,13 @@ class GQAttention(nn.Module):
             if cache_key in kv_cache:
                 k = torch.cat([kv_cache[cache_key]["k"], k], dim=1)
                 v = torch.cat([kv_cache[cache_key]["v"], v], dim=1)
+            # Apply sliding window only during single-token decode (T=1).
+            # Prefill (T > 1) uses a full causal mask that must match K length,
+            # so we skip clipping there.
+            win = kv_cache.get("__window__", 0)
+            if win > 0 and T == 1 and k.shape[1] > win:
+                k = k[:, -win:, :, :]
+                v = v[:, -win:, :, :]
             kv_cache[cache_key] = {"k": k.detach(), "v": v.detach()}
 
         if _HAS_FLASH_ATTN:
@@ -392,6 +399,10 @@ class MLAttention(nn.Module):
             if cache_key in kv_cache:
                 c_kv = torch.cat([kv_cache[cache_key]["c_kv"], c_kv], dim=1)
                 k_rope = torch.cat([kv_cache[cache_key]["k_rope"], k_rope], dim=1)
+            win = kv_cache.get("__window__", 0)
+            if win > 0 and T == 1 and c_kv.shape[1] > win:
+                c_kv = c_kv[:, -win:, :]
+                k_rope = k_rope[:, -win:, :, :]
             kv_cache[cache_key] = {"c_kv": c_kv.detach(), "k_rope": k_rope.detach()}
 
         S = c_kv.shape[1]  # full sequence length including cache
@@ -529,8 +540,9 @@ class MoEFFN(nn.Module):
             token_idx = expert_mask.any(dim=-1).nonzero(as_tuple=True)[0]
             expert_out = self.routed_experts[eid](flat[token_idx])  # (M, D)
             # sum gating weights across slots for tokens that selected this expert
-            weight = (topk_scores * expert_mask.float()).sum(dim=-1, keepdim=True)
-            out.index_add_(0, token_idx, weight[token_idx] * expert_out)
+            # cast to flat.dtype so index_add_ works under fp16/bf16 inference
+            weight = (topk_scores * expert_mask.to(flat.dtype)).sum(dim=-1, keepdim=True)
+            out.index_add_(0, token_idx, weight[token_idx] * expert_out.to(flat.dtype))
 
         # shared experts always fire for every token
         for shared in self.shared_experts:
@@ -749,8 +761,8 @@ class LTIInjection(nn.Module):
         Returns:
             Updated hidden state of shape (B, T, dim)
         """
-        A = self.get_A()
-        return A * h + self.B * e + transformer_out
+        A = self.get_A().to(h.dtype)
+        return (A * h + self.B.to(h.dtype) * e + transformer_out).to(h.dtype)
 
 
 # ---------------------------------------------------------------------------
@@ -788,7 +800,7 @@ class ACTHalting(nn.Module):
         Returns:
             Halting probability tensor of shape (B, T), values in (0, 1)
         """
-        return torch.sigmoid(self.halt(h)).squeeze(-1)
+        return torch.sigmoid(self.halt(h)).squeeze(-1).to(h.dtype)
 
 
 # ---------------------------------------------------------------------------
@@ -862,7 +874,7 @@ class RecurrentBlock(nn.Module):
         B, T, D = h.shape
 
         halted = torch.zeros(B, T, device=h.device, dtype=torch.bool)
-        cumulative_p = torch.zeros(B, T, device=h.device)
+        cumulative_p = torch.zeros(B, T, device=h.device, dtype=h.dtype)
         h_out = torch.zeros_like(h)
 
         for t in range(n_loops):
@@ -887,10 +899,10 @@ class RecurrentBlock(nn.Module):
                 remainder,
                 p,
             )
-            weight = weight * still_running.float()
+            weight = weight * still_running.to(h.dtype)
             h_out = h_out + weight.unsqueeze(-1) * h
 
-            cumulative_p = cumulative_p + p * still_running.float()
+            cumulative_p = cumulative_p + p * still_running.to(h.dtype)
             halted = halted | (cumulative_p >= self.cfg.act_threshold)
 
             # Only short-circuit when there is no KV cache to keep consistent.
@@ -1063,17 +1075,55 @@ class OpenMythos(nn.Module):
         return self.head(self.norm(x))
 
     @staticmethod
+    def _apply_repetition_penalty(
+        logits: torch.Tensor,
+        input_ids: torch.Tensor,
+        repetition_penalty: float,
+    ) -> torch.Tensor:
+        """Penalise tokens that have already appeared in input_ids.
+
+        For each token present in the sequence, logits > 0 are divided by the
+        penalty and logits < 0 are multiplied by it — pushing previously-seen
+        tokens away from the distribution without zeroing them out entirely.
+
+        Args:
+            logits            -- shape (B, vocab_size)
+            input_ids         -- shape (B, S); tokens seen so far
+            repetition_penalty-- > 1 reduces repetition; 1.0 = no effect
+
+        Returns:
+            Logits tensor with the penalty applied in-place.
+        """
+        if repetition_penalty == 1.0:
+            return logits
+        for b in range(logits.shape[0]):
+            for token_id in input_ids[b].unique():
+                idx = token_id.long()
+                if logits[b, idx] > 0:
+                    logits[b, idx] /= repetition_penalty
+                else:
+                    logits[b, idx] *= repetition_penalty
+        return logits
+
+    @staticmethod
     def _sample_token(
         logits: torch.Tensor,
         temperature: float,
         top_k: int,
         top_p: float,
+        repetition_penalty: float = 1.0,
+        input_ids: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Sample the next token from a logits tensor of shape (B, vocab_size).
 
-        Applies temperature scaling → top-k filtering → top-p (nucleus) filtering
-        → multinomial sampling in order.  Returns a (B, 1) integer tensor.
+        Applies repetition penalty → temperature scaling → top-k filtering
+        → top-p (nucleus) filtering → multinomial sampling in order.
+        Returns a (B, 1) integer tensor.
         """
+        if repetition_penalty != 1.0 and input_ids is not None:
+            logits = OpenMythos._apply_repetition_penalty(
+                logits, input_ids, repetition_penalty
+            )
         logits = logits / max(temperature, 1e-8)
         if top_k > 0:
             v, _ = logits.topk(top_k)
@@ -1098,6 +1148,8 @@ class OpenMythos(nn.Module):
         temperature: float = 1.0,
         top_k: int = 50,
         top_p: float = 1.0,
+        repetition_penalty: float = 1.0,
+        max_cache_len: int = 0,
     ) -> torch.Tensor:
         """
         Autoregressive token generation with KV caching.
@@ -1154,6 +1206,8 @@ class OpenMythos(nn.Module):
             Token indices of shape (B, T + max_new_tokens)
         """
         kv_cache: dict = {}
+        if max_cache_len > 0:
+            kv_cache["__window__"] = max_cache_len
         prompt_len = input_ids.shape[1]
         _decode_loops = decode_loops if decode_loops is not None else n_loops
         for step in range(max_new_tokens):
@@ -1168,9 +1222,110 @@ class OpenMythos(nn.Module):
             logits = self.forward(
                 cur_ids, n_loops=cur_loops, kv_cache=kv_cache, start_pos=start_pos
             )
-            next_tok = self._sample_token(logits[:, -1, :], temperature, top_k, top_p)
+            next_tok = self._sample_token(
+                logits[:, -1, :], temperature, top_k, top_p,
+                repetition_penalty=repetition_penalty, input_ids=input_ids,
+            )
             input_ids = torch.cat([input_ids, next_tok], dim=1)
         return input_ids
+
+    @torch.no_grad()
+    def generate_beam(
+        self,
+        input_ids: torch.Tensor,
+        max_new_tokens: int = 64,
+        n_loops: int = 8,
+        beam_width: int = 4,
+        temperature: float = 1.0,
+        top_p: float = 1.0,
+        length_penalty: float = 1.0,
+    ) -> torch.Tensor:
+        """Beam search decoding.
+
+        Maintains ``beam_width`` candidate sequences simultaneously and selects
+        the one with the highest length-normalised log-probability at the end.
+        Unlike greedy or sampling methods, beam search is deterministic and
+        typically produces more coherent sequences for smaller beam widths.
+
+        Args:
+            input_ids      -- prompt token indices of shape (1, T); B=1 only
+            max_new_tokens -- maximum tokens to generate
+            n_loops        -- recurrent loop depth
+            beam_width     -- number of beams kept at each step
+            temperature    -- logit temperature before beam scoring (lower = more peaked)
+            top_p          -- nucleus filter applied to candidate vocab before scoring
+            length_penalty -- exponent for length normalisation:
+                              score = sum_log_prob / (len ** length_penalty).
+                              > 1 favours longer outputs, < 1 favours shorter ones.
+
+        Returns:
+            Token indices of shape (1, T + generated) — the best beam's full sequence.
+        """
+        assert input_ids.shape[0] == 1, "generate_beam supports B=1 only"
+        device = input_ids.device
+        vocab_size = self.cfg.vocab_size
+
+        # Each beam: (sequence tensor (1, L), cumulative log-prob, kv_cache)
+        beams: list[tuple[torch.Tensor, float, dict]] = [
+            (input_ids, 0.0, {})
+        ]
+        prompt_len = input_ids.shape[1]
+
+        for step in range(max_new_tokens):
+            all_candidates: list[tuple[torch.Tensor, float, dict]] = []
+
+            for seq, score, cache in beams:
+                if step == 0:
+                    cur_ids = seq
+                    start_pos = 0
+                else:
+                    cur_ids = seq[:, -1:]
+                    start_pos = seq.shape[1] - 1
+
+                logits = self.forward(
+                    cur_ids, n_loops=n_loops, kv_cache=cache, start_pos=start_pos
+                )
+                lgt = logits[:, -1, :].clone()  # (1, V)
+
+                # temperature + top-p filtering
+                lgt = lgt / max(temperature, 1e-8)
+                if top_p < 1.0:
+                    sorted_logits, sorted_idx = torch.sort(lgt, descending=True)
+                    cum_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
+                    remove_mask = cum_probs - F.softmax(sorted_logits, dim=-1) > top_p
+                    sorted_logits[remove_mask] = float("-inf")
+                    lgt = torch.full_like(lgt, float("-inf")).scatter(
+                        1, sorted_idx, sorted_logits
+                    )
+
+                log_probs = F.log_softmax(lgt, dim=-1).squeeze(0)  # (V,)
+
+                # Expand: take top beam_width next tokens
+                top_log_probs, top_ids = log_probs.topk(beam_width)
+                for tok_log_p, tok_id in zip(top_log_probs, top_ids):
+                    new_seq = torch.cat(
+                        [seq, tok_id.view(1, 1)], dim=1
+                    )
+                    new_score = score + tok_log_p.item()
+                    # copy cache so beams don't share state
+                    new_cache = {
+                        k: {ck: cv.clone() for ck, cv in v.items()}
+                        for k, v in cache.items()
+                    }
+                    all_candidates.append((new_seq, new_score, new_cache))
+
+            # Keep the top beam_width candidates by length-normalised score
+            def _norm_score(item: tuple) -> float:
+                seq_tensor, raw_score, _ = item
+                gen_len = seq_tensor.shape[1] - prompt_len
+                return raw_score / max(gen_len, 1) ** length_penalty
+
+            all_candidates.sort(key=_norm_score, reverse=True)
+            beams = all_candidates[:beam_width]
+
+        # Return the best beam
+        best_seq, _, _ = beams[0]
+        return best_seq
 
     @torch.no_grad()
     def generate_stream(
@@ -1182,6 +1337,8 @@ class OpenMythos(nn.Module):
         temperature: float = 1.0,
         top_k: int = 50,
         top_p: float = 1.0,
+        repetition_penalty: float = 1.0,
+        max_cache_len: int = 0,
     ):
         """Streaming autoregressive generation — yields one token per step.
 
@@ -1208,6 +1365,8 @@ class OpenMythos(nn.Module):
             ``(B, 1)`` integer tensors, one per generated token
         """
         kv_cache: dict = {}
+        if max_cache_len > 0:
+            kv_cache["__window__"] = max_cache_len
         prompt_len = input_ids.shape[1]
         _decode_loops = decode_loops if decode_loops is not None else n_loops
         for step in range(max_new_tokens):
@@ -1222,7 +1381,10 @@ class OpenMythos(nn.Module):
             logits = self.forward(
                 cur_ids, n_loops=cur_loops, kv_cache=kv_cache, start_pos=start_pos
             )
-            next_tok = self._sample_token(logits[:, -1, :], temperature, top_k, top_p)
+            next_tok = self._sample_token(
+                logits[:, -1, :], temperature, top_k, top_p,
+                repetition_penalty=repetition_penalty, input_ids=input_ids,
+            )
             input_ids = torch.cat([input_ids, next_tok], dim=1)
             yield next_tok
 
@@ -1365,3 +1527,133 @@ class OpenMythos(nn.Module):
                 generated += 1
 
         return input_ids
+
+    def quantize(self, dtype: str = "int8") -> "OpenMythos":
+        """Convert the model weights to a lower-precision format in-place.
+
+        Two modes are supported:
+
+        * ``"fp16"`` — cast all floating-point parameters and buffers to
+          ``torch.float16``.  Simple and lossless (no calibration needed).
+          Roughly halves memory usage compared to float32, compatible with
+          most CPUs and all CUDA GPUs.
+
+        * ``"int8"`` — apply PyTorch dynamic INT8 quantisation to all
+          ``nn.Linear`` layers via ``torch.ao.quantization.quantize_dynamic``.
+          Weights are quantised offline; activations are quantised on the fly
+          per forward call.  Typically reduces model size by ~4× vs float32
+          with minimal accuracy loss for inference.
+
+        Args:
+            dtype -- ``"int8"`` (default) or ``"fp16"``
+
+        Returns:
+            self, so the call can be chained: ``model.quantize("fp16").eval()``
+
+        Raises:
+            ValueError: if ``dtype`` is not ``"int8"`` or ``"fp16"``
+        """
+        if dtype == "fp16":
+            # half() converts float params/buffers but leaves complex buffers
+            # (freqs_cis*) in complex64. Cast those explicitly so that
+            # apply_rope's internal float() round-trip stays in fp16.
+            self.half()
+            for name, buf in list(self.named_buffers()):
+                if buf.is_complex():
+                    # complex32 is not supported; keep complex64 but ensure
+                    # the real/imag parts are fp32 so apply_rope stays valid.
+                    # We instead force all non-complex float buffers to fp16
+                    # and leave complex ones as-is (apply_rope casts to float).
+                    pass
+                elif buf.dtype == torch.float32:
+                    # re-register as fp16 (already done by half() above)
+                    pass
+        elif dtype == "int8":
+            torch.ao.quantization.quantize_dynamic(
+                self, {nn.Linear}, dtype=torch.qint8, inplace=True
+            )
+        else:
+            raise ValueError(f"quantize: unsupported dtype {dtype!r}; use 'int8' or 'fp16'")
+        return self
+
+    @torch.no_grad()
+    def generate_batch(
+        self,
+        prompts: list[torch.Tensor],
+        max_new_tokens: int = 64,
+        n_loops: int = 8,
+        decode_loops: Optional[int] = None,
+        temperature: float = 1.0,
+        top_k: int = 50,
+        top_p: float = 1.0,
+        repetition_penalty: float = 1.0,
+        pad_token_id: int = 0,
+    ) -> list[torch.Tensor]:
+        """Parallel autoregressive generation for a batch of variable-length prompts.
+
+        Pads all prompts to the same length (left-pad with ``pad_token_id``),
+        runs batched prefill in one forward pass, then decodes
+        ``max_new_tokens`` steps in parallel.  Returns one tensor per prompt
+        containing only the generated tokens (no prompt, no padding).
+
+        Left-padding ensures that the last token of every prompt aligns at the
+        same position so a single ``start_pos`` is valid for all batch elements
+        during decode.
+
+        Args:
+            prompts            -- list of 1-D or (1, T_i) integer tensors, one per prompt
+            max_new_tokens     -- number of tokens to generate per prompt
+            n_loops            -- recurrent loop depth for prefill
+            decode_loops       -- loop depth for decode; None = n_loops
+            temperature        -- sampling temperature
+            top_k              -- top-K filtering (0 = disabled)
+            top_p              -- nucleus sampling threshold (1.0 = disabled)
+            repetition_penalty -- repetition penalty (1.0 = disabled)
+            pad_token_id       -- token id used for left-padding shorter prompts
+
+        Returns:
+            List of 1-D tensors, each of length ``max_new_tokens``, containing
+            the generated tokens for the corresponding prompt.
+        """
+        device = prompts[0].device
+
+        # Normalise to (T,) 1-D tensors
+        seqs = [p.view(-1) for p in prompts]
+        max_prompt_len = max(s.shape[0] for s in seqs)
+
+        # Left-pad to uniform length
+        padded = torch.full(
+            (len(seqs), max_prompt_len), pad_token_id, dtype=torch.long, device=device
+        )
+        for i, s in enumerate(seqs):
+            padded[i, max_prompt_len - s.shape[0] :] = s
+
+        # Prefill all prompts in one batched forward pass
+        kv_cache: dict = {}
+        _decode_loops = decode_loops if decode_loops is not None else n_loops
+        logits = self.forward(padded, n_loops=n_loops, kv_cache=kv_cache, start_pos=0)
+
+        # Decode max_new_tokens steps
+        generated = torch.zeros(len(seqs), max_new_tokens, dtype=torch.long, device=device)
+        cur_ids = padded  # used for repetition_penalty tracking
+
+        for step in range(max_new_tokens):
+            if step == 0:
+                last_logits = logits[:, -1, :]
+            else:
+                step_logits = self.forward(
+                    next_tok,
+                    n_loops=_decode_loops,
+                    kv_cache=kv_cache,
+                    start_pos=max_prompt_len + step - 1,
+                )
+                last_logits = step_logits[:, -1, :]
+
+            next_tok = self._sample_token(
+                last_logits, temperature, top_k, top_p,
+                repetition_penalty=repetition_penalty, input_ids=cur_ids,
+            )  # (B, 1)
+            generated[:, step] = next_tok.squeeze(-1)
+            cur_ids = torch.cat([cur_ids, next_tok], dim=1)
+
+        return [generated[i] for i in range(len(seqs))]

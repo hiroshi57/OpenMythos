@@ -946,5 +946,325 @@ class TestSpeculativeDecode:
         assert out[:, T:].min().item() >= 0
 
 
+# ---------------------------------------------------------------------------
+# generate_beam
+# ---------------------------------------------------------------------------
+
+
+class TestQuantize:
+    """Tests for OpenMythos.quantize()."""
+
+    def setup_method(self):
+        self.cfg = gqa_cfg()
+        self.model = OpenMythos(self.cfg)
+        self.ids = torch.randint(0, self.cfg.vocab_size, (1, T))
+
+    def test_fp16_param_dtype(self):
+        """After quantize('fp16'), all float parameters must be float16."""
+        self.model.quantize("fp16")
+        for name, p in self.model.named_parameters():
+            assert p.dtype == torch.float16, f"{name} is {p.dtype}"
+
+    def test_fp16_generate(self):
+        """quantize('fp16') model must generate valid tokens."""
+        self.model.quantize("fp16")
+        ids_fp16 = self.ids.to(torch.float16) if False else self.ids  # input stays int
+        out = self.model.generate(ids_fp16, max_new_tokens=4, n_loops=1)
+        assert out.shape == (1, T + 4)
+        assert out[:, T:].min().item() >= 0
+        assert out[:, T:].max().item() < self.cfg.vocab_size
+
+    def test_fp16_returns_self(self):
+        """quantize() must return the model itself for chaining."""
+        ret = self.model.quantize("fp16")
+        assert ret is self.model
+
+    def test_int8_generate(self):
+        """quantize('int8') model must generate valid tokens."""
+        self.model.quantize("int8")
+        out = self.model.generate(self.ids, max_new_tokens=4, n_loops=1)
+        assert out.shape == (1, T + 4)
+        assert out[:, T:].min().item() >= 0
+        assert out[:, T:].max().item() < self.cfg.vocab_size
+
+    def test_int8_returns_self(self):
+        """quantize('int8') must return the model itself."""
+        ret = self.model.quantize("int8")
+        assert ret is self.model
+
+    def test_invalid_dtype_raises(self):
+        """Unknown dtype must raise ValueError."""
+        with pytest.raises(ValueError, match="unsupported dtype"):
+            self.model.quantize("bf16")
+
+
+class TestSlidingWindowCache:
+    """Tests for sliding window KV cache (max_cache_len) in generate() and generate_stream()."""
+
+    def setup_method(self):
+        self.cfg = gqa_cfg()
+        self.model = OpenMythos(self.cfg)
+        self.ids = torch.randint(0, self.cfg.vocab_size, (1, T))
+
+    def test_generate_with_window(self):
+        """generate() with max_cache_len must return correct shape."""
+        out = self.model.generate(
+            self.ids, max_new_tokens=6, n_loops=1, max_cache_len=4
+        )
+        assert out.shape == (1, T + 6)
+
+    def test_generate_tokens_in_vocab(self):
+        """All tokens from windowed generate() must be valid vocab ids."""
+        out = self.model.generate(
+            self.ids, max_new_tokens=5, n_loops=1, max_cache_len=4
+        )
+        assert out[:, T:].min().item() >= 0
+        assert out[:, T:].max().item() < self.cfg.vocab_size
+
+    def test_stream_with_window(self):
+        """generate_stream() with max_cache_len must yield the right number of tokens."""
+        tokens = list(
+            self.model.generate_stream(
+                self.ids, max_new_tokens=5, n_loops=1, max_cache_len=4
+            )
+        )
+        assert len(tokens) == 5
+
+    def test_window_limits_cache_size(self):
+        """Cache entries must never exceed max_cache_len after multiple decode steps."""
+        max_cache_len = 3
+        kv_cache: dict = {"__window__": max_cache_len}
+        # Run several decode steps and inspect cache sizes
+        ids = self.ids.clone()
+        for step in range(6):
+            if step == 0:
+                cur_ids = ids
+                start_pos = 0
+            else:
+                cur_ids = ids[:, -1:]
+                start_pos = ids.shape[1] - 1
+            self.model.forward(cur_ids, n_loops=1, kv_cache=kv_cache, start_pos=start_pos)
+            next_tok = torch.randint(0, self.cfg.vocab_size, (1, 1))
+            ids = torch.cat([ids, next_tok], dim=1)
+
+        for key, val in kv_cache.items():
+            if key == "__window__":
+                continue
+            # GQA stores "k"/"v"; MLA stores "c_kv"/"k_rope"
+            for tensor in val.values():
+                assert tensor.shape[1] <= max_cache_len, (
+                    f"cache key {key} has size {tensor.shape[1]} > {max_cache_len}"
+                )
+
+    def test_no_window_unrestricted(self):
+        """max_cache_len=0 (default) must not restrict cache growth."""
+        kv_cache: dict = {}
+        ids = self.ids.clone()
+        n_steps = 4
+        for step in range(n_steps):
+            if step == 0:
+                cur_ids = ids
+                start_pos = 0
+            else:
+                cur_ids = ids[:, -1:]
+                start_pos = ids.shape[1] - 1
+            self.model.forward(cur_ids, n_loops=1, kv_cache=kv_cache, start_pos=start_pos)
+            next_tok = torch.randint(0, self.cfg.vocab_size, (1, 1))
+            ids = torch.cat([ids, next_tok], dim=1)
+
+        # At least one cache entry should have grown beyond a single token
+        any_grown = any(
+            v.shape[1] > 1
+            for val in kv_cache.values()
+            if isinstance(val, dict)
+            for v in val.values()
+        )
+        assert any_grown
+
+
+class TestRepetitionPenalty:
+    """Tests for repetition_penalty in generate() and generate_stream()."""
+
+    def setup_method(self):
+        self.cfg = gqa_cfg()
+        self.model = OpenMythos(self.cfg)
+        self.ids = torch.randint(0, self.cfg.vocab_size, (1, T))
+
+    def test_penalty_one_no_change(self):
+        """repetition_penalty=1.0 must leave logits unchanged."""
+        from open_mythos.main import OpenMythos as OM
+        logits = torch.randn(1, self.cfg.vocab_size)
+        original = logits.clone()
+        result = OM._apply_repetition_penalty(logits.clone(), self.ids, 1.0)
+        assert torch.allclose(result, original)
+
+    def test_penalty_reduces_seen_tokens(self):
+        """Positive logits for seen tokens must decrease after penalty > 1."""
+        from open_mythos.main import OpenMythos as OM
+        logits = torch.ones(1, self.cfg.vocab_size)
+        seen = self.ids[0, 0].item()
+        result = OM._apply_repetition_penalty(logits.clone(), self.ids, 2.0)
+        assert result[0, seen] < logits[0, seen]
+
+    def test_generate_with_penalty(self):
+        """generate() with repetition_penalty must produce valid shape."""
+        out = self.model.generate(
+            self.ids, max_new_tokens=5, n_loops=1, repetition_penalty=1.3
+        )
+        assert out.shape == (1, T + 5)
+        assert out[:, T:].min().item() >= 0
+        assert out[:, T:].max().item() < self.cfg.vocab_size
+
+    def test_stream_with_penalty(self):
+        """generate_stream() with repetition_penalty must yield correct tokens."""
+        tokens = list(
+            self.model.generate_stream(
+                self.ids, max_new_tokens=4, n_loops=1, repetition_penalty=1.3
+            )
+        )
+        assert len(tokens) == 4
+        for tok in tokens:
+            assert tok.shape == (1, 1)
+            assert tok.min().item() >= 0
+            assert tok.max().item() < self.cfg.vocab_size
+
+
+class TestGenerateBeam:
+    """Tests for OpenMythos.generate_beam()."""
+
+    def setup_method(self):
+        self.cfg = gqa_cfg()
+        self.model = OpenMythos(self.cfg)
+        self.ids = torch.randint(0, self.cfg.vocab_size, (1, T))
+
+    def test_output_shape(self):
+        """Output must be (1, T + max_new_tokens)."""
+        out = self.model.generate_beam(self.ids, max_new_tokens=4, n_loops=1, beam_width=2)
+        assert out.shape == (1, T + 4)
+
+    def test_prompt_preserved(self):
+        """The original prompt tokens must be unchanged in the output."""
+        out = self.model.generate_beam(self.ids, max_new_tokens=3, n_loops=1, beam_width=2)
+        assert torch.equal(out[:, :T], self.ids)
+
+    def test_tokens_in_vocab(self):
+        """All generated tokens must be in [0, vocab_size)."""
+        out = self.model.generate_beam(self.ids, max_new_tokens=4, n_loops=1, beam_width=2)
+        new_toks = out[:, T:]
+        assert new_toks.min().item() >= 0
+        assert new_toks.max().item() < self.cfg.vocab_size
+
+    def test_no_nan(self):
+        """generate_beam must not produce NaN token indices."""
+        out = self.model.generate_beam(self.ids, max_new_tokens=4, n_loops=1, beam_width=2)
+        assert not torch.isnan(out.float()).any()
+
+    def test_beam_width_one_is_greedy(self):
+        """beam_width=1 with temperature→0 must match greedy generate()."""
+        torch.manual_seed(0)
+        out_beam = self.model.generate_beam(
+            self.ids, max_new_tokens=5, n_loops=1, beam_width=1, temperature=1e-6
+        )
+        torch.manual_seed(0)
+        out_greedy = self.model.generate(
+            self.ids, max_new_tokens=5, n_loops=1, temperature=1e-6, top_k=0
+        )
+        assert torch.equal(out_beam, out_greedy)
+
+    def test_batch_one_constraint(self):
+        """Batch size > 1 must raise AssertionError."""
+        ids_b2 = torch.randint(0, self.cfg.vocab_size, (2, T))
+        with pytest.raises(AssertionError):
+            self.model.generate_beam(ids_b2, max_new_tokens=2, beam_width=2)
+
+    def test_length_penalty(self):
+        """length_penalty > 1 must run without error and return correct shape."""
+        out = self.model.generate_beam(
+            self.ids, max_new_tokens=4, n_loops=1, beam_width=2, length_penalty=1.5
+        )
+        assert out.shape == (1, T + 4)
+
+    def test_mla_mode(self):
+        """generate_beam must work with MLA attention."""
+        model = OpenMythos(mla_cfg())
+        out = model.generate_beam(self.ids, max_new_tokens=3, n_loops=1, beam_width=2)
+        assert out.shape == (1, T + 3)
+        assert out[:, T:].min().item() >= 0
+
+
+# ---------------------------------------------------------------------------
+# generate_batch
+# ---------------------------------------------------------------------------
+
+
+class TestGenerateBatch:
+    """Tests for OpenMythos.generate_batch()."""
+
+    def setup_method(self):
+        self.cfg = gqa_cfg()
+        self.model = OpenMythos(self.cfg)
+
+    def test_output_length(self):
+        """Each returned tensor must have exactly max_new_tokens tokens."""
+        prompts = [
+            torch.randint(0, self.cfg.vocab_size, (5,)),
+            torch.randint(0, self.cfg.vocab_size, (3,)),
+        ]
+        results = self.model.generate_batch(prompts, max_new_tokens=6, n_loops=1)
+        assert len(results) == 2
+        for r in results:
+            assert r.shape == (6,)
+
+    def test_tokens_in_vocab(self):
+        """All generated tokens must be valid vocab ids."""
+        prompts = [torch.randint(0, self.cfg.vocab_size, (4,)) for _ in range(3)]
+        results = self.model.generate_batch(prompts, max_new_tokens=5, n_loops=1)
+        for r in results:
+            assert r.min().item() >= 0
+            assert r.max().item() < self.cfg.vocab_size
+
+    def test_no_nan(self):
+        """generate_batch must not produce NaN token indices."""
+        prompts = [torch.randint(0, self.cfg.vocab_size, (4,)) for _ in range(2)]
+        results = self.model.generate_batch(prompts, max_new_tokens=4, n_loops=1)
+        for r in results:
+            assert not torch.isnan(r.float()).any()
+
+    def test_variable_length_prompts(self):
+        """Variable-length prompts must all produce max_new_tokens output."""
+        prompts = [
+            torch.randint(0, self.cfg.vocab_size, (2,)),
+            torch.randint(0, self.cfg.vocab_size, (6,)),
+            torch.randint(0, self.cfg.vocab_size, (4,)),
+        ]
+        results = self.model.generate_batch(prompts, max_new_tokens=4, n_loops=1)
+        assert len(results) == 3
+        for r in results:
+            assert r.shape == (4,)
+
+    def test_single_prompt(self):
+        """Single-prompt batch must work like standard generate()."""
+        prompt = torch.randint(0, self.cfg.vocab_size, (T,))
+        results = self.model.generate_batch([prompt], max_new_tokens=5, n_loops=1)
+        assert len(results) == 1
+        assert results[0].shape == (5,)
+
+    def test_decode_loops_accepted(self):
+        """decode_loops parameter must be accepted without error."""
+        prompts = [torch.randint(0, self.cfg.vocab_size, (4,)) for _ in range(2)]
+        results = self.model.generate_batch(
+            prompts, max_new_tokens=3, n_loops=2, decode_loops=1
+        )
+        for r in results:
+            assert r.shape == (3,)
+
+    def test_2d_prompt_input(self):
+        """(1, T) shaped prompt tensors must be accepted."""
+        prompts = [torch.randint(0, self.cfg.vocab_size, (1, 4)) for _ in range(2)]
+        results = self.model.generate_batch(prompts, max_new_tokens=3, n_loops=1)
+        for r in results:
+            assert r.shape == (3,)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "--verbose"])
