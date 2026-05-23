@@ -951,6 +951,90 @@ class TestSpeculativeDecode:
 # ---------------------------------------------------------------------------
 
 
+class TestSlidingWindowCache:
+    """Tests for sliding window KV cache (max_cache_len) in generate() and generate_stream()."""
+
+    def setup_method(self):
+        self.cfg = gqa_cfg()
+        self.model = OpenMythos(self.cfg)
+        self.ids = torch.randint(0, self.cfg.vocab_size, (1, T))
+
+    def test_generate_with_window(self):
+        """generate() with max_cache_len must return correct shape."""
+        out = self.model.generate(
+            self.ids, max_new_tokens=6, n_loops=1, max_cache_len=4
+        )
+        assert out.shape == (1, T + 6)
+
+    def test_generate_tokens_in_vocab(self):
+        """All tokens from windowed generate() must be valid vocab ids."""
+        out = self.model.generate(
+            self.ids, max_new_tokens=5, n_loops=1, max_cache_len=4
+        )
+        assert out[:, T:].min().item() >= 0
+        assert out[:, T:].max().item() < self.cfg.vocab_size
+
+    def test_stream_with_window(self):
+        """generate_stream() with max_cache_len must yield the right number of tokens."""
+        tokens = list(
+            self.model.generate_stream(
+                self.ids, max_new_tokens=5, n_loops=1, max_cache_len=4
+            )
+        )
+        assert len(tokens) == 5
+
+    def test_window_limits_cache_size(self):
+        """Cache entries must never exceed max_cache_len after multiple decode steps."""
+        max_cache_len = 3
+        kv_cache: dict = {"__window__": max_cache_len}
+        # Run several decode steps and inspect cache sizes
+        ids = self.ids.clone()
+        for step in range(6):
+            if step == 0:
+                cur_ids = ids
+                start_pos = 0
+            else:
+                cur_ids = ids[:, -1:]
+                start_pos = ids.shape[1] - 1
+            self.model.forward(cur_ids, n_loops=1, kv_cache=kv_cache, start_pos=start_pos)
+            next_tok = torch.randint(0, self.cfg.vocab_size, (1, 1))
+            ids = torch.cat([ids, next_tok], dim=1)
+
+        for key, val in kv_cache.items():
+            if key == "__window__":
+                continue
+            # GQA stores "k"/"v"; MLA stores "c_kv"/"k_rope"
+            for tensor in val.values():
+                assert tensor.shape[1] <= max_cache_len, (
+                    f"cache key {key} has size {tensor.shape[1]} > {max_cache_len}"
+                )
+
+    def test_no_window_unrestricted(self):
+        """max_cache_len=0 (default) must not restrict cache growth."""
+        kv_cache: dict = {}
+        ids = self.ids.clone()
+        n_steps = 4
+        for step in range(n_steps):
+            if step == 0:
+                cur_ids = ids
+                start_pos = 0
+            else:
+                cur_ids = ids[:, -1:]
+                start_pos = ids.shape[1] - 1
+            self.model.forward(cur_ids, n_loops=1, kv_cache=kv_cache, start_pos=start_pos)
+            next_tok = torch.randint(0, self.cfg.vocab_size, (1, 1))
+            ids = torch.cat([ids, next_tok], dim=1)
+
+        # At least one cache entry should have grown beyond a single token
+        any_grown = any(
+            v.shape[1] > 1
+            for val in kv_cache.values()
+            if isinstance(val, dict)
+            for v in val.values()
+        )
+        assert any_grown
+
+
 class TestRepetitionPenalty:
     """Tests for repetition_penalty in generate() and generate_stream()."""
 

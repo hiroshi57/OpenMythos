@@ -240,6 +240,13 @@ class GQAttention(nn.Module):
             if cache_key in kv_cache:
                 k = torch.cat([kv_cache[cache_key]["k"], k], dim=1)
                 v = torch.cat([kv_cache[cache_key]["v"], v], dim=1)
+            # Apply sliding window only during single-token decode (T=1).
+            # Prefill (T > 1) uses a full causal mask that must match K length,
+            # so we skip clipping there.
+            win = kv_cache.get("__window__", 0)
+            if win > 0 and T == 1 and k.shape[1] > win:
+                k = k[:, -win:, :, :]
+                v = v[:, -win:, :, :]
             kv_cache[cache_key] = {"k": k.detach(), "v": v.detach()}
 
         if _HAS_FLASH_ATTN:
@@ -392,6 +399,10 @@ class MLAttention(nn.Module):
             if cache_key in kv_cache:
                 c_kv = torch.cat([kv_cache[cache_key]["c_kv"], c_kv], dim=1)
                 k_rope = torch.cat([kv_cache[cache_key]["k_rope"], k_rope], dim=1)
+            win = kv_cache.get("__window__", 0)
+            if win > 0 and T == 1 and c_kv.shape[1] > win:
+                c_kv = c_kv[:, -win:, :]
+                k_rope = k_rope[:, -win:, :, :]
             kv_cache[cache_key] = {"c_kv": c_kv.detach(), "k_rope": k_rope.detach()}
 
         S = c_kv.shape[1]  # full sequence length including cache
@@ -1137,6 +1148,7 @@ class OpenMythos(nn.Module):
         top_k: int = 50,
         top_p: float = 1.0,
         repetition_penalty: float = 1.0,
+        max_cache_len: int = 0,
     ) -> torch.Tensor:
         """
         Autoregressive token generation with KV caching.
@@ -1193,6 +1205,8 @@ class OpenMythos(nn.Module):
             Token indices of shape (B, T + max_new_tokens)
         """
         kv_cache: dict = {}
+        if max_cache_len > 0:
+            kv_cache["__window__"] = max_cache_len
         prompt_len = input_ids.shape[1]
         _decode_loops = decode_loops if decode_loops is not None else n_loops
         for step in range(max_new_tokens):
@@ -1323,6 +1337,7 @@ class OpenMythos(nn.Module):
         top_k: int = 50,
         top_p: float = 1.0,
         repetition_penalty: float = 1.0,
+        max_cache_len: int = 0,
     ):
         """Streaming autoregressive generation — yields one token per step.
 
@@ -1349,6 +1364,8 @@ class OpenMythos(nn.Module):
             ``(B, 1)`` integer tensors, one per generated token
         """
         kv_cache: dict = {}
+        if max_cache_len > 0:
+            kv_cache["__window__"] = max_cache_len
         prompt_len = input_ids.shape[1]
         _decode_loops = decode_loops if decode_loops is not None else n_loops
         for step in range(max_new_tokens):
