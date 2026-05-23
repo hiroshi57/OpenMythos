@@ -1575,3 +1575,85 @@ class OpenMythos(nn.Module):
         else:
             raise ValueError(f"quantize: unsupported dtype {dtype!r}; use 'int8' or 'fp16'")
         return self
+
+    @torch.no_grad()
+    def generate_batch(
+        self,
+        prompts: list[torch.Tensor],
+        max_new_tokens: int = 64,
+        n_loops: int = 8,
+        decode_loops: Optional[int] = None,
+        temperature: float = 1.0,
+        top_k: int = 50,
+        top_p: float = 1.0,
+        repetition_penalty: float = 1.0,
+        pad_token_id: int = 0,
+    ) -> list[torch.Tensor]:
+        """Parallel autoregressive generation for a batch of variable-length prompts.
+
+        Pads all prompts to the same length (left-pad with ``pad_token_id``),
+        runs batched prefill in one forward pass, then decodes
+        ``max_new_tokens`` steps in parallel.  Returns one tensor per prompt
+        containing only the generated tokens (no prompt, no padding).
+
+        Left-padding ensures that the last token of every prompt aligns at the
+        same position so a single ``start_pos`` is valid for all batch elements
+        during decode.
+
+        Args:
+            prompts            -- list of 1-D or (1, T_i) integer tensors, one per prompt
+            max_new_tokens     -- number of tokens to generate per prompt
+            n_loops            -- recurrent loop depth for prefill
+            decode_loops       -- loop depth for decode; None = n_loops
+            temperature        -- sampling temperature
+            top_k              -- top-K filtering (0 = disabled)
+            top_p              -- nucleus sampling threshold (1.0 = disabled)
+            repetition_penalty -- repetition penalty (1.0 = disabled)
+            pad_token_id       -- token id used for left-padding shorter prompts
+
+        Returns:
+            List of 1-D tensors, each of length ``max_new_tokens``, containing
+            the generated tokens for the corresponding prompt.
+        """
+        device = prompts[0].device
+
+        # Normalise to (T,) 1-D tensors
+        seqs = [p.view(-1) for p in prompts]
+        max_prompt_len = max(s.shape[0] for s in seqs)
+
+        # Left-pad to uniform length
+        padded = torch.full(
+            (len(seqs), max_prompt_len), pad_token_id, dtype=torch.long, device=device
+        )
+        for i, s in enumerate(seqs):
+            padded[i, max_prompt_len - s.shape[0] :] = s
+
+        # Prefill all prompts in one batched forward pass
+        kv_cache: dict = {}
+        _decode_loops = decode_loops if decode_loops is not None else n_loops
+        logits = self.forward(padded, n_loops=n_loops, kv_cache=kv_cache, start_pos=0)
+
+        # Decode max_new_tokens steps
+        generated = torch.zeros(len(seqs), max_new_tokens, dtype=torch.long, device=device)
+        cur_ids = padded  # used for repetition_penalty tracking
+
+        for step in range(max_new_tokens):
+            if step == 0:
+                last_logits = logits[:, -1, :]
+            else:
+                step_logits = self.forward(
+                    next_tok,
+                    n_loops=_decode_loops,
+                    kv_cache=kv_cache,
+                    start_pos=max_prompt_len + step - 1,
+                )
+                last_logits = step_logits[:, -1, :]
+
+            next_tok = self._sample_token(
+                last_logits, temperature, top_k, top_p,
+                repetition_penalty=repetition_penalty, input_ids=cur_ids,
+            )  # (B, 1)
+            generated[:, step] = next_tok.squeeze(-1)
+            cur_ids = torch.cat([cur_ids, next_tok], dim=1)
+
+        return [generated[i] for i in range(len(seqs))]

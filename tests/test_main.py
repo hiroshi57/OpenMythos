@@ -1192,5 +1192,79 @@ class TestGenerateBeam:
         assert out[:, T:].min().item() >= 0
 
 
+# ---------------------------------------------------------------------------
+# generate_batch
+# ---------------------------------------------------------------------------
+
+
+class TestGenerateBatch:
+    """Tests for OpenMythos.generate_batch()."""
+
+    def setup_method(self):
+        self.cfg = gqa_cfg()
+        self.model = OpenMythos(self.cfg)
+
+    def test_output_length(self):
+        """Each returned tensor must have exactly max_new_tokens tokens."""
+        prompts = [
+            torch.randint(0, self.cfg.vocab_size, (5,)),
+            torch.randint(0, self.cfg.vocab_size, (3,)),
+        ]
+        results = self.model.generate_batch(prompts, max_new_tokens=6, n_loops=1)
+        assert len(results) == 2
+        for r in results:
+            assert r.shape == (6,)
+
+    def test_tokens_in_vocab(self):
+        """All generated tokens must be valid vocab ids."""
+        prompts = [torch.randint(0, self.cfg.vocab_size, (4,)) for _ in range(3)]
+        results = self.model.generate_batch(prompts, max_new_tokens=5, n_loops=1)
+        for r in results:
+            assert r.min().item() >= 0
+            assert r.max().item() < self.cfg.vocab_size
+
+    def test_no_nan(self):
+        """generate_batch must not produce NaN token indices."""
+        prompts = [torch.randint(0, self.cfg.vocab_size, (4,)) for _ in range(2)]
+        results = self.model.generate_batch(prompts, max_new_tokens=4, n_loops=1)
+        for r in results:
+            assert not torch.isnan(r.float()).any()
+
+    def test_variable_length_prompts(self):
+        """Variable-length prompts must all produce max_new_tokens output."""
+        prompts = [
+            torch.randint(0, self.cfg.vocab_size, (2,)),
+            torch.randint(0, self.cfg.vocab_size, (6,)),
+            torch.randint(0, self.cfg.vocab_size, (4,)),
+        ]
+        results = self.model.generate_batch(prompts, max_new_tokens=4, n_loops=1)
+        assert len(results) == 3
+        for r in results:
+            assert r.shape == (4,)
+
+    def test_single_prompt(self):
+        """Single-prompt batch must work like standard generate()."""
+        prompt = torch.randint(0, self.cfg.vocab_size, (T,))
+        results = self.model.generate_batch([prompt], max_new_tokens=5, n_loops=1)
+        assert len(results) == 1
+        assert results[0].shape == (5,)
+
+    def test_decode_loops_accepted(self):
+        """decode_loops parameter must be accepted without error."""
+        prompts = [torch.randint(0, self.cfg.vocab_size, (4,)) for _ in range(2)]
+        results = self.model.generate_batch(
+            prompts, max_new_tokens=3, n_loops=2, decode_loops=1
+        )
+        for r in results:
+            assert r.shape == (3,)
+
+    def test_2d_prompt_input(self):
+        """(1, T) shaped prompt tensors must be accepted."""
+        prompts = [torch.randint(0, self.cfg.vocab_size, (1, 4)) for _ in range(2)]
+        results = self.model.generate_batch(prompts, max_new_tokens=3, n_loops=1)
+        for r in results:
+            assert r.shape == (3,)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "--verbose"])

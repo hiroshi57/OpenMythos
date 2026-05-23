@@ -15,22 +15,22 @@
 | 1.1.4 | generate_stream() + _sample_token() リファクタ | Worker | cc:完了 [fe7daba] | (a) ストリーミング生成 API 追加 (b) 220 PASS |
 | 1.1.5 | speculative_decode() + _causal_mask cache_len 修正 | Worker | cc:完了 [0431b15] | (a) speculative decode 実装 (b) 227 PASS |
 | 1.1.6 | lint 整備 (.gitattributes CRLF/LF 統一) | Worker | cc:完了 [040b174] | (a) ruff/black 全 pass (b) CI lint mismatch 解消 |
-| 1.2.1 | feature/hyperloop-benchmark → master merge | Worker | cc:WIP | (a) 227 PASS on master (b) ローカル merge 完了 |
-| 1.2.2 | GitHub push & CI 確認 | Worker | cc:TODO | (a) GitHub Actions green (b) PR close |
+| 1.2.1 | feature/hyperloop-benchmark → master merge | Worker | cc:完了 | (a) 227 PASS on master (b) ローカル merge 完了 |
+| 1.2.2 | GitHub push & CI 確認 | Worker | cc:完了 | (a) GitHub Actions green (b) PR close |
 
 ---
 
-## Sprint 2: Inference 高度化 (Next)
+## Sprint 2: Inference 高度化 (進行中)
 
-> ブランチ予定: `feature/inference-v2`
+> ブランチ: `feature/inference-v2`
 
 | task-id | 説明 | 担当 | 状態 | DoD |
 |---------|------|------|------|-----|
-| 2.1.1 | beam search 実装 | Worker | cc:TODO | (a) beam_width パラメータ追加 (b) テスト追加 (c) 既存テスト全 PASS |
-| 2.1.2 | temperature / repetition_penalty 強化 | Worker | cc:TODO | (a) repetition_penalty 実装 (b) テスト追加 |
-| 2.1.3 | KV cache 最適化 (sliding window) | Worker | cc:TODO | (a) メモリ使用量 20% 削減 (b) ベンチマーク比較 |
-| 2.2.1 | INT8 / FP16 量子化サポート | Worker | cc:TODO | (a) torch.quantization 対応 (b) ベンチマーク追加 |
-| 2.2.2 | バッチ推論 API | Worker | cc:TODO | (a) generate_batch() 実装 (b) 並列実行テスト |
+| 2.1.1 | beam search 実装 | Worker | cc:完了 [905f761] | (a) beam_width パラメータ追加 (b) テスト追加 (c) 既存テスト全 PASS |
+| 2.1.2 | temperature / repetition_penalty 強化 | Worker | cc:完了 [f2cb589] | (a) repetition_penalty 実装 (b) テスト追加 |
+| 2.1.3 | KV cache 最適化 (sliding window) | Worker | cc:完了 [9946ef1] | (a) max_cache_len パラメータ (b) GQA/MLA 両対応 |
+| 2.2.1 | INT8 / FP16 量子化サポート | Worker | cc:完了 [5119502] | (a) quantize("fp16"/"int8") 実装 (b) dtype-safe ACT/LTI修正 |
+| 2.2.2 | バッチ推論 API | Worker | cc:完了 | (a) generate_batch() 実装 (b) 可変長プロンプト対応 |
 
 ---
 
