@@ -1173,6 +1173,104 @@ class OpenMythos(nn.Module):
         return input_ids
 
     @torch.no_grad()
+    def generate_beam(
+        self,
+        input_ids: torch.Tensor,
+        max_new_tokens: int = 64,
+        n_loops: int = 8,
+        beam_width: int = 4,
+        temperature: float = 1.0,
+        top_p: float = 1.0,
+        length_penalty: float = 1.0,
+    ) -> torch.Tensor:
+        """Beam search decoding.
+
+        Maintains ``beam_width`` candidate sequences simultaneously and selects
+        the one with the highest length-normalised log-probability at the end.
+        Unlike greedy or sampling methods, beam search is deterministic and
+        typically produces more coherent sequences for smaller beam widths.
+
+        Args:
+            input_ids      -- prompt token indices of shape (1, T); B=1 only
+            max_new_tokens -- maximum tokens to generate
+            n_loops        -- recurrent loop depth
+            beam_width     -- number of beams kept at each step
+            temperature    -- logit temperature before beam scoring (lower = more peaked)
+            top_p          -- nucleus filter applied to candidate vocab before scoring
+            length_penalty -- exponent for length normalisation:
+                              score = sum_log_prob / (len ** length_penalty).
+                              > 1 favours longer outputs, < 1 favours shorter ones.
+
+        Returns:
+            Token indices of shape (1, T + generated) — the best beam's full sequence.
+        """
+        assert input_ids.shape[0] == 1, "generate_beam supports B=1 only"
+        device = input_ids.device
+        vocab_size = self.cfg.vocab_size
+
+        # Each beam: (sequence tensor (1, L), cumulative log-prob, kv_cache)
+        beams: list[tuple[torch.Tensor, float, dict]] = [
+            (input_ids, 0.0, {})
+        ]
+        prompt_len = input_ids.shape[1]
+
+        for step in range(max_new_tokens):
+            all_candidates: list[tuple[torch.Tensor, float, dict]] = []
+
+            for seq, score, cache in beams:
+                if step == 0:
+                    cur_ids = seq
+                    start_pos = 0
+                else:
+                    cur_ids = seq[:, -1:]
+                    start_pos = seq.shape[1] - 1
+
+                logits = self.forward(
+                    cur_ids, n_loops=n_loops, kv_cache=cache, start_pos=start_pos
+                )
+                lgt = logits[:, -1, :].clone()  # (1, V)
+
+                # temperature + top-p filtering
+                lgt = lgt / max(temperature, 1e-8)
+                if top_p < 1.0:
+                    sorted_logits, sorted_idx = torch.sort(lgt, descending=True)
+                    cum_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
+                    remove_mask = cum_probs - F.softmax(sorted_logits, dim=-1) > top_p
+                    sorted_logits[remove_mask] = float("-inf")
+                    lgt = torch.full_like(lgt, float("-inf")).scatter(
+                        1, sorted_idx, sorted_logits
+                    )
+
+                log_probs = F.log_softmax(lgt, dim=-1).squeeze(0)  # (V,)
+
+                # Expand: take top beam_width next tokens
+                top_log_probs, top_ids = log_probs.topk(beam_width)
+                for tok_log_p, tok_id in zip(top_log_probs, top_ids):
+                    new_seq = torch.cat(
+                        [seq, tok_id.view(1, 1)], dim=1
+                    )
+                    new_score = score + tok_log_p.item()
+                    # copy cache so beams don't share state
+                    new_cache = {
+                        k: {ck: cv.clone() for ck, cv in v.items()}
+                        for k, v in cache.items()
+                    }
+                    all_candidates.append((new_seq, new_score, new_cache))
+
+            # Keep the top beam_width candidates by length-normalised score
+            def _norm_score(item: tuple) -> float:
+                seq_tensor, raw_score, _ = item
+                gen_len = seq_tensor.shape[1] - prompt_len
+                return raw_score / max(gen_len, 1) ** length_penalty
+
+            all_candidates.sort(key=_norm_score, reverse=True)
+            beams = all_candidates[:beam_width]
+
+        # Return the best beam
+        best_seq, _, _ = beams[0]
+        return best_seq
+
+    @torch.no_grad()
     def generate_stream(
         self,
         input_ids: torch.Tensor,

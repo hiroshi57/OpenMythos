@@ -946,5 +946,73 @@ class TestSpeculativeDecode:
         assert out[:, T:].min().item() >= 0
 
 
+# ---------------------------------------------------------------------------
+# generate_beam
+# ---------------------------------------------------------------------------
+
+
+class TestGenerateBeam:
+    """Tests for OpenMythos.generate_beam()."""
+
+    def setup_method(self):
+        self.cfg = gqa_cfg()
+        self.model = OpenMythos(self.cfg)
+        self.ids = torch.randint(0, self.cfg.vocab_size, (1, T))
+
+    def test_output_shape(self):
+        """Output must be (1, T + max_new_tokens)."""
+        out = self.model.generate_beam(self.ids, max_new_tokens=4, n_loops=1, beam_width=2)
+        assert out.shape == (1, T + 4)
+
+    def test_prompt_preserved(self):
+        """The original prompt tokens must be unchanged in the output."""
+        out = self.model.generate_beam(self.ids, max_new_tokens=3, n_loops=1, beam_width=2)
+        assert torch.equal(out[:, :T], self.ids)
+
+    def test_tokens_in_vocab(self):
+        """All generated tokens must be in [0, vocab_size)."""
+        out = self.model.generate_beam(self.ids, max_new_tokens=4, n_loops=1, beam_width=2)
+        new_toks = out[:, T:]
+        assert new_toks.min().item() >= 0
+        assert new_toks.max().item() < self.cfg.vocab_size
+
+    def test_no_nan(self):
+        """generate_beam must not produce NaN token indices."""
+        out = self.model.generate_beam(self.ids, max_new_tokens=4, n_loops=1, beam_width=2)
+        assert not torch.isnan(out.float()).any()
+
+    def test_beam_width_one_is_greedy(self):
+        """beam_width=1 with temperature→0 must match greedy generate()."""
+        torch.manual_seed(0)
+        out_beam = self.model.generate_beam(
+            self.ids, max_new_tokens=5, n_loops=1, beam_width=1, temperature=1e-6
+        )
+        torch.manual_seed(0)
+        out_greedy = self.model.generate(
+            self.ids, max_new_tokens=5, n_loops=1, temperature=1e-6, top_k=0
+        )
+        assert torch.equal(out_beam, out_greedy)
+
+    def test_batch_one_constraint(self):
+        """Batch size > 1 must raise AssertionError."""
+        ids_b2 = torch.randint(0, self.cfg.vocab_size, (2, T))
+        with pytest.raises(AssertionError):
+            self.model.generate_beam(ids_b2, max_new_tokens=2, beam_width=2)
+
+    def test_length_penalty(self):
+        """length_penalty > 1 must run without error and return correct shape."""
+        out = self.model.generate_beam(
+            self.ids, max_new_tokens=4, n_loops=1, beam_width=2, length_penalty=1.5
+        )
+        assert out.shape == (1, T + 4)
+
+    def test_mla_mode(self):
+        """generate_beam must work with MLA attention."""
+        model = OpenMythos(mla_cfg())
+        out = model.generate_beam(self.ids, max_new_tokens=3, n_loops=1, beam_width=2)
+        assert out.shape == (1, T + 3)
+        assert out[:, T:].min().item() >= 0
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "--verbose"])
