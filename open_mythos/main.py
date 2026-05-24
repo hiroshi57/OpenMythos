@@ -1,3 +1,4 @@
+import math
 from dataclasses import dataclass
 from typing import Optional
 
@@ -1594,6 +1595,154 @@ class OpenMythos(nn.Module):
         else:
             raise ValueError(f"quantize: unsupported dtype {dtype!r}; use 'int8' or 'fp16'")
         return self
+
+    def init_mup(self, base_dim: int = 256) -> "OpenMythos":
+        """Apply Maximal Update Parametrization (MuP) weight initialization.
+
+        MuP scales initialisation variance so that the optimal learning rate
+        transfers from a small *base* model to the full model without re-tuning.
+        The key insight (Yang et al., 2022): for any Linear layer whose *fan-in*
+        grew by a factor α relative to the base model, divide the init std by α
+        so that the per-coordinate update magnitude stays constant regardless of
+        width.
+
+        Rules applied here:
+            - Input embedding  : std = 1.0  (not scaled — position 0 in the graph)
+            - Output (head)    : zeros      (standard for tied-weight heads)
+            - All other Linear : std = base_std / sqrt(fan_in / base_dim)
+              where base_std = 0.02 and base_dim is the reference hidden dim
+
+        This is a "simple MuP" approximation (no per-tensor multiplier table)
+        that transfers the peak LR from a proxy model with dim=base_dim.
+
+        Args:
+            base_dim -- hidden dim of the proxy/base model used for LR search.
+                        Defaults to 256 (a common small proxy size).
+
+        Returns:
+            self, for chaining: ``model.init_mup(base_dim=256).to(device)``
+        """
+        base_std = 0.02
+        for name, module in self.named_modules():
+            if isinstance(module, nn.Embedding):
+                nn.init.normal_(module.weight, mean=0.0, std=1.0)
+            elif isinstance(module, nn.Linear):
+                fan_in = module.weight.shape[1]
+                if "head" in name and module.weight.data_ptr() == self.embed.weight.data_ptr():
+                    # Weight-tied output projection: embedding already initialised above;
+                    # skipping zero-init here preserves the embedding's std=1.0 init.
+                    pass
+                elif "head" in name:
+                    nn.init.zeros_(module.weight)
+                else:
+                    std = base_std / math.sqrt(max(fan_in / base_dim, 1.0))
+                    nn.init.normal_(module.weight, mean=0.0, std=std)
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+        return self
+
+    def push_to_hub(self, repo_id: str, token: Optional[str] = None) -> None:
+        """Upload model weights and config to the Hugging Face Hub.
+
+        Saves a checkpoint dict compatible with ``from_pretrained`` and uploads
+        it via the ``huggingface_hub`` library.  The repository is created
+        automatically if it does not exist.
+
+        Args:
+            repo_id -- HF repo in ``"username/repo-name"`` format
+            token   -- HF write token; reads ``HF_TOKEN`` env var if omitted
+        """
+        try:
+            from huggingface_hub import HfApi
+        except ImportError:
+            raise ImportError("pip install huggingface_hub to use push_to_hub()")
+
+        import os, tempfile, json
+        api = HfApi(token=token or os.environ.get("HF_TOKEN"))
+        api.create_repo(repo_id=repo_id, exist_ok=True)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ckpt_path = os.path.join(tmpdir, "model.pt")
+            cfg_path = os.path.join(tmpdir, "config.json")
+
+            torch.save({"model": self.state_dict(), "cfg": self.cfg}, ckpt_path)
+            import dataclasses
+            with open(cfg_path, "w") as f:
+                json.dump(dataclasses.asdict(self.cfg), f, indent=2)
+
+            api.upload_file(path_or_fileobj=ckpt_path, path_in_repo="model.pt", repo_id=repo_id)
+            api.upload_file(path_or_fileobj=cfg_path, path_in_repo="config.json", repo_id=repo_id)
+
+    @classmethod
+    def from_pretrained(
+        cls,
+        repo_id_or_path: str,
+        token: Optional[str] = None,
+        map_location: str = "cpu",
+    ) -> "OpenMythos":
+        """Load a model from the Hugging Face Hub or a local directory/file.
+
+        Accepts:
+            - A local ``.pt`` checkpoint file path
+            - A local directory containing ``model.pt``
+            - A HF Hub repo ID (``"username/repo-name"``)
+
+        Args:
+            repo_id_or_path -- local path or HF repo ID
+            token           -- HF read token (optional for public repos)
+            map_location    -- torch device string for weight loading
+
+        Returns:
+            Fully loaded ``OpenMythos`` model in eval mode.
+        """
+        import os
+
+        if os.path.isfile(repo_id_or_path):
+            ckpt_path = repo_id_or_path
+        elif os.path.isdir(repo_id_or_path):
+            ckpt_path = os.path.join(repo_id_or_path, "model.pt")
+        else:
+            try:
+                from huggingface_hub import hf_hub_download
+            except ImportError:
+                raise ImportError("pip install huggingface_hub to load from Hub")
+            ckpt_path = hf_hub_download(
+                repo_id=repo_id_or_path,
+                filename="model.pt",
+                token=token,
+            )
+
+        ckpt = torch.load(ckpt_path, map_location=map_location, weights_only=False)
+        cfg: MythosConfig = ckpt["cfg"]
+        model = cls(cfg)
+        model.load_state_dict(ckpt["model"])
+        return model.eval()
+
+    def enable_lora_finetuning(self) -> "OpenMythos":
+        """Freeze all parameters except LoRA adapter weights for PEFT.
+
+        Walks every named parameter.  Parameters belonging to a
+        ``LoRAAdapter`` module (identified by the ``lora_`` name prefix that
+        ``LoRAAdapter`` registers) are left trainable; everything else is
+        frozen via ``requires_grad_(False)``.
+
+        Returns ``self`` so the call can be chained::
+
+            model = OpenMythos(cfg).enable_lora_finetuning()
+
+        After calling this method ``model.trainable_parameters()`` returns
+        only the LoRA tensors, which is useful to pass to an optimiser::
+
+            opt = torch.optim.AdamW(model.trainable_parameters(), lr=2e-4)
+        """
+        for name, param in self.named_parameters():
+            is_lora = ".lora." in name
+            param.requires_grad_(is_lora)
+        return self
+
+    def trainable_parameters(self):
+        """Yield only parameters that require grad (e.g. after enable_lora_finetuning)."""
+        return (p for p in self.parameters() if p.requires_grad)
 
     @torch.no_grad()
     def generate_batch(

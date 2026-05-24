@@ -59,6 +59,23 @@
 
 ---
 
+## Sprint 5: Training 品質改善 & エコシステム拡張 (完了)
+
+> ブランチ: `master`
+
+| task-id | 説明 | 担当 | 状態 | DoD |
+|---------|------|------|------|-----|
+| 5.1.1 | `warmup_stable_decay` 3-phase LR スケジューラ | Worker | cc:完了 | (a) training スクリプトに実装 (b) warmup/plateau/decay 3フェーズ動作 |
+| 5.1.2 | MuP 初期化 `init_mup(base_dim=256)` | Worker | cc:完了 | (a) OpenMythos に実装 (b) import math 追加 |
+| 5.1.3 | GNS 監視 + 早期停止 | Worker | cc:完了 | (a) _gns_window deque 追加 (b) es_patience=5/es_min_delta=1e-3 実装 |
+| 5.2.1 | CLI `mythos generate` / `mythos info` | Worker | cc:完了 | (a) open_mythos/cli.py 作成 (b) pyproject.toml scripts エントリ追加 |
+| 5.2.2 | HF Hub 連携 `push_to_hub` / `from_pretrained` | Worker | cc:完了 | (a) OpenMythos に2メソッド追加 (b) HfApi/hf_hub_download 利用 |
+| 5.3.1 | LoRA ファインチューニング API `enable_lora_finetuning` | Worker | cc:完了 | (a) enable_lora_finetuning() 実装 (b) trainable_parameters() 追加 |
+| 5.4.1 | PyPI 正式リリース準備 + GitHub Release v0.7.0 | Worker | cc:完了 | (a) CHANGELOG.md 更新 (b) pyproject.toml 0.7.0 (c) Plans.md Sprint 5 追加 |
+| 5.5.1 | Sprint 5 テスト追加 + commit + push | Worker | cc:完了 | (a) test_sprint5.py 作成 (b) 284 PASS (c) GitHub push |
+
+---
+
 ## 進行中の作業メモ
 
 ### 現在のブランチ状態

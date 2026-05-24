@@ -229,37 +229,56 @@ def run_eval(
 
 
 def get_lr(step: int, warmup: int, total: int, max_lr: float, min_lr: float) -> float:
-    """
-    Linear warmup → half-cosine decay to `min_lr`.
-
-    Standard language-model pretraining schedule. The warmup phase prevents
-    Adam's second-moment estimate from collapsing to a huge LR in the first
-    few steps when gradients are noisy. The cosine tail lets the model make
-    small, increasingly conservative updates near the end of training rather
-    than crashing to `min_lr` at a fixed step.
-
-    Behavior by region:
-        step < warmup                 → linear ramp 0 → max_lr
-        warmup ≤ step < total         → cosine decay max_lr → min_lr
-        step ≥ total                  → clamped at min_lr (safety for
-                                        off-by-one step counters at the end
-                                        of training)
-
-    Args:
-        step    -- current global optimizer step (0-indexed)
-        warmup  -- number of warmup steps before cosine decay begins
-        total   -- step at which the cosine reaches `min_lr`
-        max_lr  -- peak learning rate reached at the end of warmup
-        min_lr  -- floor learning rate at and after `total` steps
-
-    Returns:
-        Scalar learning rate for this step.
-    """
+    """Linear warmup → half-cosine decay to `min_lr` (legacy schedule)."""
     if step < warmup:
         return max_lr * step / warmup
     if step >= total:
         return min_lr
     decay = (step - warmup) / (total - warmup)
+    return min_lr + 0.5 * (max_lr - min_lr) * (1.0 + math.cos(math.pi * decay))
+
+
+def warmup_stable_decay(
+    step: int,
+    warmup: int,
+    stable_end: int,
+    total: int,
+    max_lr: float,
+    min_lr: float,
+) -> float:
+    """
+    Warmup → Stable → Decay LR schedule (DeepSeek-V3 style).
+
+    Three phases:
+        [0, warmup)          Linear ramp 0 → max_lr
+        [warmup, stable_end) Flat at max_lr — model trains at peak rate
+        [stable_end, total)  Cosine decay max_lr → min_lr
+        [total, ∞)           Clamped at min_lr
+
+    Keeping the LR flat after warmup avoids the early cosine drop that
+    standard schedules impose.  The decay phase is shortened to the tail,
+    so more tokens are processed at max_lr before the final convergence push.
+
+    Typical split: warmup=2000, stable_end=total*0.9, total=total_steps.
+
+    Args:
+        step       -- current optimizer step (0-indexed)
+        warmup     -- steps to ramp from 0 → max_lr
+        stable_end -- step where the stable plateau ends and decay begins
+        total      -- step where cosine reaches min_lr
+        max_lr     -- peak learning rate
+        min_lr     -- floor learning rate
+
+    Returns:
+        Scalar LR for this step.
+    """
+    if step < warmup:
+        return max_lr * step / max(warmup, 1)
+    if step < stable_end:
+        return max_lr
+    if step >= total:
+        return min_lr
+    decay = (step - stable_end) / max(total - stable_end, 1)
     return min_lr + 0.5 * (max_lr - min_lr) * (1.0 + math.cos(math.pi * decay))
 
 
@@ -505,6 +524,7 @@ def main():
     global_batch_tok = world_size * micro_batch * grad_accum * seq_len
     total_steps = target_tokens // global_batch_tok
     warmup_steps = 2000
+    stable_end_steps = int(total_steps * 0.9)  # flat plateau until 90% of training
     lr = 3e-4
     wd = 0.1
     log_every = 10
@@ -615,8 +635,21 @@ def main():
     t_step_start = time.perf_counter()
     step = start_step
 
+    # --- Gradient Noise Scale (GNS) tracking ---
+    # GNS = E[‖g‖²] / Var[g] approximated as (grad_norm² / micro_batch).
+    # High GNS → large-batch friendly; low GNS → signal dominated by noise.
+    _gns_window: deque = deque(maxlen=100)
+
+    # --- Early stopping ---
+    # Halt training if eval loss hasn't improved by `es_min_delta` for
+    # `es_patience` consecutive eval steps.
+    es_patience = 5        # eval steps without improvement before stopping
+    es_min_delta = 1e-3    # minimum improvement to count as progress
+    _es_best_loss = float("inf")
+    _es_counter = 0
+
     while step < total_steps:
-        cur_lr = get_lr(step, warmup_steps, total_steps, lr, lr * 0.1)
+        cur_lr = warmup_stable_decay(step, warmup_steps, stable_end_steps, total_steps, lr, lr * 0.1)
         for g in optimizer.param_groups:
             g["lr"] = cur_lr
 
@@ -661,6 +694,9 @@ def main():
         optimizer.step()
         step += 1
 
+        # GNS approximation: (grad_norm^2) / micro_batch
+        _gns_window.append(float(grad_norm) ** 2 / micro_batch)
+
         # Track per-step timing for rolling-window ETA and tok/s
         dt_step = time.perf_counter() - t_step_start
         _step_times.append(dt_step)
@@ -674,17 +710,19 @@ def main():
             # Perplexity: cap loss at 88 before exp to prevent float overflow
             ppl = math.exp(min(loss_accum, 88.0))
             eta_secs = (total_steps - step) * avg_step_time
+            gns = sum(_gns_window) / len(_gns_window) if _gns_window else 0.0
             logger.info(
                 f"step {step:6d}/{total_steps} | loss {loss_accum:.4f} | ppl {ppl:7.1f}"
-                f" | gnorm {float(grad_norm):.2f} | lr {cur_lr:.2e}"
+                f" | gnorm {float(grad_norm):.2f} | gns {gns:.2f} | lr {cur_lr:.2e}"
                 f" | loops {cur_loops}/{cfg.max_loop_iters}"
                 f" | {tok_per_sec / 1e6:.2f}M tok/s"
                 f" | {tokens_seen / 1e9:.1f}B tok seen"
                 f" | eta {_fmt_eta(eta_secs)}"
             )
 
-        # Held-out evaluation step
-        if master and eval_every > 0 and step % eval_every == 0:
+        # Held-out evaluation step + early stopping
+        should_stop = False
+        if eval_every > 0 and step % eval_every == 0:
             eval_loss = run_eval(
                 model,
                 encoding,
@@ -699,9 +737,28 @@ def main():
                 micro_batch=micro_batch,
             )
             eval_ppl = math.exp(min(eval_loss, 88.0))
-            logger.info(
-                f"[eval @ step {step}] loss {eval_loss:.4f} | ppl {eval_ppl:.1f}"
-            )
+            if master:
+                logger.info(
+                    f"[eval @ step {step}] loss {eval_loss:.4f} | ppl {eval_ppl:.1f}"
+                )
+            # Early stopping check
+            if eval_loss < _es_best_loss - es_min_delta:
+                _es_best_loss = eval_loss
+                _es_counter = 0
+            else:
+                _es_counter += 1
+                if master:
+                    logger.warning(
+                        f"[early stopping] no improvement for {_es_counter}/{es_patience} eval steps"
+                    )
+                if _es_counter >= es_patience:
+                    if master:
+                        logger.warning(
+                            f"[early stopping] triggered at step {step} (best eval loss {_es_best_loss:.4f})"
+                        )
+                    should_stop = True
+        if should_stop:
+            break
 
         if step % ckpt_every == 0:
             save_checkpoint(
