@@ -92,6 +92,10 @@
 | 6.3.1 | `OpenMythosLLM` — LangChain `BaseLLM` 互換アダプタ | Worker | cc:完了 | (a) agents.py 作成 (b) run/stream/from_variant/from_pretrained (c) langchain 未インストール時 graceful fallback |
 | 6.3.2 | `MythosAgent` — Swarms `Agent` 互換ラッパー | Worker | cc:完了 | (a) run/stream_run/reset/history (b) system_prompt/multi-turn context (c) swarms 未インストール時 graceful |
 | 6.3.3 | Sprint 6.3 テスト + コミット + push | Worker | cc:完了 | (a) test_sprint6_agents.py 23 tests (b) 347 PASS |
+| 6.4.1 | `benchmark/perplexity.py` — WikiText-2/103 PPL 測定（sliding window, GPT-2 プロトコル） | Worker | cc:完了 | (a) evaluate_perplexity() 実装 (b) _load_corpus/_tokenize_corpus 実装 (c) CLI 完成 |
+| 6.4.2 | `benchmark/throughput.py` — TTFT/TPOT/throughput/ピークメモリ計測 | Worker | cc:完了 | (a) measure_latency() / sweep_batch_sizes() 実装 (b) JSON 出力対応 |
+| 6.4.3 | `benchmark/lm_eval_harness.py` — lm-evaluation-harness 統合 | Worker | cc:完了 | (a) MythosLMEvalWrapper 実装 (b) loglikelihood/rolling/generate_until (c) lm-eval 未インストール時 LAMBADA standalone fallback対応 |
+| 6.4.4 | Sprint 6.4 テスト + コミット + push | Worker | cc:完了 | (a) test_sprint6_benchmark.py 33 tests (b) 380 PASS |
 
 ---
 

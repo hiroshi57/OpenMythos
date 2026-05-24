@@ -4,6 +4,35 @@ All notable changes to OpenMythos are documented here.
 
 ---
 
+## [0.11.0] — 2026-05-24
+
+### Sprint 6.4: ベンチマーク & 評価 (`benchmark/`)
+
+#### Perplexity 評価 (`benchmark/perplexity.py`)
+
+- `evaluate_perplexity(model, token_ids, device, seq_len, stride, batch_size, n_loops)` — sliding window PPL (GPT-2 プロトコル)
+- `_load_corpus(dataset_name, split)` — HuggingFace `datasets` 経由で WikiText-2/103 を取得
+- `_tokenize_corpus(text, vocab_size)` — MythosTokenizer + byte-level fallback + vocab clip
+- CLI: `--variant`, `--checkpoint`, `--dataset`, `--split`, `--seq-len`, `--stride`, `--n-loops`, `--max-tokens`
+
+#### スループット & レイテンシ計測 (`benchmark/throughput.py`)
+
+- `measure_latency(model, prompt_ids, device, max_new_tokens, batch_size, n_loops, warmup_iters)` — TTFT / TPOT / throughput / peak memory を `LatencyResult` dataclass で返却
+- `sweep_batch_sizes(model, prompt_ids, device, batch_sizes, ...)` — バッチサイズ一覧をスイープ
+- CUDA 同期付きタイミング (`torch.cuda.synchronize`)、CPU では `psutil` RSS フォールバック
+- CLI: `--batch-sizes 1,2,4`, `--output-json` オプション
+
+#### lm-evaluation-harness 統合 (`benchmark/lm_eval_harness.py`)
+
+- `MythosLMEvalWrapper(LM)` — EleutherAI lm-eval の `LM` インターフェース実装
+- `loglikelihood`, `loglikelihood_rolling`, `generate_until` の3メソッドを実装
+- `lm_eval` 未インストール時は LAMBADA standalone fallback で精度評価可能
+- `lm_eval.simple_evaluate()` 経由で HellaSwag / ARC / WinoGrande 等を実行可能
+
+Tests: 380 PASS (up from 347)
+
+---
+
 ## [0.10.0] — 2026-05-24
 
 ### Sprint 6.3: エージェント統合 (`open_mythos/agents.py`)
