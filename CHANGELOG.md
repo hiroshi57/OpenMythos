@@ -4,6 +4,30 @@ All notable changes to OpenMythos are documented here.
 
 ---
 
+## [0.9.0] — 2026-05-24
+
+### Sprint 6.2: 訓練スクリプト高度化
+
+#### TrainLogger — 統一実験ロギング (`open_mythos/logger_utils.py`)
+
+- `TrainLogger(backend, run_name, project, config, log_dir)` — WandB / MLflow / TensorBoard / none を統一 API で切り替え
+- 全バックエンドで `log(metrics, step)` / `log_artifact(path)` / `finish()` を提供
+- `wandb` / `mlflow` / `tensorboard` 未インストール時は警告のみで `"none"` に graceful fallback
+- コンテキストマネージャ対応 (`with TrainLogger(...) as log:`)
+
+#### argparse CLI フラグ
+
+- `_parse_args()` 追加で全ハイパーパラメータを CLI から上書き可能に
+- `--resume PATH` — 特定チェックポイントを指定再開（省略時は `--ckpt-dir` の最新を自動選択）
+- `--ckpt-dir` / `--ckpt-every` / `--keep-last` — チェックポイント管理
+- `--logger {none,wandb,mlflow,tensorboard}` / `--run-name` / `--project` / `--log-dir`
+- `--seq-len` / `--micro-batch` / `--lr` / `--wd` / `--warmup-steps` / `--eval-every` / `--no-grad-ckpt`
+- `TrainLogger` をトレーニングループに統合（train/eval メトリクスを step 単位で記録）
+
+Tests: 324 PASS (up from 305)
+
+---
+
 ## [0.8.0] — 2026-05-24
 
 ### Sprint 6.1: 推論最適化

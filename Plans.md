@@ -86,6 +86,9 @@
 | 6.1.2 | SDPA 最適化 — GQA/MLA fallback を `F.scaled_dot_product_attention` に置き換え | Worker | cc:完了 | (a) Flash Attn 2 / mem-efficient / math を自動選択 (b) 既存テスト全 PASS |
 | 6.1.3 | KV cache ページング — `allocate_kv_cache()` / `free_kv_cache()` 実装 | Worker | cc:完了 | (a) kv_page_size/kv_max_pages を MythosConfig に追加 (b) eviction テスト PASS |
 | 6.1.4 | Sprint 6.1 テスト + コミット + push | Worker | cc:完了 | (a) test_sprint6_inference.py 19 tests (b) 305 PASS |
+| 6.2.1 | WandB/MLflow/TensorBoard ロギング — `TrainLogger` 統一インターフェース | Worker | cc:完了 | (a) logger_utils.py 作成 (b) none/wandb/mlflow/tensorboard + graceful fallback |
+| 6.2.2 | argparse CLI フラグ — `--resume`, `--ckpt-dir`, `--logger`, `--run-name` 等 | Worker | cc:完了 | (a) _parse_args() 追加 (b) 定数を args でオーバーライド (c) TrainLogger 統合 |
+| 6.2.3 | Sprint 6.2 テスト + コミット + push | Worker | cc:完了 | (a) test_sprint6_training.py 19 tests (b) 324 PASS |
 
 ---
 

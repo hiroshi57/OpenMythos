@@ -19,6 +19,7 @@ from open_mythos.tokenizer import MythosTokenizer, load_tokenizer, get_vocab_siz
 from open_mythos.cli import main as cli_main
 from open_mythos.moda import MoDAConfig, MoDAModel
 from open_mythos.hyperloop import HyperloopConfig, HyperloopBlock, HyperloopMythos
+from open_mythos.logger_utils import TrainLogger
 from open_mythos.variants import (
     mythos_nano,
     mythos_1b,
@@ -32,6 +33,7 @@ from open_mythos.variants import (
 )
 
 __all__ = [
+    "TrainLogger",
     "MythosConfig",
     "RMSNorm",
     "GQAttention",

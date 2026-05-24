@@ -16,6 +16,7 @@ Improvements over initial version:
   - Loop curriculum: ramp n_loops from 1 → max_loop_iters over first `loop_ramp_steps`
 """
 
+import argparse
 import os
 import math
 import time
@@ -43,6 +44,7 @@ from open_mythos import OpenMythos
 from open_mythos.main import TransformerBlock, RecurrentBlock
 from open_mythos.variants import mythos_3b
 from open_mythos.tokenizer import MythosTokenizer
+from open_mythos.logger_utils import TrainLogger
 
 # ---------------------------------------------------------------------------
 # Dataset
@@ -442,6 +444,57 @@ def load_checkpoint(model, optimizer, path: str, ddp: bool) -> int:
 # ---------------------------------------------------------------------------
 
 
+def _parse_args() -> argparse.Namespace:
+    """CLI argument parser — all flags override in-script defaults."""
+    p = argparse.ArgumentParser(
+        prog="3b_fine_web_edu",
+        description="OpenMythos 3B pretraining on FineWeb-Edu",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    # Run identity
+    p.add_argument("--run-name", default=None,
+                   help="Human-readable run name (default: timestamp)")
+    p.add_argument("--project", default="open-mythos",
+                   help="WandB / MLflow project / experiment name")
+
+    # Checkpointing & resume
+    p.add_argument("--ckpt-dir", default="checkpoints",
+                   help="Directory to write/read checkpoints")
+    p.add_argument("--resume", default=None, metavar="PATH",
+                   help="Path to a specific checkpoint file to resume from. "
+                        "If omitted, resumes from the latest in --ckpt-dir automatically.")
+    p.add_argument("--ckpt-every", type=int, default=1000,
+                   help="Save a checkpoint every N steps")
+    p.add_argument("--keep-last", type=int, default=3,
+                   help="Number of recent checkpoints to keep on disk")
+
+    # Logging
+    p.add_argument("--logger", default="none",
+                   choices=["none", "wandb", "mlflow", "tensorboard"],
+                   help="Experiment logging backend")
+    p.add_argument("--log-every", type=int, default=10,
+                   help="Print a training log line every N steps")
+    p.add_argument("--log-dir", default="runs",
+                   help="TensorBoard log directory (ignored for other backends)")
+
+    # Training hypers (override script defaults)
+    p.add_argument("--seq-len", type=int, default=2048)
+    p.add_argument("--micro-batch", type=int, default=4)
+    p.add_argument("--lr", type=float, default=3e-4)
+    p.add_argument("--wd", type=float, default=0.1)
+    p.add_argument("--total-tokens", type=float, default=30e9,
+                   help="Total training tokens (e.g. 30e9)")
+    p.add_argument("--warmup-steps", type=int, default=2000)
+    p.add_argument("--eval-every", type=int, default=500,
+                   help="Eval every N steps; 0 to disable")
+    p.add_argument("--dataset-subset", default="sample-10BT",
+                   help="FineWeb-Edu config name")
+    p.add_argument("--no-grad-ckpt", action="store_true",
+                   help="Disable gradient checkpointing (uses more VRAM, faster)")
+
+    return p.parse_args()
+
+
 def main():
     """
     End-to-end pretraining entry point.
@@ -454,22 +507,20 @@ def main():
     already-constructed optimizer in-place.
 
     Lifecycle:
-        1. Initialize torch.distributed (NCCL) if launched under torchrun.
-        2. Build tokenizer → derive vocab_size.
-        3. Construct OpenMythos with the 3B variant config.
-        4. Wrap in FSDP with FULL_SHARD + bf16/fp16 mixed precision (multi-GPU)
+        1. Parse CLI args (all flags override in-script defaults).
+        2. Initialize torch.distributed (NCCL) if launched under torchrun.
+        3. Build tokenizer → derive vocab_size.
+        4. Construct OpenMythos with the 3B variant config.
+        5. Wrap in FSDP with FULL_SHARD + bf16/fp16 mixed precision (multi-GPU)
            or move to device + autocast (single-GPU).
-        5. Build fused AdamW on (possibly sharded) parameters.
-        6. Resume from the latest checkpoint in `ckpt_dir` if one exists.
-        7. Stream FineWeb-Edu through grad-accumulation microbatches with
-           cosine LR schedule, per-step logging, and periodic checkpoints.
-        8. Write a final checkpoint if the last save wasn't aligned to
-           `ckpt_every`, then barrier + tear down the process group.
-
-    All hyperparameters are literal constants in this function by design —
-    pretraining runs are long-lived and each run pins exact settings; a
-    CLI/config layer is deliberately avoided to keep the file self-auditable.
+        6. Build fused AdamW on (possibly sharded) parameters.
+        7. Resume from checkpoint (--resume path, or latest in --ckpt-dir).
+        8. Stream FineWeb-Edu through grad-accumulation microbatches with
+           warmup_stable_decay LR schedule, per-step logging, and periodic checkpoints.
+        9. Write a final checkpoint; barrier + tear down the process group.
     """
+    args = _parse_args()
+
     # ------------------------------------------------------------------
     # Distributed init
     # ------------------------------------------------------------------
@@ -491,10 +542,10 @@ def main():
     # ------------------------------------------------------------------
     # Persistent file logging (rank 0 only — avoid duplicated log files)
     # ------------------------------------------------------------------
+    run_id = args.run_name or datetime.now().strftime("%Y%m%d_%H%M%S")
     if master:
         logs_dir = "logs"
         os.makedirs(logs_dir, exist_ok=True)
-        run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
         logger.add(
             f"{logs_dir}/train_{run_id}.log",
             rotation="500 MB",
@@ -515,24 +566,24 @@ def main():
         logger.info(f"Tokenizer: gpt-oss-20b  |  Vocab size: {vocab_size:,}")
 
     # ------------------------------------------------------------------
-    # Hyperparameters
+    # Hyperparameters (CLI args override defaults)
     # ------------------------------------------------------------------
-    seq_len = 2048
-    micro_batch = 4
-    target_tokens = 30_000_000_000
+    seq_len = args.seq_len
+    micro_batch = args.micro_batch
+    target_tokens = int(args.total_tokens)
     grad_accum = max(1, 256 // (world_size * micro_batch))
     global_batch_tok = world_size * micro_batch * grad_accum * seq_len
     total_steps = target_tokens // global_batch_tok
-    warmup_steps = 2000
+    warmup_steps = args.warmup_steps
     stable_end_steps = int(total_steps * 0.9)  # flat plateau until 90% of training
-    lr = 3e-4
-    wd = 0.1
-    log_every = 10
-    ckpt_every = 1000
-    ckpt_dir = "checkpoints"
-    dataset_subset = "sample-10BT"  # → sample-100BT or "default" for full run
+    lr = args.lr
+    wd = args.wd
+    log_every = args.log_every
+    ckpt_every = args.ckpt_every
+    ckpt_dir = args.ckpt_dir
+    dataset_subset = args.dataset_subset
     # Held-out evaluation: run every eval_every steps; 0 disables eval entirely
-    eval_every = 500
+    eval_every = args.eval_every
     eval_batches = 20
     # Loop curriculum: ramp n_loops from 1 → max_loop_iters over this many steps.
     # Set to 0 to disable (always train at full depth).
@@ -557,8 +608,8 @@ def main():
     model = OpenMythos(cfg)
 
     # Gradient checkpointing: recompute activations during backward to save memory.
-    # Enabled by default — disable by setting use_grad_ckpt=False for faster small runs.
-    use_grad_ckpt = True
+    # Disabled by --no-grad-ckpt flag; enabled by default.
+    use_grad_ckpt = not args.no_grad_ckpt
     if use_grad_ckpt:
         for module in model.modules():
             if isinstance(module, (TransformerBlock, RecurrentBlock)):
@@ -601,18 +652,40 @@ def main():
     )
 
     # ------------------------------------------------------------------
-    # Resume from latest checkpoint (if any)
+    # Experiment logger (WandB / MLflow / TensorBoard / none)
+    # ------------------------------------------------------------------
+    train_logger: TrainLogger | None = None
+    if master:
+        cfg_dict = {
+            "seq_len": seq_len, "micro_batch": micro_batch, "lr": lr, "wd": wd,
+            "warmup_steps": warmup_steps, "total_steps": total_steps,
+            "grad_accum": grad_accum, "dataset_subset": dataset_subset,
+        }
+        train_logger = TrainLogger(
+            backend=args.logger,
+            run_name=run_id,
+            project=args.project,
+            config=cfg_dict,
+            log_dir=args.log_dir,
+        )
+        logger.info(f"Experiment logger: {args.logger}  |  run_name: {run_id}")
+
+    # ------------------------------------------------------------------
+    # Resume from checkpoint (--resume path, or latest in --ckpt-dir)
     # ------------------------------------------------------------------
     # Streaming datasets are not resumable by position, so re-iterating from
     # the beginning is accepted — at pretraining scale the loss of dataset
     # position is negligible vs. the cost of discarded training steps.
     start_step = 0
-    existing_ckpts = _list_ckpts(ckpt_dir)
-    if existing_ckpts:
-        latest = existing_ckpts[-1]
+    resume_path = args.resume
+    if resume_path is None:
+        existing_ckpts = _list_ckpts(ckpt_dir)
+        if existing_ckpts:
+            resume_path = existing_ckpts[-1]
+    if resume_path is not None:
         if master:
-            logger.info(f"Resuming from checkpoint: {latest}")
-        start_step = load_checkpoint(model, optimizer, latest, ddp)
+            logger.info(f"Resuming from checkpoint: {resume_path}")
+        start_step = load_checkpoint(model, optimizer, resume_path, ddp)
         if master:
             logger.success(f"Resumed at step {start_step}")
 
@@ -719,6 +792,20 @@ def main():
                 f" | {tokens_seen / 1e9:.1f}B tok seen"
                 f" | eta {_fmt_eta(eta_secs)}"
             )
+            if train_logger is not None:
+                train_logger.log(
+                    {
+                        "train/loss": loss_accum,
+                        "train/ppl": ppl,
+                        "train/grad_norm": float(grad_norm),
+                        "train/gns": gns,
+                        "train/lr": cur_lr,
+                        "train/tok_per_sec": tok_per_sec,
+                        "train/tokens_seen_B": tokens_seen / 1e9,
+                        "train/loops": cur_loops,
+                    },
+                    step=step,
+                )
 
         # Held-out evaluation step + early stopping
         should_stop = False
@@ -741,6 +828,10 @@ def main():
                 logger.info(
                     f"[eval @ step {step}] loss {eval_loss:.4f} | ppl {eval_ppl:.1f}"
                 )
+                if train_logger is not None:
+                    train_logger.log(
+                        {"eval/loss": eval_loss, "eval/ppl": eval_ppl}, step=step
+                    )
             # Early stopping check
             if eval_loss < _es_best_loss - es_min_delta:
                 _es_best_loss = eval_loss
@@ -778,6 +869,8 @@ def main():
 
     if master:
         logger.success("Training complete.")
+        if train_logger is not None:
+            train_logger.finish()
 
 
 if __name__ == "__main__":

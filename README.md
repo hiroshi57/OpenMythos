@@ -33,8 +33,8 @@
   </a>
   <a href="https://github.com/The-Swarm-Corporation/OpenMythos" target="_blank">
     <picture>
-      <source srcset="https://img.shields.io/badge/Tests-305%20PASS-brightgreen?style=for-the-badge" media="(prefers-color-scheme: dark)">
-      <img alt="Tests" src="https://img.shields.io/badge/Tests-305%20PASS-brightgreen?style=for-the-badge">
+      <source srcset="https://img.shields.io/badge/Tests-324%20PASS-brightgreen?style=for-the-badge" media="(prefers-color-scheme: dark)">
+      <img alt="Tests" src="https://img.shields.io/badge/Tests-324%20PASS-brightgreen?style=for-the-badge">
     </picture>
   </a>
 </p>
