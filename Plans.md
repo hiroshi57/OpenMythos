@@ -89,6 +89,9 @@
 | 6.2.1 | WandB/MLflow/TensorBoard ロギング — `TrainLogger` 統一インターフェース | Worker | cc:完了 | (a) logger_utils.py 作成 (b) none/wandb/mlflow/tensorboard + graceful fallback |
 | 6.2.2 | argparse CLI フラグ — `--resume`, `--ckpt-dir`, `--logger`, `--run-name` 等 | Worker | cc:完了 | (a) _parse_args() 追加 (b) 定数を args でオーバーライド (c) TrainLogger 統合 |
 | 6.2.3 | Sprint 6.2 テスト + コミット + push | Worker | cc:完了 | (a) test_sprint6_training.py 19 tests (b) 324 PASS |
+| 6.3.1 | `OpenMythosLLM` — LangChain `BaseLLM` 互換アダプタ | Worker | cc:完了 | (a) agents.py 作成 (b) run/stream/from_variant/from_pretrained (c) langchain 未インストール時 graceful fallback |
+| 6.3.2 | `MythosAgent` — Swarms `Agent` 互換ラッパー | Worker | cc:完了 | (a) run/stream_run/reset/history (b) system_prompt/multi-turn context (c) swarms 未インストール時 graceful |
+| 6.3.3 | Sprint 6.3 テスト + コミット + push | Worker | cc:完了 | (a) test_sprint6_agents.py 23 tests (b) 347 PASS |
 
 ---
 

@@ -20,6 +20,7 @@ from open_mythos.cli import main as cli_main
 from open_mythos.moda import MoDAConfig, MoDAModel
 from open_mythos.hyperloop import HyperloopConfig, HyperloopBlock, HyperloopMythos
 from open_mythos.logger_utils import TrainLogger
+from open_mythos.agents import OpenMythosLLM, MythosAgent
 from open_mythos.variants import (
     mythos_nano,
     mythos_1b,
@@ -34,6 +35,8 @@ from open_mythos.variants import (
 
 __all__ = [
     "TrainLogger",
+    "OpenMythosLLM",
+    "MythosAgent",
     "MythosConfig",
     "RMSNorm",
     "GQAttention",

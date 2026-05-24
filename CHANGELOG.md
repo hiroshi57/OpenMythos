@@ -4,6 +4,33 @@ All notable changes to OpenMythos are documented here.
 
 ---
 
+## [0.10.0] — 2026-05-24
+
+### Sprint 6.3: エージェント統合 (`open_mythos/agents.py`)
+
+#### OpenMythosLLM — LangChain 互換アダプタ
+
+- `OpenMythosLLM(model, device, max_new_tokens, temperature, top_k, top_p)`
+- `run(prompt) -> str` — LangChain 不要のスタンドアロン呼び出し
+- `stream(prompt) -> Iterator[str]` — トークン単位ストリーミング
+- LangChain `BaseLLM` プロトコル実装: `_generate()` / `_stream()` / `_llm_type`
+- `from_variant(variant, checkpoint, device)` / `from_pretrained(repo_id_or_path)`
+- `langchain-core` 未インストール時は `run()` / `stream()` のみ利用可能、パイプライン API は `ImportError`
+- 空プロンプト → BOS fallback で RoPE クラッシュを回避
+
+#### MythosAgent — Swarms 互換ラッパー
+
+- `run(task) -> str` / `stream_run(task) -> Iterator[str]`
+- `__call__(task)` — Swarms パイプラインへの drop-in 対応
+- `system_prompt` + 直近 2 ターン会話履歴を自動コンテキスト構築
+- `reset()` で会話履歴をクリア
+- `from_variant()` / `from_pretrained()` コンストラクタ
+- `swarms` 未インストール時もスタンドアロンで動作
+
+Tests: 347 PASS (up from 324)
+
+---
+
 ## [0.9.0] — 2026-05-24
 
 ### Sprint 6.2: 訓練スクリプト高度化
