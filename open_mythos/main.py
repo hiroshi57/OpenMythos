@@ -80,6 +80,9 @@ class MythosConfig:
     max_output_tokens: int = 4096
     # Dropout (set 0.0 to disable; 0.1 is standard for pretraining)
     dropout: float = 0.0
+    # Paged KV cache — 0 disables paging (uses flat sliding-window cache)
+    kv_page_size: int = 64     # tokens per page
+    kv_max_pages: int = 0      # 0 = unlimited (bounded only by max_seq_len)
 
 
 # ---------------------------------------------------------------------------
@@ -265,20 +268,25 @@ class GQAttention(nn.Module):
             )
             out = out.to(orig_dtype).contiguous().view(B, T, -1)
         else:
-            # Fallback: manual scaled dot-product with explicit KV head expansion.
+            # Fallback: PyTorch SDPA — automatically selects Flash Attention 2,
+            # memory-efficient attention, or math backend based on availability.
+            # KV heads must be expanded to match Q heads for SDPA.
             k = k.repeat_interleave(self.groups, dim=2)
             v = v.repeat_interleave(self.groups, dim=2)
             q = q.transpose(1, 2)  # (B, H, T, head_dim)
             k = k.transpose(1, 2)
             v = v.transpose(1, 2)
-            scale = self.head_dim**-0.5
-            attn = torch.matmul(q, k.transpose(-2, -1)) * scale
+            is_causal = mask is None  # causal=True for training/prefill; False when additive mask given
+            dropout_p = self.dropout_p if self.training else 0.0
             if mask is not None:
-                attn = attn + mask
-            attn = F.dropout(
-                F.softmax(attn, dim=-1), p=self.dropout_p, training=self.training
-            )
-            out = torch.matmul(attn, v)
+                # Explicit additive mask (e.g. sliding window decode) — use attn_mask
+                out = F.scaled_dot_product_attention(
+                    q, k, v, attn_mask=mask, dropout_p=dropout_p, is_causal=False
+                )
+            else:
+                out = F.scaled_dot_product_attention(
+                    q, k, v, dropout_p=dropout_p, is_causal=True
+                )
             out = out.transpose(1, 2).contiguous().view(B, T, -1)
 
         return self.wo(out)
@@ -415,17 +423,20 @@ class MLAttention(nn.Module):
         v = kv[..., self.qk_nope_dim :]  # (B, S, H, v_dim)
         k = torch.cat([k_nope, k_rope], dim=-1)  # (B, S, H, nope+rope)
 
-        # attention
+        # attention — use PyTorch SDPA (selects Flash Attn 2 / mem-efficient / math)
         q = q.transpose(1, 2)  # (B, H, T, q_head_dim)
         k = k.transpose(1, 2)  # (B, H, S, q_head_dim)
         v = v.transpose(1, 2)  # (B, H, S, v_dim)
 
-        scale = self.q_head_dim**-0.5
-        attn = torch.matmul(q, k.transpose(-2, -1)) * scale
+        dropout_p = self.attn_drop.p if self.training else 0.0
         if mask is not None:
-            attn = attn + mask
-        attn = self.attn_drop(F.softmax(attn, dim=-1))
-        out = torch.matmul(attn, v)  # (B, H, T, v_dim)
+            out = F.scaled_dot_product_attention(
+                q, k, v, attn_mask=mask, dropout_p=dropout_p, is_causal=False
+            )
+        else:
+            out = F.scaled_dot_product_attention(
+                q, k, v, dropout_p=dropout_p, is_causal=True
+            )
         out = out.transpose(1, 2).contiguous().view(B, T, -1)
         return self.wo(out)
 
@@ -1743,6 +1754,122 @@ class OpenMythos(nn.Module):
     def trainable_parameters(self):
         """Yield only parameters that require grad (e.g. after enable_lora_finetuning)."""
         return (p for p in self.parameters() if p.requires_grad)
+
+    def compile_model(
+        self,
+        mode: str = "reduce-overhead",
+        fullgraph: bool = False,
+        dynamic: bool = False,
+        backend: str = "inductor",
+    ) -> "OpenMythos":
+        """Wrap the model with ``torch.compile`` for faster inference/training.
+
+        Applies ``torch.compile`` to every ``TransformerBlock`` and
+        ``RecurrentBlock`` individually rather than the whole model.  This
+        avoids graph breaks at the top-level recurrent loop while still
+        compiling the heavy inner blocks where most FLOPs live.
+
+        Falls back gracefully when ``torch.compile`` is unavailable (PyTorch < 2)
+        or when the Inductor backend is not supported on the current platform
+        (e.g. Windows CPU).
+
+        Args:
+            mode       -- compilation mode: ``"default"``, ``"reduce-overhead"``
+                          (minimises Python overhead via CUDA graphs),
+                          ``"max-autotune"`` (exhaustive kernel search).
+            fullgraph  -- require the full block to compile without graph breaks.
+            dynamic    -- enable dynamic shape tracing for variable seq-len.
+            backend    -- compiler backend (``"inductor"`` for GPU, ``"eager"``
+                          for CPU-only or when Inductor is unavailable).
+
+        Returns:
+            self, for chaining: ``model = OpenMythos(cfg).compile_model()``
+        """
+        if not hasattr(torch, "compile"):
+            return self  # PyTorch < 2.0 — silently skip
+
+        from open_mythos.main import TransformerBlock, RecurrentBlock
+
+        for name, module in self.named_modules():
+            if isinstance(module, (TransformerBlock, RecurrentBlock)):
+                try:
+                    compiled = torch.compile(
+                        module,
+                        mode=mode,
+                        fullgraph=fullgraph,
+                        dynamic=dynamic,
+                        backend=backend,
+                    )
+                except Exception:
+                    # Inductor not available on this platform (e.g. Windows CPU)
+                    compiled = torch.compile(module, backend="eager")
+                # Replace the submodule in-place
+                parts = name.split(".")
+                parent = self
+                for part in parts[:-1]:
+                    parent = getattr(parent, part)
+                setattr(parent, parts[-1], compiled)
+
+        return self
+
+    def allocate_kv_cache(
+        self,
+        max_seq_len: Optional[int] = None,
+        device: Optional[torch.device] = None,
+    ) -> dict:
+        """Pre-allocate a paged KV cache dictionary.
+
+        Returns a dict that can be passed directly to ``forward()`` /
+        ``generate()`` as ``kv_cache``.  When ``kv_max_pages > 0`` in the
+        config the cache enforces a hard token cap of
+        ``kv_page_size × kv_max_pages``; the sliding-window eviction logic
+        in GQAttention and MLAttention then trims the oldest tokens once the
+        cap is reached.
+
+        When ``kv_max_pages == 0`` (default) the returned dict is an empty
+        cache with no pre-allocation — equivalent to the existing behaviour.
+
+        Args:
+            max_seq_len -- override the token cap (default: ``cfg.kv_page_size * cfg.kv_max_pages``
+                           or ``cfg.max_seq_len`` when paging is disabled).
+            device      -- torch device to pre-allocate buffers on; ``None``
+                           uses the first model parameter's device.
+
+        Returns:
+            dict with ``"__window__"`` key set to the effective token cap, plus
+            ``"__page_size__"`` and ``"__max_pages__"`` for introspection.
+            Layer caches are populated lazily by the first forward pass.
+        """
+        cfg = self.cfg
+        if device is None:
+            device = next(self.parameters()).device
+
+        if cfg.kv_max_pages > 0:
+            cap = max_seq_len or (cfg.kv_page_size * cfg.kv_max_pages)
+        else:
+            cap = max_seq_len or cfg.max_seq_len
+
+        cache: dict = {
+            "__window__": cap,
+            "__page_size__": cfg.kv_page_size,
+            "__max_pages__": cfg.kv_max_pages,
+        }
+        return cache
+
+    def free_kv_cache(self, cache: dict) -> None:
+        """Delete all layer tensors from a KV cache dict, freeing GPU memory.
+
+        Removes all keys except the ``__window__``, ``__page_size__``, and
+        ``__max_pages__`` metadata keys so the dict can be reused for a fresh
+        sequence without re-creating it.
+
+        Args:
+            cache -- KV cache dict returned by ``allocate_kv_cache``
+        """
+        meta_keys = {"__window__", "__page_size__", "__max_pages__"}
+        for key in list(cache.keys()):
+            if key not in meta_keys:
+                del cache[key]
 
     @torch.no_grad()
     def generate_batch(

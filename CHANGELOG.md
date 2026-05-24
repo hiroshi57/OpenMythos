@@ -4,6 +4,33 @@ All notable changes to OpenMythos are documented here.
 
 ---
 
+## [0.8.0] — 2026-05-24
+
+### Sprint 6.1: 推論最適化
+
+#### torch.compile 統合
+
+- `OpenMythos.compile_model(mode, fullgraph, dynamic, backend)` — `TransformerBlock` / `RecurrentBlock` を個別にコンパイル（再帰ループのグラフ断絶を回避）
+- `backend="eager"` にフォールバックして Windows CPU でも動作
+- `PyTorch < 2.0` では自動スキップ
+
+#### SDPA 最適化（GQA / MLA）
+
+- GQA / MLA の手動 attention を `F.scaled_dot_product_attention` に置き換え
+- Flash Attention 2 / memory-efficient / math backend を自動選択
+- `flash_attn` 未インストール環境でも高速化（PyTorch 2.x SDPA カーネル）
+
+#### KV cache ページング
+
+- `MythosConfig` に `kv_page_size: int = 64` / `kv_max_pages: int = 0` を追加
+- `OpenMythos.allocate_kv_cache(max_seq_len, device)` — ページ上限付きキャッシュ辞書を生成
+- `OpenMythos.free_kv_cache(cache)` — レイヤーテンソルを解放してメタキーを保持（再利用可能）
+- decode ステップで window 上限超過時に古いトークンを evict
+
+Tests: 305 PASS (up from 286)
+
+---
+
 ## [0.7.0] — 2026-05-24
 
 ### Sprint 5: Training 品質改善 & エコシステム拡張

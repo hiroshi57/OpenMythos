@@ -76,6 +76,19 @@
 
 ---
 
+## Sprint 6: 推論最適化 & 訓練高度化 & エージェント統合 & ベンチマーク (進行中)
+
+> ブランチ: `master`
+
+| task-id | 説明 | 担当 | 状態 | DoD |
+|---------|------|------|------|-----|
+| 6.1.1 | `compile_model()` — torch.compile ラッパー（TransformerBlock/RecurrentBlock 個別コンパイル） | Worker | cc:完了 | (a) backend="eager" でWindows CPU対応 (b) forward 正常動作 |
+| 6.1.2 | SDPA 最適化 — GQA/MLA fallback を `F.scaled_dot_product_attention` に置き換え | Worker | cc:完了 | (a) Flash Attn 2 / mem-efficient / math を自動選択 (b) 既存テスト全 PASS |
+| 6.1.3 | KV cache ページング — `allocate_kv_cache()` / `free_kv_cache()` 実装 | Worker | cc:完了 | (a) kv_page_size/kv_max_pages を MythosConfig に追加 (b) eviction テスト PASS |
+| 6.1.4 | Sprint 6.1 テスト + コミット + push | Worker | cc:完了 | (a) test_sprint6_inference.py 19 tests (b) 305 PASS |
+
+---
+
 ## 進行中の作業メモ
 
 ### 現在のブランチ状態
