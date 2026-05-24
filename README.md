@@ -25,6 +25,18 @@
       <img alt="PyTorch" src="https://img.shields.io/badge/PyTorch-Implemented-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white">
     </picture>
   </a>
+  <a href="https://github.com/The-Swarm-Corporation/OpenMythos/actions" target="_blank">
+    <picture>
+      <source srcset="https://img.shields.io/github/actions/workflow/status/The-Swarm-Corporation/OpenMythos/ci.yml?branch=master&style=for-the-badge&label=CI&logo=github" media="(prefers-color-scheme: dark)">
+      <img alt="CI" src="https://img.shields.io/github/actions/workflow/status/The-Swarm-Corporation/OpenMythos/ci.yml?branch=master&style=for-the-badge&label=CI&logo=github">
+    </picture>
+  </a>
+  <a href="https://github.com/The-Swarm-Corporation/OpenMythos" target="_blank">
+    <picture>
+      <source srcset="https://img.shields.io/badge/Tests-265%20PASS-brightgreen?style=for-the-badge" media="(prefers-color-scheme: dark)">
+      <img alt="Tests" src="https://img.shields.io/badge/Tests-265%20PASS-brightgreen?style=for-the-badge">
+    </picture>
+  </a>
 </p>
 
 > **Disclaimer:** OpenMythos is an independent, community-driven theoretical reconstruction based solely on publicly available research and speculation. It is not affiliated with, endorsed by, or connected to Anthropic or any of their proprietary systems.

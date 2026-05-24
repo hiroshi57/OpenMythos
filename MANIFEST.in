@@ -1,0 +1,8 @@
+include README.md
+include CHANGELOG.md
+include LICENSE
+recursive-include open_mythos *.py
+recursive-include docs *.md
+recursive-exclude * __pycache__
+recursive-exclude * *.pyc
+recursive-exclude * *.pyo
