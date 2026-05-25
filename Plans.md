@@ -20,7 +20,7 @@
 
 ---
 
-## Sprint 2: Inference 高度化 (進行中)
+## Sprint 2: Inference 高度化 (完了)
 
 > ブランチ: `feature/inference-v2`
 
@@ -34,7 +34,7 @@
 
 ---
 
-## Sprint 3: ドキュメント & エコシステム (Backlog)
+## Sprint 3: ドキュメント & エコシステム (完了)
 
 | task-id | 説明 | 担当 | 状態 | DoD |
 |---------|------|------|------|-----|
@@ -45,7 +45,7 @@
 
 ---
 
-## Sprint 4: Training 基盤強化 & エコシステム (進行中)
+## Sprint 4: Training 基盤強化 & エコシステム (完了)
 
 > ブランチ: `master`
 
@@ -115,12 +115,26 @@
 
 ---
 
+## Sprint 8: 推論品質強化 & Fine-tuning パイプライン完成 (完了)
+
+> ブランチ: `feature/sprint8-finetune-quality`
+
+| task-id | 説明 | 担当 | 状態 | DoD |
+|---------|------|------|------|-----|
+| 8.1.1 | `scripts/finetune.py` 完成 — LoRA fine-tuning エンドツーエンド実行 | Worker | cc:完了 | (a) --lora フラグ追加 (b) enable_lora_finetuning() + trainable_parameters() 統合 (c) テスト PASS |
+| 8.1.2 | `scripts/eval_perplexity.py` 完成 — fine-tuned モデルの PPL 評価 | Worker | cc:完了 | (a) --checkpoint フラグ追加 (b) checkpoint ロード対応 (c) テスト PASS |
+| 8.2.1 | Serve API 品質強化 — `serve/api.py` に `/v1/chat` エンドポイント追加 | Worker | cc:完了 | (a) OpenAI 互換 `/v1/chat/completions` (b) SSE ストリーミング対応 (c) テスト PASS |
+| 8.2.2 | SLA ルーター精度モード拡張 — `serve/sla_router.py` に `ultra` モード追加 | Worker | cc:完了 | (a) ultra: loops=16, budget=2000 (b) 全タスク対応 (c) 既存テスト全 PASS |
+| 8.3.1 | Sprint 8 テスト追加 + commit + push | Worker | cc:完了 | (a) test_sprint8.py 22 tests (b) 468 PASS (c) git push origin master |
+
+---
+
 ## 進行中の作業メモ
 
 ### 現在のブランチ状態 (2026-05-25 更新)
-- `master`: `f96ac0c` — Sprint 2-6 一括コミット完了 (380 PASS)
-- `origin/master`: diverged (ahead 13, behind 3) — push 要
-- `feature/hyperloop-benchmark` / `feature/inference-v2`: Sprint 7 開始前に削除予定
+- `master`: `b72c1da` — Sprint 7 全完了 (446 PASS, CI green)
+- PR #2 (`feature/inference-v2`): 2026-05-25 close 済み（master に内包）
+- Sprint 8 ブランチ: `feature/sprint8-finetune-quality` (予定)
 
 ### 重要な技術的知見
 - `freqs_cis` は必ず `[:T]` スライスして渡すこと (apply_rope ブロードキャストエラー防止)

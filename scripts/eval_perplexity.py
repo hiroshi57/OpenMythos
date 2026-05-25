@@ -125,6 +125,11 @@ def main():
         default="1,2,4,8,16",
         help="Comma-separated n_loops values to evaluate",
     )
+    parser.add_argument(
+        "--checkpoint",
+        default="",
+        help="Fine-tuned checkpoint path (.pt). Empty = random weights (architectural benchmark).",
+    )
     parser.add_argument("--out-dir", default="results")
     args = parser.parse_args()
 
@@ -144,10 +149,16 @@ def main():
     token_ids = torch.tensor(tokenizer.encode(text), dtype=torch.long)
     print(f"  {len(token_ids):,} tokens in test set")
 
-    # --- model (randomly initialised — measures architectural scaling) ---
+    # --- model ---
     print("Building model...")
     cfg = small_eval_config()
     model = OpenMythos(cfg).to(device)
+    if args.checkpoint:
+        ckpt = torch.load(args.checkpoint, map_location=device)
+        model.load_state_dict(ckpt)
+        print(f"  Loaded checkpoint: {args.checkpoint}")
+    else:
+        print("  Using random weights (architectural benchmark mode)")
     n_params = sum(p.numel() for p in model.parameters())
     print(f"  {n_params:,} parameters | dim={cfg.dim} | attn={cfg.attn_type}")
 

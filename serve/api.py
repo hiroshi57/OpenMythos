@@ -21,30 +21,32 @@ Docker:
 
 import os
 import time
+import uuid
 from contextlib import asynccontextmanager
 from typing import Literal, Optional
 
 import torch
-import torch.nn.functional as F
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from transformers import AutoTokenizer
 
 from open_mythos.main import MythosConfig, OpenMythos
 
-
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
-MODEL_DIM        = int(os.getenv("MODEL_DIM", "256"))
-MODEL_ATTN       = os.getenv("MODEL_ATTN", "gqa")
-MODEL_CHECKPOINT = os.getenv("MODEL_CHECKPOINT", "")   # path to .pt file; empty = random weights
-DEVICE           = os.getenv("DEVICE", "cpu")
-DEFAULT_LOOPS    = int(os.getenv("DEFAULT_LOOPS", "4"))
-MAX_LOOPS        = int(os.getenv("MAX_LOOPS", "16"))
-TOKENIZER_NAME   = os.getenv("TOKENIZER_NAME", "gpt2")
+MODEL_DIM = int(os.getenv("MODEL_DIM", "256"))
+MODEL_ATTN = os.getenv("MODEL_ATTN", "gqa")
+MODEL_CHECKPOINT = os.getenv(
+    "MODEL_CHECKPOINT", ""
+)  # path to .pt file; empty = random weights
+DEVICE = os.getenv("DEVICE", "cpu")
+DEFAULT_LOOPS = int(os.getenv("DEFAULT_LOOPS", "4"))
+MAX_LOOPS = int(os.getenv("MAX_LOOPS", "16"))
+TOKENIZER_NAME = os.getenv("TOKENIZER_NAME", "gpt2")
 
 
 def _build_config(dim: int, attn: str) -> MythosConfig:
@@ -76,11 +78,13 @@ def _build_config(dim: int, attn: str) -> MythosConfig:
 # Global model state (loaded once at startup)
 # ---------------------------------------------------------------------------
 
+
 class _State:
     model: OpenMythos
     tokenizer: AutoTokenizer
     device: torch.device
     n_params: int
+
 
 state = _State()
 
@@ -133,13 +137,13 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 
 TaskType = Literal[
-    "ad_performance",   # 広告クリエイティブ効果予測
+    "ad_performance",  # 広告クリエイティブ効果予測
     "content_quality",  # SEO / LLMO コンテンツ品質スコアリング
     "persona_segment",  # ユーザーペルソナ分類
     "market_research",  # 市場調査レポート要約
     "identity_verify",  # 本人確認（リアルタイム）
-    "fraud_detect",     # 詐欺検知（高精度）
-    "general",          # 汎用
+    "fraud_detect",  # 詐欺検知（高精度）
+    "general",  # 汎用
 ]
 
 
@@ -171,8 +175,12 @@ class InferRequest(BaseModel):
 
 
 class InferResponse(BaseModel):
-    score: float = Field(description="Confidence score in [0, 1] (higher = more confident positive)")
-    label: int   = Field(description="Predicted label: 1 = positive / verified, 0 = negative / flagged")
+    score: float = Field(
+        description="Confidence score in [0, 1] (higher = more confident positive)"
+    )
+    label: int = Field(
+        description="Predicted label: 1 = positive / verified, 0 = negative / flagged"
+    )
     loops_used: int
     latency_ms: float
     model_params: int
@@ -189,19 +197,20 @@ class RawInferResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 TASK_LOOPS: dict[str, int] = {
-    "ad_performance":  2,   # リアルタイム入稿審査: 速度優先
-    "content_quality": 6,   # SEO品質スコア: 精度と速度のバランス
-    "persona_segment": 4,   # ペルソナ分類: 中程度
-    "market_research": 4,   # 市場調査要約: 中程度
-    "identity_verify": 4,   # 本人確認: リアルタイム
-    "fraud_detect":    12,  # 詐欺検知: 精度最優先
-    "general":         DEFAULT_LOOPS,
+    "ad_performance": 2,  # リアルタイム入稿審査: 速度優先
+    "content_quality": 6,  # SEO品質スコア: 精度と速度のバランス
+    "persona_segment": 4,  # ペルソナ分類: 中程度
+    "market_research": 4,  # 市場調査要約: 中程度
+    "identity_verify": 4,  # 本人確認: リアルタイム
+    "fraud_detect": 12,  # 詐欺検知: 精度最優先
+    "general": DEFAULT_LOOPS,
 }
 
 
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
 
 @app.get("/health")
 def health():
@@ -239,9 +248,9 @@ def infer(req: InferRequest):
 
     # Use mean-pooled last-token probability as a scalar confidence score.
     # In production this head would be replaced by a fine-tuned binary classifier.
-    last_logit = logits[0, -1, :]            # (vocab,)
+    last_logit = logits[0, -1, :]  # (vocab,)
     probs = torch.softmax(last_logit, dim=-1)
-    score = float(probs.max())               # max-prob as confidence
+    score = float(probs.max())  # max-prob as confidence
     label = 1 if score >= 0.5 else 0
 
     return InferResponse(
@@ -275,4 +284,179 @@ def infer_raw(req: InferRequest):
         logits=logits[0].tolist(),
         loops_used=loops,
         latency_ms=round(latency_ms, 2),
+    )
+
+
+# ---------------------------------------------------------------------------
+# OpenAI 互換 /v1/chat/completions
+# ---------------------------------------------------------------------------
+
+
+class ChatMessage(BaseModel):
+    role: Literal["system", "user", "assistant"] = "user"
+    content: str
+
+
+class ChatRequest(BaseModel):
+    model: str = Field(
+        "openmythos", description="Model identifier (ignored; uses loaded model)"
+    )
+    messages: list[ChatMessage]
+    max_tokens: int = Field(64, ge=1, le=512)
+    temperature: float = Field(1.0, ge=0.0, le=2.0)
+    top_p: float = Field(1.0, ge=0.0, le=1.0)
+    loops: int = Field(DEFAULT_LOOPS, ge=1, le=16)
+    stream: bool = Field(False, description="Return Server-Sent Events stream")
+    task: TaskType = Field("general")
+
+
+class ChatChoice(BaseModel):
+    index: int
+    message: ChatMessage
+    finish_reason: str
+
+
+class ChatUsage(BaseModel):
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+
+
+class ChatResponse(BaseModel):
+    id: str
+    object: str = "chat.completion"
+    created: int
+    model: str
+    choices: list[ChatChoice]
+    usage: ChatUsage
+
+
+def _build_chat_prompt(messages: list[ChatMessage]) -> str:
+    """Convert chat messages to a flat prompt string."""
+    parts = []
+    for m in messages:
+        if m.role == "system":
+            parts.append(f"[System]: {m.content}")
+        elif m.role == "user":
+            parts.append(f"[User]: {m.content}")
+        elif m.role == "assistant":
+            parts.append(f"[Assistant]: {m.content}")
+    parts.append("[Assistant]:")
+    return "\n".join(parts)
+
+
+@app.post("/v1/chat/completions")
+def chat_completions(req: ChatRequest):
+    """OpenAI 互換チャット推論エンドポイント。
+
+    ``stream=false`` (デフォルト) は ``ChatResponse`` JSON を返す。
+    ``stream=true`` は Server-Sent Events (SSE) でトークンを逐次送出する。
+    """
+    loops = min(req.loops, MAX_LOOPS)
+    if req.task != "general":
+        loops = TASK_LOOPS.get(req.task, loops)
+
+    prompt = _build_chat_prompt(req.messages)
+    enc = state.tokenizer(
+        prompt,
+        return_tensors="pt",
+        truncation=True,
+        max_length=512,
+    )
+    input_ids = enc["input_ids"].to(state.device)
+    prompt_tokens = input_ids.shape[1]
+
+    if req.stream:
+        # --- SSE ストリーミング ---
+        def _event_stream():
+            import json as _json
+
+            completion_id = f"chatcmpl-{uuid.uuid4().hex[:8]}"
+            generated: list[int] = []
+            cur_ids = input_ids
+
+            for _ in range(req.max_tokens):
+                with torch.no_grad():
+                    logits = state.model(cur_ids, n_loops=loops)
+                next_logits = logits[0, -1, :] / max(req.temperature, 1e-6)
+                if req.top_p < 1.0:
+                    sorted_logits, sorted_idx = torch.sort(next_logits, descending=True)
+                    cum_probs = torch.cumsum(
+                        torch.softmax(sorted_logits, dim=-1), dim=-1
+                    )
+                    mask = cum_probs - torch.softmax(sorted_logits, dim=-1) > req.top_p
+                    sorted_logits[mask] = float("-inf")
+                    next_logits = sorted_logits.scatter(0, sorted_idx, sorted_logits)
+                probs = torch.softmax(next_logits, dim=-1)
+                next_token = int(torch.multinomial(probs, 1).item())
+                generated.append(next_token)
+                token_text = state.tokenizer.decode(
+                    [next_token], skip_special_tokens=True
+                )
+                cur_ids = torch.cat(
+                    [cur_ids, torch.tensor([[next_token]], device=state.device)], dim=1
+                )
+
+                chunk = {
+                    "id": completion_id,
+                    "object": "chat.completion.chunk",
+                    "choices": [
+                        {
+                            "delta": {"content": token_text},
+                            "index": 0,
+                            "finish_reason": None,
+                        }
+                    ],
+                }
+                yield f"data: {_json.dumps(chunk)}\n\n"
+
+                if next_token == state.tokenizer.eos_token_id:
+                    break
+
+            done_chunk = {
+                "id": completion_id,
+                "object": "chat.completion.chunk",
+                "choices": [{"delta": {}, "index": 0, "finish_reason": "stop"}],
+            }
+            yield f"data: {_json.dumps(done_chunk)}\n\n"
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(_event_stream(), media_type="text/event-stream")
+
+    # --- 非ストリーミング: 一括生成 ---
+    generated_ids: list[int] = []
+    cur_ids = input_ids
+
+    with torch.no_grad():
+        for _ in range(req.max_tokens):
+            logits = state.model(cur_ids, n_loops=loops)
+            next_logits = logits[0, -1, :] / max(req.temperature, 1e-6)
+            probs = torch.softmax(next_logits, dim=-1)
+            next_token = int(torch.multinomial(probs, 1).item())
+            generated_ids.append(next_token)
+            cur_ids = torch.cat(
+                [cur_ids, torch.tensor([[next_token]], device=state.device)], dim=1
+            )
+            if next_token == state.tokenizer.eos_token_id:
+                break
+
+    completion_text = state.tokenizer.decode(generated_ids, skip_special_tokens=True)
+    completion_tokens = len(generated_ids)
+
+    return ChatResponse(
+        id=f"chatcmpl-{uuid.uuid4().hex[:8]}",
+        created=int(time.time()),
+        model="openmythos",
+        choices=[
+            ChatChoice(
+                index=0,
+                message=ChatMessage(role="assistant", content=completion_text),
+                finish_reason="stop",
+            )
+        ],
+        usage=ChatUsage(
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=prompt_tokens + completion_tokens,
+        ),
     )
