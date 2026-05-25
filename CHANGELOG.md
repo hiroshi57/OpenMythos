@@ -4,6 +4,36 @@ All notable changes to OpenMythos are documented here.
 
 ---
 
+## [0.13.0] — 2026-05-25
+
+### Sprint 9: マーケティング評価強化 & バッチ API & v0.13.0
+
+#### マーケティング特化評価 (`scripts/eval_marketing.py`) [新規]
+
+- `evaluate_ctr_prediction()` — CTR/CVR/ROAS の MAE・RMSE・Spearman 相関評価
+- `evaluate_content_quality()` — 品質スコア・LLMO 可視性の MAE・Spearman 評価
+- `evaluate_persona_classification()` — ペルソナ分類精度・クラス数レポート
+- `evaluate_ad_performance_tier()` — 広告 Tier 分類 Accuracy・high-tier F1・ordinal MAE
+- `run_evaluation(task, records, out_dir)` — CSV レポート一括出力
+- `TASK_EVALUATORS` ディスパッチテーブル（4 タスク対応）
+
+#### A/B テスト統計的有意性検定 (`serve/ab_router.py`)
+
+- `_significance_test(a, b)` — Welch t 検定（stdlib のみ、scipy 不要）
+- `/ab/stats` レスポンスに `significance_test.p_value` / `significant` フィールド追加
+
+#### バッチ推論 API (`serve/api.py`)
+
+- `POST /v1/batch` — 最大 64 テキストの一括推論エンドポイント
+- `BatchRequest` / `BatchResponse` / `BatchResponseItem` スキーマ
+- タスク別ループ数自動適用・`total_latency_ms` レポート
+
+#### テスト (`tests/test_sprint9.py`)
+
+- 46 tests 追加 (468 → **514 PASS**)
+
+---
+
 ## [0.12.0] — 2026-05-25
 
 ### Sprint 7: 本番 Serving テスト & データパイプライン & 分散推論

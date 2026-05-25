@@ -460,3 +460,85 @@ def chat_completions(req: ChatRequest):
             total_tokens=prompt_tokens + completion_tokens,
         ),
     )
+
+
+# ---------------------------------------------------------------------------
+# バッチ推論 /v1/batch
+# ---------------------------------------------------------------------------
+
+
+class BatchItem(BaseModel):
+    text: str
+    task: TaskType = "general"
+    loops: int = Field(DEFAULT_LOOPS, ge=1, le=16)
+
+
+class BatchRequest(BaseModel):
+    items: list[BatchItem] = Field(..., min_length=1, max_length=64)
+
+
+class BatchResponseItem(BaseModel):
+    index: int
+    score: float
+    label: int
+    loops_used: int
+    latency_ms: float
+    task: str
+
+
+class BatchResponse(BaseModel):
+    results: list[BatchResponseItem]
+    total_latency_ms: float
+    n_items: int
+
+
+@app.post("/v1/batch", response_model=BatchResponse)
+def batch_infer(req: BatchRequest):
+    """複数テキストを一括推論する。
+
+    各アイテムは独立に推論され、ループ数はアイテムごとに指定可能。
+    最大 64 アイテムまで対応。
+    """
+    t_start = time.perf_counter()
+    results: list[BatchResponseItem] = []
+
+    for i, item in enumerate(req.items):
+        loops = min(item.loops, MAX_LOOPS)
+        if item.task != "general" and item.loops == DEFAULT_LOOPS:
+            loops = TASK_LOOPS.get(item.task, DEFAULT_LOOPS)
+
+        enc = state.tokenizer(
+            item.text,
+            return_tensors="pt",
+            truncation=True,
+            max_length=512,
+        )
+        input_ids = enc["input_ids"].to(state.device)
+
+        t0 = time.perf_counter()
+        with torch.no_grad():
+            logits = state.model(input_ids, n_loops=loops)
+        latency_ms = (time.perf_counter() - t0) * 1000
+
+        last_logit = logits[0, -1, :]
+        probs = torch.softmax(last_logit, dim=-1)
+        score = float(probs.max())
+        label = 1 if score >= 0.5 else 0
+
+        results.append(
+            BatchResponseItem(
+                index=i,
+                score=round(score, 4),
+                label=label,
+                loops_used=loops,
+                latency_ms=round(latency_ms, 2),
+                task=item.task,
+            )
+        )
+
+    total_ms = (time.perf_counter() - t_start) * 1000
+    return BatchResponse(
+        results=results,
+        total_latency_ms=round(total_ms, 2),
+        n_items=len(results),
+    )

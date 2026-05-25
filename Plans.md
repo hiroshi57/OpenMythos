@@ -129,6 +129,20 @@
 
 ---
 
+## Sprint 9: マーケティング評価強化 & バッチ API & v0.13.0 (進行中)
+
+> ブランチ: `feature/sprint9-eval-batch`
+
+| task-id | 説明 | 担当 | 状態 | DoD |
+|---------|------|------|------|-----|
+| 9.1.1 | `scripts/eval_marketing.py` — CTR/CVR/ROAS・コンテンツ品質・ペルソナ分類メトリクス評価 | Worker | cc:完了 | (a) 4タスク評価関数 + TASK_EVALUATORS (b) CSV レポート出力 (c) テスト PASS |
+| 9.1.2 | `serve/ab_router.py` 強化 — A/B テスト統計的有意性検定 (`_significance_test`) | Worker | cc:完了 | (a) Welch t-test 実装（stdlib のみ） (b) `/ab/stats` に `significant` / `p_value` 追加 (c) テスト PASS |
+| 9.2.1 | `serve/api.py` に `POST /v1/batch` バッチ推論エンドポイント追加 | Worker | cc:完了 | (a) BatchRequest / BatchResponse スキーマ (b) 複数テキスト一括推論・最大 64 件 (c) テスト PASS |
+| 9.3.1 | PyPI v0.13.0 リリース準備 — pyproject.toml 0.12.0→0.13.0 + CHANGELOG Sprint 9 追加 | Worker | cc:完了 | (a) version bump (b) CHANGELOG.md Sprint 9 セクション追加 |
+| 9.4.1 | Sprint 9 テスト追加 + commit + push | Worker | cc:完了 | (a) test_sprint9.py 40 tests (b) 508 PASS (c) git push origin master |
+
+---
+
 ## 進行中の作業メモ
 
 ### 現在のブランチ状態 (2026-05-25 更新)
