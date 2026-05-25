@@ -1775,6 +1775,44 @@ class OpenMythos(nn.Module):
         """Yield only parameters that require grad (e.g. after enable_lora_finetuning)."""
         return (p for p in self.parameters() if p.requires_grad)
 
+    # ------------------------------------------------------------------
+    # 7.3.1  分散推論サポート
+    # ------------------------------------------------------------------
+
+    def to_distributed(
+        self,
+        device_ids: Optional[list[int]] = None,
+        output_device: Optional[int] = None,
+    ) -> "OpenMythos":
+        """Wrap the model with ``torch.nn.DataParallel`` for multi-GPU inference.
+
+        When CUDA is unavailable (e.g. CPU-only machines, CI) the method
+        returns ``self`` unchanged so tests always pass regardless of hardware.
+
+        Args:
+            device_ids:     List of CUDA device IDs to use (default: all GPUs).
+            output_device:  Device where outputs are gathered (default: device_ids[0]).
+
+        Returns:
+            ``self`` wrapped in ``nn.DataParallel``, or ``self`` on CPU.
+
+        Example::
+
+            model = OpenMythos(cfg).to_distributed()
+            out = model(input_ids)  # runs in parallel across all GPUs
+        """
+        if not torch.cuda.is_available():
+            # CPU 環境（CI / ローカル開発）ではそのまま返す
+            return self
+
+        dp = torch.nn.DataParallel(
+            self, device_ids=device_ids, output_device=output_device
+        )
+        # DataParallel は nn.Module を継承しないが forward は委譲される。
+        # 利便性のため元モデルへの参照を attribute として保持する。
+        dp.base_model = self  # type: ignore[attr-defined]
+        return dp  # type: ignore[return-value]
+
     def compile_model(
         self,
         mode: str = "reduce-overhead",

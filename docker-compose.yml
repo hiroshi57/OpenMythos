@@ -1,0 +1,61 @@
+version: "3.9"
+
+# OpenMythos 本番 Serving スタック
+# サービス構成:
+#   api     — FastAPI 推論サーバ (PORT 8000)
+#   monitor — 精度監視 & ドリフト検知 (PORT 8002)
+#
+# 起動:
+#   docker compose up --build
+#
+# GPU 対応 (NVIDIA Container Toolkit 必須):
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: serve/Dockerfile
+    image: openmythos-serve:latest
+    ports:
+      - "8000:8000"
+    environment:
+      DEVICE: "cpu"
+      DEFAULT_LOOPS: "4"
+      MAX_LOOPS: "16"
+      MODEL_DIM: "256"
+      MODEL_ATTN: "gqa"
+      TOKENIZER_NAME: "gpt2"
+      # MODEL_CHECKPOINT: "/checkpoints/model.pt"
+    volumes:
+      - ./data:/app/data:ro          # 推論用データ (read-only)
+      # - ./checkpoints:/checkpoints # 学習済みモデル (必要時)
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+  monitor:
+    build:
+      context: .
+      dockerfile: serve/Dockerfile
+    image: openmythos-serve:latest
+    ports:
+      - "8002:8002"
+    environment:
+      DEVICE: "cpu"
+    volumes:
+      - monitor_db:/app/data         # SQLite 永続化
+    command:
+      ["uvicorn", "serve.monitor:monitor_app", "--host", "0.0.0.0", "--port", "8002"]
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  monitor_db:
+    driver: local

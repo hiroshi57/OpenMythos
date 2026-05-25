@@ -28,15 +28,15 @@ from transformers import AutoTokenizer
 
 from open_mythos.main import MythosConfig, OpenMythos
 
-
 # ---------------------------------------------------------------------------
 # Small model preset for quick CPU evaluation
 # ---------------------------------------------------------------------------
 
+
 def small_eval_config() -> MythosConfig:
     """256-dim model that fits comfortably in CPU RAM for eval."""
     return MythosConfig(
-        vocab_size=50257,    # GPT-2 tokenizer vocab
+        vocab_size=50257,  # GPT-2 tokenizer vocab
         dim=256,
         n_heads=8,
         n_kv_heads=2,
@@ -63,6 +63,7 @@ def small_eval_config() -> MythosConfig:
 # Perplexity computation
 # ---------------------------------------------------------------------------
 
+
 @torch.no_grad()
 def compute_perplexity(
     model: OpenMythos,
@@ -87,8 +88,8 @@ def compute_perplexity(
         if max_batches is not None and i >= max_batches:
             break
         chunk = token_ids[start : start + seq_len + 1].to(device)
-        input_ids = chunk[:-1].unsqueeze(0)   # (1, seq_len)
-        targets   = chunk[1:].unsqueeze(0)    # (1, seq_len)
+        input_ids = chunk[:-1].unsqueeze(0)  # (1, seq_len)
+        targets = chunk[1:].unsqueeze(0)  # (1, seq_len)
 
         logits = model(input_ids, n_loops=n_loops)  # (1, seq_len, vocab)
         loss = F.cross_entropy(
@@ -108,14 +109,22 @@ def compute_perplexity(
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--seq-len", type=int, default=256)
-    parser.add_argument("--max-batches", type=int, default=None,
-                        help="Limit batches per loop setting (use 20-50 for quick smoke-test)")
-    parser.add_argument("--loops", default="1,2,4,8,16",
-                        help="Comma-separated n_loops values to evaluate")
+    parser.add_argument(
+        "--max-batches",
+        type=int,
+        default=None,
+        help="Limit batches per loop setting (use 20-50 for quick smoke-test)",
+    )
+    parser.add_argument(
+        "--loops",
+        default="1,2,4,8,16",
+        help="Comma-separated n_loops values to evaluate",
+    )
     parser.add_argument("--out-dir", default="results")
     args = parser.parse_args()
 
@@ -148,7 +157,9 @@ def main():
     print("-" * 32)
     for n_loops in loop_values:
         ppl, elapsed = compute_perplexity(
-            model, token_ids, n_loops,
+            model,
+            token_ids,
+            n_loops,
             seq_len=args.seq_len,
             device=device,
             max_batches=args.max_batches,
@@ -169,7 +180,7 @@ def main():
         import matplotlib.pyplot as plt
 
         loops_x = [r["loops"] for r in results]
-        ppls_y  = [r["perplexity"] for r in results]
+        ppls_y = [r["perplexity"] for r in results]
 
         fig, ax = plt.subplots(figsize=(7, 4))
         ax.plot(loops_x, ppls_y, marker="o", linewidth=2, color="#3670A0")
