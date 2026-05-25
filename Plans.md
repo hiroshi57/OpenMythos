@@ -99,19 +99,19 @@
 
 ---
 
-## Sprint 7: 本番 Serving テスト & データパイプライン & v0.12.0 (Next)
+## Sprint 7: 本番 Serving テスト & データパイプライン & v0.12.0 (完了)
 
 > ブランチ: `feature/sprint7-serving-data`
 
 | task-id | 説明 | 担当 | 状態 | DoD |
 |---------|------|------|------|-----|
-| 7.1.1 | serve/ 統合テスト — FastAPI endpoints / A/B router / SLA router / monitor | Worker | cc:TODO | (a) test_sprint7_serve.py 作成 (b) httpx/TestClient でエンドポイント検証 (c) 既存テスト全 PASS |
-| 7.1.2 | serve/ Docker ビルド確認 & docker-compose.yml 追加 | Worker | cc:TODO | (a) docker build 成功 (b) docker-compose.yml (api + monitor) 作成 |
-| 7.2.1 | data パイプライン テスト — preprocess / csv_to_jsonl / eval_perplexity / finetune | Worker | cc:TODO | (a) test_sprint7_data.py 作成 (b) 各スクリプトの主要関数を単体テスト (c) 全テスト PASS |
-| 7.2.2 | HuggingFace Datasets ストリーミング統合 — `stream_dataset()` + `preprocess_stream()` | Worker | cc:TODO | (a) scripts/preprocess.py にストリーミング対応追加 (b) メモリ効率テスト追加 |
-| 7.3.1 | 分散推論サポート — `DataParallel` ラッパー + `model.to_distributed()` | Worker | cc:TODO | (a) OpenMythos に to_distributed() 追加 (b) CPU でのフォールバック動作テスト (c) 既存テスト全 PASS |
-| 7.4.1 | PyPI v0.12.0 リリース準備 — pyproject.toml 0.11.0→0.12.0 + CHANGELOG 更新 | Worker | cc:TODO | (a) version bump (b) CHANGELOG.md Sprint 7 セクション追加 (c) serve/scripts 依存を extras に追加 |
-| 7.5.1 | Sprint 7 テスト追加 + commit + push — master へ一括コミット & GitHub push | Worker | cc:TODO | (a) 全テスト PASS (目標 420+) (b) git push origin master (c) CI green |
+| 7.1.1 | serve/ 統合テスト — FastAPI endpoints / A/B router / SLA router / monitor | Worker | cc:完了 | (a) test_sprint7_serve.py 作成 (b) httpx/TestClient でエンドポイント検証 (c) 既存テスト全 PASS |
+| 7.1.2 | serve/ Docker ビルド確認 & docker-compose.yml 追加 | Worker | cc:完了 | (a) docker build 成功 (b) docker-compose.yml (api + monitor) 作成 |
+| 7.2.1 | data パイプライン テスト — preprocess / csv_to_jsonl / eval_perplexity / finetune | Worker | cc:完了 | (a) test_sprint7_data.py 作成 (b) 各スクリプトの主要関数を単体テスト (c) 全テスト PASS |
+| 7.2.2 | HuggingFace Datasets ストリーミング統合 — `stream_dataset()` + `preprocess_stream()` | Worker | cc:完了 | (a) scripts/preprocess.py にストリーミング対応追加 (b) メモリ効率テスト追加 |
+| 7.3.1 | 分散推論サポート — `DataParallel` ラッパー + `model.to_distributed()` | Worker | cc:完了 | (a) OpenMythos に to_distributed() 追加 (b) CPU でのフォールバック動作テスト (c) 既存テスト全 PASS |
+| 7.4.1 | PyPI v0.12.0 リリース準備 — pyproject.toml 0.11.0→0.12.0 + CHANGELOG 更新 | Worker | cc:完了 | (a) version bump (b) CHANGELOG.md Sprint 7 セクション追加 (c) serve/scripts 依存を extras に追加 |
+| 7.5.1 | Sprint 7 テスト追加 + commit + push — master へ一括コミット & GitHub push | Worker | cc:完了 | (a) 全テスト PASS (目標 420+) (b) git push origin master (c) CI green |
 
 ---
 
