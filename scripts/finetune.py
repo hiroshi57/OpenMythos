@@ -125,11 +125,26 @@ def train(args):
         cfg = _small_config()
         model = OpenMythos(cfg).to(device)
 
+    # --- LoRA ファインチューニング (--lora フラグで有効化) ---
+    if args.lora:
+        model.enable_lora_finetuning()
+        n_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        n_total = sum(p.numel() for p in model.parameters())
+        print(
+            f"  LoRA mode: {n_trainable:,} / {n_total:,} params trainable "
+            f"({100 * n_trainable / max(n_total, 1):.1f}%)"
+        )
+        train_params = list(model.trainable_parameters())
+    else:
+        n_trainable = sum(p.numel() for p in model.parameters())
+        print(f"  Full fine-tune: {n_trainable:,} parameters")
+        train_params = list(model.parameters())
+
     n_params = sum(p.numel() for p in model.parameters())
-    print(f"  {n_params:,} parameters")
+    print(f"  {n_params:,} total parameters")
 
     # --- オプティマイザ・スケジューラ ---
-    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.1)
+    optimizer = torch.optim.AdamW(train_params, lr=lr, weight_decay=0.1)
     total_steps = len(train_loader) * epochs
     scheduler = get_cosine_schedule_with_warmup(
         optimizer,
@@ -285,6 +300,11 @@ def main():
     parser.add_argument("--n-loops", type=int, default=None, help="訓練時のループ数")
     parser.add_argument("--max-length", type=int, default=512)
     parser.add_argument("--out-dir", default="checkpoints/finetune")
+    parser.add_argument(
+        "--lora",
+        action="store_true",
+        help="LoRA ファインチューニングモード（LoRA アダプタのみ学習、base weights は freeze）",
+    )
     args = parser.parse_args()
     train(args)
 
