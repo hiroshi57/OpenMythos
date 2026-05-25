@@ -24,11 +24,11 @@ from typing import Any
 
 from transformers import AutoTokenizer
 
-
 # ---------------------------------------------------------------------------
 # タスク別テキスト生成関数
 # （input_text と metadata を結合してモデルへの入力プロンプトを作る）
 # ---------------------------------------------------------------------------
+
 
 def build_content_quality_prompt(record: dict) -> tuple[str, str]:
     """
@@ -141,16 +141,16 @@ def build_market_research_prompt(record: dict) -> tuple[str, str]:
 
 
 TASK_BUILDERS = {
-    "content_quality":  build_content_quality_prompt,
-    "ad_performance":   build_ad_performance_prompt,
-    "persona_segment":  build_persona_segment_prompt,
-    "market_research":  build_market_research_prompt,
+    "content_quality": build_content_quality_prompt,
+    "ad_performance": build_ad_performance_prompt,
+    "persona_segment": build_persona_segment_prompt,
+    "market_research": build_market_research_prompt,
 }
 
 # SEO・広告優先の重み（データ混合時のサンプリング比率）
 TASK_WEIGHTS = {
-    "content_quality": 3.0,   # SEO/LLMO — 最優先
-    "ad_performance":  3.0,   # 広告 — 最優先
+    "content_quality": 3.0,  # SEO/LLMO — 最優先
+    "ad_performance": 3.0,  # 広告 — 最優先
     "persona_segment": 1.5,
     "market_research": 1.0,
 }
@@ -159,6 +159,7 @@ TASK_WEIGHTS = {
 # ---------------------------------------------------------------------------
 # JSONL 読み込み・トークナイズ
 # ---------------------------------------------------------------------------
+
 
 def load_jsonl(path: Path) -> list[dict[str, Any]]:
     records = []
@@ -212,6 +213,7 @@ def tokenize_record(
 # パイプライン本体
 # ---------------------------------------------------------------------------
 
+
 def process_task(
     task: str,
     input_path: Path,
@@ -252,7 +254,11 @@ def split_dataset(
     n = len(shuffled)
     n_train = int(n * train_ratio)
     n_val = int(n * val_ratio)
-    return shuffled[:n_train], shuffled[n_train:n_train + n_val], shuffled[n_train + n_val:]
+    return (
+        shuffled[:n_train],
+        shuffled[n_train : n_train + n_val],
+        shuffled[n_train + n_val :],
+    )
 
 
 def save_jsonl(records: list[dict], path: Path):
@@ -265,8 +271,102 @@ def save_jsonl(records: list[dict], path: Path):
 
 
 # ---------------------------------------------------------------------------
+# 7.2.2: HuggingFace Datasets ストリーミング統合
+# ---------------------------------------------------------------------------
+
+from typing import Iterator  # noqa: E402 (stdlib import after third-party ok here)
+
+
+def stream_dataset(
+    paths: list[Path],
+    chunk_size: int = 100,
+) -> Iterator[list[dict]]:
+    """複数の JSONL ファイルをチャンク単位でメモリ効率よく読み込む。
+
+    全レコードをメモリにロードせず、``chunk_size`` 件ずつ yield する。
+    大規模データセットの前処理に使用する。
+
+    Args:
+        paths:      JSONL ファイルパスのリスト
+        chunk_size: 1回の yield で返すレコード数
+
+    Yields:
+        list[dict] — ``chunk_size`` 件以下のレコードリスト
+    """
+    buffer: list[dict] = []
+    for path in paths:
+        try:
+            with open(path, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        buffer.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+                    if len(buffer) >= chunk_size:
+                        yield buffer
+                        buffer = []
+        except OSError:
+            continue
+    if buffer:
+        yield buffer
+
+
+def preprocess_stream(
+    paths: list[Path],
+    task: str,
+    chunk_size: int = 100,
+    tokenizer: "AutoTokenizer | None" = None,
+    max_length: int = 512,
+) -> Iterator[list[dict]]:
+    """JSONL をストリームで読みながらプロンプト変換して yield する。
+
+    ``tokenizer`` が None の場合はトークナイズをスキップし、
+    ``prompt``/``target`` のみ付与した辞書を返す。
+
+    Args:
+        paths:       JSONL ファイルパスのリスト
+        task:        タスク名 (``TASK_BUILDERS`` のキー)
+        chunk_size:  1回の yield で返すレコード数
+        tokenizer:   HuggingFace トークナイザ（省略可）
+        max_length:  トークン最大長
+
+    Yields:
+        list[dict] — 変換済みレコードのチャンク
+    """
+    builder = TASK_BUILDERS.get(task)
+    if builder is None:
+        raise ValueError(f"Unknown task '{task}'. Choose from: {list(TASK_BUILDERS)}")
+
+    for raw_chunk in stream_dataset(paths, chunk_size=chunk_size):
+        processed: list[dict] = []
+        for rec in raw_chunk:
+            try:
+                prompt, target = builder(rec)
+            except (KeyError, TypeError):
+                continue  # 無効レコードはスキップ
+
+            if tokenizer is not None:
+                tok = tokenize_record(prompt, target, tokenizer, max_length)
+            else:
+                tok = {"prompt": prompt, "target": target}
+
+            tok["record_id"] = rec.get("record_id", "")
+            tok["task"] = task
+            tok.setdefault("prompt", prompt)
+            tok.setdefault("target", target)
+            processed.append(tok)
+
+        if processed:
+            yield processed
+
+
+# ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -304,24 +404,28 @@ def main():
                 print(f"[skip] {task}: no JSONL found in {input_path}")
                 continue
             print(f"\n[{task}] processing {candidates[0].name} ...")
-            recs = process_task(task, candidates[0], tokenizer, args.max_length, args.seed)
+            recs = process_task(
+                task, candidates[0], tokenizer, args.max_length, args.seed
+            )
             print(f"  {len(recs)} records (weight={TASK_WEIGHTS[task]})")
             all_records.extend(recs)
 
         print(f"\nTotal: {len(all_records)} records across all tasks")
         train, val, test = split_dataset(all_records, seed=args.seed)
         save_jsonl(train, out_dir / "all" / "train.jsonl")
-        save_jsonl(val,   out_dir / "all" / "val.jsonl")
-        save_jsonl(test,  out_dir / "all" / "test.jsonl")
+        save_jsonl(val, out_dir / "all" / "val.jsonl")
+        save_jsonl(test, out_dir / "all" / "test.jsonl")
 
     else:
         print(f"\n[{args.task}] processing {input_path} ...")
-        records = process_task(args.task, input_path, tokenizer, args.max_length, args.seed)
+        records = process_task(
+            args.task, input_path, tokenizer, args.max_length, args.seed
+        )
         print(f"  {len(records)} records")
         train, val, test = split_dataset(records, seed=args.seed)
         save_jsonl(train, out_dir / args.task / "train.jsonl")
-        save_jsonl(val,   out_dir / args.task / "val.jsonl")
-        save_jsonl(test,  out_dir / args.task / "test.jsonl")
+        save_jsonl(val, out_dir / args.task / "val.jsonl")
+        save_jsonl(test, out_dir / args.task / "test.jsonl")
 
     print("\nDone.")
 

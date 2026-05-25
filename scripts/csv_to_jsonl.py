@@ -26,13 +26,13 @@ import argparse
 import csv
 import json
 import re
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 try:
     import yaml
+
     _HAS_YAML = True
 except ImportError:
     _HAS_YAML = False
@@ -44,52 +44,72 @@ except ImportError:
 
 AUTO_MAP_RULES: dict[str, list[str]] = {
     # 共通
-    "input_text":    ["text", "body", "content", "honbun", "naiyou", "ad_copy",
-                      "creative", "query", "comment",
-                      "answer", "kotae", "log", "summary", "url_text"],
+    "input_text": [
+        "text",
+        "body",
+        "content",
+        "honbun",
+        "naiyou",
+        "ad_copy",
+        "creative",
+        "query",
+        "comment",
+        "answer",
+        "kotae",
+        "log",
+        "summary",
+        "url_text",
+    ],
     # 広告専用（headline + description を別フィールドとして受け取り後で結合）
-    "ad_headline":   ["headline", "title", "midashi", "head"],
-    "ad_description":["description", "desc", "setsumei", "body_copy"],
-    "url":           ["url", "link", "page_url"],
-    "page_title":    ["title", "page_title", "taitle"],
-    "industry":      ["industry", "gyoushu", "vertical", "category"],
-    "collected_at":  ["date", "datetime", "collected_at", "created_at",
-                      "timestamp", "nichiji", "nichi"],
+    "ad_headline": ["headline", "title", "midashi", "head"],
+    "ad_description": ["description", "desc", "setsumei", "body_copy"],
+    "url": ["url", "link", "page_url"],
+    "page_title": ["title", "page_title", "taitle"],
+    "industry": ["industry", "gyoushu", "vertical", "category"],
+    "collected_at": [
+        "date",
+        "datetime",
+        "collected_at",
+        "created_at",
+        "timestamp",
+        "nichiji",
+        "nichi",
+    ],
     # content_quality
-    "target_keyword":["keyword", "kw", "search_term", "target_kw"],
-    "content_type":  ["content_type", "type", "format"],
-    "word_count":    ["word_count", "length", "char_count", "mojicount"],
+    "target_keyword": ["keyword", "kw", "search_term", "target_kw"],
+    "content_type": ["content_type", "type", "format"],
+    "word_count": ["word_count", "length", "char_count", "mojicount"],
     "quality_score": ["quality", "quality_score", "score", "rating", "hyouka"],
-    "relevance_score":["relevance", "relevance_score", "kanrensei"],
-    "llmo_visibility":["llmo", "llmo_score", "llm_visibility", "ai_score"],
-    "improvement_tags":["tags", "label_tags", "feedback"],
+    "relevance_score": ["relevance", "relevance_score", "kanrensei"],
+    "llmo_visibility": ["llmo", "llmo_score", "llm_visibility", "ai_score"],
+    "improvement_tags": ["tags", "label_tags", "feedback"],
     # ad_performance
-    "campaign_id":   ["campaign_id", "campaign", "camp_id"],
-    "ad_format":     ["format", "ad_format", "ad_type"],
-    "platform":      ["platform", "media", "channel"],
-    "target_segment":["segment", "target", "audience"],
-    "budget_jpy":    ["budget", "yosan", "spend"],
-    "actual_ctr":    ["ctr", "click_rate", "clickrate"],
-    "actual_cvr":    ["cvr", "conv_rate", "conversion_rate"],
-    "actual_roas":   ["roas", "return_on_ad_spend"],
-    "performance_tier":["tier", "grade", "rank", "performance", "class"],
+    "campaign_id": ["campaign_id", "campaign", "camp_id"],
+    "ad_format": ["format", "ad_format", "ad_type"],
+    "platform": ["platform", "media", "channel"],
+    "target_segment": ["segment", "target", "audience"],
+    "budget_jpy": ["budget", "yosan", "spend"],
+    "actual_ctr": ["ctr", "click_rate", "clickrate"],
+    "actual_cvr": ["cvr", "conv_rate", "conversion_rate"],
+    "actual_roas": ["roas", "return_on_ad_spend"],
+    "performance_tier": ["tier", "grade", "rank", "performance", "class"],
     # persona_segment
-    "persona_segment":["persona", "segment", "label", "class", "category"],
-    "confidence":    ["confidence", "conf", "score", "certainty"],
-    "device_type":   ["device", "device_type", "ua_device"],
-    "region":        ["region", "area", "prefecture", "pref", "chiiki"],
-    "age_group":     ["age", "age_group", "nendai"],
-    "gender":        ["gender", "sei", "sex"],
+    "persona_segment": ["persona", "segment", "label", "class", "category"],
+    "confidence": ["confidence", "conf", "score", "certainty"],
+    "device_type": ["device", "device_type", "ua_device"],
+    "region": ["region", "area", "prefecture", "pref", "chiiki"],
+    "age_group": ["age", "age_group", "nendai"],
+    "gender": ["gender", "sei", "sex"],
     # market_research
-    "research_topic":["topic", "theme", "chosa_topic"],
+    "research_topic": ["topic", "theme", "chosa_topic"],
     "target_market": ["market", "target_market", "taishou"],
-    "data_period":   ["period", "data_period", "kikan"],
-    "source_name":   ["source", "source_name", "media_name"],
-    "respondent_count":["n", "count", "respondents", "sample"],
-    "competitor_name":["competitor", "company", "kyougousha"],
-    "sentiment":     ["sentiment", "kanjo", "feeling", "tone"],
-    "trend_tags":    ["trend", "tags", "keywords"],
-    "importance_score":["importance", "juyoudo", "priority"],
+    "data_period": ["period", "data_period", "kikan"],
+    "source_name": ["source", "source_name", "media_name"],
+    "respondent_count": ["n", "count", "respondents", "sample"],
+    "competitor_name": ["competitor", "company", "kyougousha"],
+    "sentiment": ["sentiment", "kanjo", "feeling", "tone"],
+    "trend_tags": ["trend", "tags", "keywords"],
+    "importance_score": ["importance", "juyoudo", "priority"],
 }
 
 
@@ -111,7 +131,7 @@ def auto_detect_mapping(headers: list[str]) -> dict[str, str]:
 
 TASK_INDUSTRY_DEFAULTS = {
     "content_quality": "seo",
-    "ad_performance":  "advertising",
+    "ad_performance": "advertising",
     "persona_segment": "marketing",
     "market_research": "market_research",
 }
@@ -143,9 +163,7 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).astimezone().isoformat()
 
 
-def build_content_quality_record(
-    row: dict, mapping: dict, idx: int
-) -> dict | None:
+def build_content_quality_record(row: dict, mapping: dict, idx: int) -> dict | None:
     text = _get(row, mapping, "input_text")
     if not text:
         return None
@@ -153,52 +171,56 @@ def build_content_quality_record(
     q = _float(_get(row, mapping, "quality_score"))
     r = _float(_get(row, mapping, "relevance_score"))
     tags_raw = _get(row, mapping, "improvement_tags", "")
-    tags = [t.strip() for t in re.split(r"[,;/]", str(tags_raw)) if t.strip()] if tags_raw else []
+    tags = (
+        [t.strip() for t in re.split(r"[,;/]", str(tags_raw)) if t.strip()]
+        if tags_raw
+        else []
+    )
 
     return {
-        "record_id":   f"cq_{datetime.now().strftime('%Y%m%d')}_{idx:04d}",
+        "record_id": f"cq_{datetime.now().strftime('%Y%m%d')}_{idx:04d}",
         "source_type": "web_content",
         "collected_at": _get(row, mapping, "collected_at", _now_iso()),
-        "industry":    _get(row, mapping, "industry", "seo"),
-        "input_text":  text,
+        "industry": _get(row, mapping, "industry", "seo"),
+        "input_text": text,
         "metadata": {
-            "url":            _get(row, mapping, "url"),
-            "page_title":     _get(row, mapping, "page_title"),
+            "url": _get(row, mapping, "url"),
+            "page_title": _get(row, mapping, "page_title"),
             "target_keyword": _get(row, mapping, "target_keyword"),
-            "content_type":   _get(row, mapping, "content_type", "article"),
-            "word_count":     _int(_get(row, mapping, "word_count")),
-            "language":       "ja",
+            "content_type": _get(row, mapping, "content_type", "article"),
+            "word_count": _int(_get(row, mapping, "word_count")),
+            "language": "ja",
         },
         "label": {
-            "quality_score":    q if q is not None else 0.0,
-            "relevance_score":  r if r is not None else 0.0,
+            "quality_score": q if q is not None else 0.0,
+            "relevance_score": r if r is not None else 0.0,
             "eeat_score": {
-                "experience": 0.0, "expertise": 0.0,
-                "authority": 0.0,  "trustworthiness": 0.0,
+                "experience": 0.0,
+                "expertise": 0.0,
+                "authority": 0.0,
+                "trustworthiness": 0.0,
             },
-            "llmo_visibility":  _float(_get(row, mapping, "llmo_visibility")) or 0.0,
+            "llmo_visibility": _float(_get(row, mapping, "llmo_visibility")) or 0.0,
             "improvement_tags": tags,
-            "labeled_by":  "human",
-            "labeled_at":  _now_iso(),
+            "labeled_by": "human",
+            "labeled_at": _now_iso(),
         },
     }
 
 
-def build_ad_performance_record(
-    row: dict, mapping: dict, idx: int
-) -> dict | None:
+def build_ad_performance_record(row: dict, mapping: dict, idx: int) -> dict | None:
     # headline + description を結合（広告CSVの典型パターン）
     headline = _get(row, mapping, "ad_headline", "")
-    desc     = _get(row, mapping, "ad_description", "")
-    text     = _get(row, mapping, "input_text")
+    desc = _get(row, mapping, "ad_description", "")
+    text = _get(row, mapping, "input_text")
     if not text:
         if headline or desc:
             text = f"見出し: {headline} | 説明: {desc}".strip(" |")
         else:
             return None
 
-    ctr  = _float(_get(row, mapping, "actual_ctr"))
-    cvr  = _float(_get(row, mapping, "actual_cvr"))
+    ctr = _float(_get(row, mapping, "actual_ctr"))
+    cvr = _float(_get(row, mapping, "actual_cvr"))
     roas = _float(_get(row, mapping, "actual_roas"))
 
     tier = _get(row, mapping, "performance_tier")
@@ -207,101 +229,101 @@ def build_ad_performance_record(
     tier = tier or "medium"
 
     return {
-        "record_id":   f"ap_{datetime.now().strftime('%Y%m%d')}_{idx:04d}",
+        "record_id": f"ap_{datetime.now().strftime('%Y%m%d')}_{idx:04d}",
         "source_type": "ad_creative",
         "collected_at": _get(row, mapping, "collected_at", _now_iso()),
-        "industry":    _get(row, mapping, "industry", "advertising"),
-        "input_text":  text,
+        "industry": _get(row, mapping, "industry", "advertising"),
+        "input_text": text,
         "metadata": {
-            "campaign_id":    _get(row, mapping, "campaign_id"),
-            "ad_format":      _get(row, mapping, "ad_format", "search"),
-            "platform":       _get(row, mapping, "platform", "google"),
+            "campaign_id": _get(row, mapping, "campaign_id"),
+            "ad_format": _get(row, mapping, "ad_format", "search"),
+            "platform": _get(row, mapping, "platform", "google"),
             "target_segment": _get(row, mapping, "target_segment"),
-            "budget_jpy":     _int(_get(row, mapping, "budget_jpy")),
+            "budget_jpy": _int(_get(row, mapping, "budget_jpy")),
             "industry_vertical": _get(row, mapping, "industry"),
-            "creative_id":    _get(row, mapping, "campaign_id"),
-            "landing_url":    _get(row, mapping, "url"),
+            "creative_id": _get(row, mapping, "campaign_id"),
+            "landing_url": _get(row, mapping, "url"),
         },
         "label": {
             "performance_tier": tier,
-            "actual_ctr":  ctr,
-            "actual_cvr":  cvr,
+            "actual_ctr": ctr,
+            "actual_cvr": cvr,
             "actual_roas": roas,
             "predicted_ctr": None,
-            "labeled_by":  "human",
-            "labeled_at":  _now_iso(),
+            "labeled_by": "human",
+            "labeled_at": _now_iso(),
         },
     }
 
 
-def build_persona_segment_record(
-    row: dict, mapping: dict, idx: int
-) -> dict | None:
+def build_persona_segment_record(row: dict, mapping: dict, idx: int) -> dict | None:
     text = _get(row, mapping, "input_text")
     if not text:
         return None
 
     return {
-        "record_id":   f"ps_{datetime.now().strftime('%Y%m%d')}_{idx:04d}",
+        "record_id": f"ps_{datetime.now().strftime('%Y%m%d')}_{idx:04d}",
         "source_type": "behavior_log",
         "collected_at": _get(row, mapping, "collected_at", _now_iso()),
-        "industry":    _get(row, mapping, "industry", "marketing"),
-        "input_text":  text,
+        "industry": _get(row, mapping, "industry", "marketing"),
+        "input_text": text,
         "metadata": {
-            "session_id":  _get(row, mapping, "campaign_id"),
+            "session_id": _get(row, mapping, "campaign_id"),
             "device_type": _get(row, mapping, "device_type", "unknown"),
-            "region":      _get(row, mapping, "region"),
-            "age_group":   _get(row, mapping, "age_group", "unknown"),
-            "gender":      _get(row, mapping, "gender", "unknown"),
+            "region": _get(row, mapping, "region"),
+            "age_group": _get(row, mapping, "age_group", "unknown"),
+            "gender": _get(row, mapping, "gender", "unknown"),
         },
         "label": {
             "persona_segment": _get(row, mapping, "persona_segment", "other"),
-            "confidence":  _float(_get(row, mapping, "confidence")) or 0.8,
-            "labeled_by":  "human",
-            "labeled_at":  _now_iso(),
+            "confidence": _float(_get(row, mapping, "confidence")) or 0.8,
+            "labeled_by": "human",
+            "labeled_at": _now_iso(),
         },
     }
 
 
-def build_market_research_record(
-    row: dict, mapping: dict, idx: int
-) -> dict | None:
+def build_market_research_record(row: dict, mapping: dict, idx: int) -> dict | None:
     text = _get(row, mapping, "input_text")
     if not text:
         return None
 
     tags_raw = _get(row, mapping, "trend_tags", "")
-    tags = [t.strip() for t in re.split(r"[,;/]", str(tags_raw)) if t.strip()] if tags_raw else []
+    tags = (
+        [t.strip() for t in re.split(r"[,;/]", str(tags_raw)) if t.strip()]
+        if tags_raw
+        else []
+    )
 
     return {
-        "record_id":   f"mr_{datetime.now().strftime('%Y%m%d')}_{idx:04d}",
+        "record_id": f"mr_{datetime.now().strftime('%Y%m%d')}_{idx:04d}",
         "source_type": "web_content",
         "collected_at": _get(row, mapping, "collected_at", _now_iso()),
-        "industry":    _get(row, mapping, "industry", "market_research"),
-        "input_text":  text,
+        "industry": _get(row, mapping, "industry", "market_research"),
+        "input_text": text,
         "metadata": {
-            "research_topic":   _get(row, mapping, "research_topic"),
-            "target_market":    _get(row, mapping, "target_market"),
-            "data_period":      _get(row, mapping, "data_period"),
-            "source_name":      _get(row, mapping, "source_name"),
+            "research_topic": _get(row, mapping, "research_topic"),
+            "target_market": _get(row, mapping, "target_market"),
+            "data_period": _get(row, mapping, "data_period"),
+            "source_name": _get(row, mapping, "source_name"),
             "respondent_count": _int(_get(row, mapping, "respondent_count")),
-            "competitor_name":  _get(row, mapping, "competitor_name"),
+            "competitor_name": _get(row, mapping, "competitor_name"),
         },
         "label": {
-            "summary":        _get(row, mapping, "input_text", text)[:300],
-            "sentiment":      _get(row, mapping, "sentiment", "neutral"),
-            "trend_tags":     tags,
+            "summary": _get(row, mapping, "input_text", text)[:300],
+            "sentiment": _get(row, mapping, "sentiment", "neutral"),
+            "trend_tags": tags,
             "importance_score": _float(_get(row, mapping, "importance_score")) or 3.0,
             "report_section": "market_size",
-            "labeled_by":     "human",
-            "labeled_at":     _now_iso(),
+            "labeled_by": "human",
+            "labeled_at": _now_iso(),
         },
     }
 
 
 TASK_BUILDERS = {
     "content_quality": build_content_quality_record,
-    "ad_performance":  build_ad_performance_record,
+    "ad_performance": build_ad_performance_record,
     "persona_segment": build_persona_segment_record,
     "market_research": build_market_research_record,
 }
@@ -310,6 +332,7 @@ TASK_BUILDERS = {
 # ---------------------------------------------------------------------------
 # CSV 読み込み・変換
 # ---------------------------------------------------------------------------
+
 
 def convert_csv(
     task: str,
@@ -343,9 +366,7 @@ def load_mapping(mapping_path: Path) -> dict[str, str]:
     return json.loads(text)
 
 
-def generate_mapping_template(
-    task: str, headers: list[str], out_path: Path
-):
+def generate_mapping_template(task: str, headers: list[str], out_path: Path):
     """CSV 列名を確認してマッピングテンプレートを生成する。"""
     auto = auto_detect_mapping(headers)
     template = {
@@ -358,16 +379,49 @@ def generate_mapping_template(
     }
     # タスク別の必須フィールドを先頭に表示
     required = {
-        "content_quality": ["input_text", "url", "page_title", "target_keyword",
-                            "content_type", "word_count", "quality_score",
-                            "relevance_score", "llmo_visibility", "improvement_tags"],
-        "ad_performance":  ["input_text", "url", "campaign_id", "ad_format",
-                            "platform", "target_segment", "budget_jpy",
-                            "actual_ctr", "actual_cvr", "actual_roas", "performance_tier"],
-        "persona_segment": ["input_text", "persona_segment", "confidence",
-                            "device_type", "region", "age_group", "gender"],
-        "market_research": ["input_text", "research_topic", "target_market",
-                            "data_period", "sentiment", "trend_tags", "importance_score"],
+        "content_quality": [
+            "input_text",
+            "url",
+            "page_title",
+            "target_keyword",
+            "content_type",
+            "word_count",
+            "quality_score",
+            "relevance_score",
+            "llmo_visibility",
+            "improvement_tags",
+        ],
+        "ad_performance": [
+            "input_text",
+            "url",
+            "campaign_id",
+            "ad_format",
+            "platform",
+            "target_segment",
+            "budget_jpy",
+            "actual_ctr",
+            "actual_cvr",
+            "actual_roas",
+            "performance_tier",
+        ],
+        "persona_segment": [
+            "input_text",
+            "persona_segment",
+            "confidence",
+            "device_type",
+            "region",
+            "age_group",
+            "gender",
+        ],
+        "market_research": [
+            "input_text",
+            "research_topic",
+            "target_market",
+            "data_period",
+            "sentiment",
+            "trend_tags",
+            "importance_score",
+        ],
     }
     for field in required.get(task, []):
         template[field] = auto.get(field, None)
@@ -383,23 +437,37 @@ def generate_mapping_template(
 # main
 # ---------------------------------------------------------------------------
 
+
 def main():
     parser = argparse.ArgumentParser(
         description="社内CSV → OpenMythos JSONL コンバータ"
     )
-    parser.add_argument("--task", choices=list(TASK_BUILDERS.keys()),
-                        help="変換するタスク種別")
+    parser.add_argument(
+        "--task", choices=list(TASK_BUILDERS.keys()), help="変換するタスク種別"
+    )
     parser.add_argument("--input", help="入力CSVファイルパス")
     parser.add_argument("--output", help="出力JONSLファイルパス（省略時は自動命名）")
     parser.add_argument("--mapping", help="列マッピング設定ファイル（JSON/YAML）")
-    parser.add_argument("--auto-map", action="store_true",
-                        help="列名から自動推定してマッピング（設定ファイル不要）")
-    parser.add_argument("--inspect", metavar="CSV",
-                        help="CSVの列名を確認してマッピングテンプレートを生成するだけ")
-    parser.add_argument("--encoding", default="utf-8-sig",
-                        help="CSVの文字コード（デフォルト: utf-8-sig = BOM付きUTF-8、Excelで保存した場合に使用）")
-    parser.add_argument("--out-dir", default="data/converted",
-                        help="出力ディレクトリ（--output 省略時）")
+    parser.add_argument(
+        "--auto-map",
+        action="store_true",
+        help="列名から自動推定してマッピング（設定ファイル不要）",
+    )
+    parser.add_argument(
+        "--inspect",
+        metavar="CSV",
+        help="CSVの列名を確認してマッピングテンプレートを生成するだけ",
+    )
+    parser.add_argument(
+        "--encoding",
+        default="utf-8-sig",
+        help="CSVの文字コード（デフォルト: utf-8-sig = BOM付きUTF-8、Excelで保存した場合に使用）",
+    )
+    parser.add_argument(
+        "--out-dir",
+        default="data/converted",
+        help="出力ディレクトリ（--output 省略時）",
+    )
     args = parser.parse_args()
 
     # --inspect: 列名確認＋テンプレート生成のみ
@@ -436,8 +504,10 @@ def main():
         mapping = auto_detect_mapping(headers)
         tmpl_path = Path("configs") / f"mapping_{args.task}_{csv_path.stem}.json"
         generate_mapping_template(args.task, headers, tmpl_path)
-        print(f"\n自動推定マッピングで変換を続行します。")
-        print(f"結果を確認して {tmpl_path} を編集し --mapping で再実行することを推奨します。\n")
+        print("\n自動推定マッピングで変換を続行します。")
+        print(
+            f"結果を確認して {tmpl_path} を編集し --mapping で再実行することを推奨します。\n"
+        )
 
     # 変換
     print(f"変換中: {csv_path} ...")
@@ -457,7 +527,7 @@ def main():
         for rec in records:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
     print(f"出力完了: {out_path}")
-    print(f"\n次のステップ:")
+    print("\n次のステップ:")
     print(f"  python scripts/preprocess.py --task {args.task} --input {out_path}")
 
 
