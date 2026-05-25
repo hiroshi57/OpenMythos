@@ -11,17 +11,16 @@ from __future__ import annotations
 import os
 import tempfile
 
-import pytest
 import torch
 import torch.nn as nn
 
 from open_mythos import OpenMythos
 from open_mythos.variants import mythos_nano
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _nano_model() -> OpenMythos:
     cfg = mythos_nano()
@@ -91,6 +90,7 @@ class TestTrainingSmokeNano:
     def test_gradient_checkpointing_forward(self):
         """Gradient checkpointing must not break forward/backward."""
         from open_mythos.main import TransformerBlock, RecurrentBlock
+
         for module in self.model.modules():
             if isinstance(module, (TransformerBlock, RecurrentBlock)):
                 module.gradient_checkpointing = True
@@ -111,7 +111,9 @@ class TestTrainingSmokeNano:
             torch.save(self.model.state_dict(), path)
 
             model2 = OpenMythos(self.cfg).eval()
-            model2.load_state_dict(torch.load(path, map_location="cpu", weights_only=True))
+            model2.load_state_dict(
+                torch.load(path, map_location="cpu", weights_only=True)
+            )
 
             self.model.eval()
             with torch.no_grad():

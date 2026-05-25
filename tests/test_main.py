@@ -1043,7 +1043,9 @@ class TestSlidingWindowCache:
             else:
                 cur_ids = ids[:, -1:]
                 start_pos = ids.shape[1] - 1
-            self.model.forward(cur_ids, n_loops=1, kv_cache=kv_cache, start_pos=start_pos)
+            self.model.forward(
+                cur_ids, n_loops=1, kv_cache=kv_cache, start_pos=start_pos
+            )
             next_tok = torch.randint(0, self.cfg.vocab_size, (1, 1))
             ids = torch.cat([ids, next_tok], dim=1)
 
@@ -1052,9 +1054,9 @@ class TestSlidingWindowCache:
                 continue
             # GQA stores "k"/"v"; MLA stores "c_kv"/"k_rope"
             for tensor in val.values():
-                assert tensor.shape[1] <= max_cache_len, (
-                    f"cache key {key} has size {tensor.shape[1]} > {max_cache_len}"
-                )
+                assert (
+                    tensor.shape[1] <= max_cache_len
+                ), f"cache key {key} has size {tensor.shape[1]} > {max_cache_len}"
 
     def test_no_window_unrestricted(self):
         """max_cache_len=0 (default) must not restrict cache growth."""
@@ -1068,7 +1070,9 @@ class TestSlidingWindowCache:
             else:
                 cur_ids = ids[:, -1:]
                 start_pos = ids.shape[1] - 1
-            self.model.forward(cur_ids, n_loops=1, kv_cache=kv_cache, start_pos=start_pos)
+            self.model.forward(
+                cur_ids, n_loops=1, kv_cache=kv_cache, start_pos=start_pos
+            )
             next_tok = torch.randint(0, self.cfg.vocab_size, (1, 1))
             ids = torch.cat([ids, next_tok], dim=1)
 
@@ -1093,6 +1097,7 @@ class TestRepetitionPenalty:
     def test_penalty_one_no_change(self):
         """repetition_penalty=1.0 must leave logits unchanged."""
         from open_mythos.main import OpenMythos as OM
+
         logits = torch.randn(1, self.cfg.vocab_size)
         original = logits.clone()
         result = OM._apply_repetition_penalty(logits.clone(), self.ids, 1.0)
@@ -1101,6 +1106,7 @@ class TestRepetitionPenalty:
     def test_penalty_reduces_seen_tokens(self):
         """Positive logits for seen tokens must decrease after penalty > 1."""
         from open_mythos.main import OpenMythos as OM
+
         logits = torch.ones(1, self.cfg.vocab_size)
         seen = self.ids[0, 0].item()
         result = OM._apply_repetition_penalty(logits.clone(), self.ids, 2.0)
@@ -1139,24 +1145,32 @@ class TestGenerateBeam:
 
     def test_output_shape(self):
         """Output must be (1, T + max_new_tokens)."""
-        out = self.model.generate_beam(self.ids, max_new_tokens=4, n_loops=1, beam_width=2)
+        out = self.model.generate_beam(
+            self.ids, max_new_tokens=4, n_loops=1, beam_width=2
+        )
         assert out.shape == (1, T + 4)
 
     def test_prompt_preserved(self):
         """The original prompt tokens must be unchanged in the output."""
-        out = self.model.generate_beam(self.ids, max_new_tokens=3, n_loops=1, beam_width=2)
+        out = self.model.generate_beam(
+            self.ids, max_new_tokens=3, n_loops=1, beam_width=2
+        )
         assert torch.equal(out[:, :T], self.ids)
 
     def test_tokens_in_vocab(self):
         """All generated tokens must be in [0, vocab_size)."""
-        out = self.model.generate_beam(self.ids, max_new_tokens=4, n_loops=1, beam_width=2)
+        out = self.model.generate_beam(
+            self.ids, max_new_tokens=4, n_loops=1, beam_width=2
+        )
         new_toks = out[:, T:]
         assert new_toks.min().item() >= 0
         assert new_toks.max().item() < self.cfg.vocab_size
 
     def test_no_nan(self):
         """generate_beam must not produce NaN token indices."""
-        out = self.model.generate_beam(self.ids, max_new_tokens=4, n_loops=1, beam_width=2)
+        out = self.model.generate_beam(
+            self.ids, max_new_tokens=4, n_loops=1, beam_width=2
+        )
         assert not torch.isnan(out.float()).any()
 
     def test_beam_width_one_is_greedy(self):

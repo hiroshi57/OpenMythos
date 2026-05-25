@@ -34,10 +34,10 @@ from open_mythos.variants import (
 
 _VARIANTS = {
     "nano": mythos_nano,
-    "1b":   mythos_1b,
-    "3b":   mythos_3b,
-    "7b":   mythos_7b,
-    "10b":  mythos_10b,
+    "1b": mythos_1b,
+    "3b": mythos_3b,
+    "7b": mythos_7b,
+    "10b": mythos_10b,
 }
 
 
@@ -54,7 +54,10 @@ def _build_model(args) -> tuple[OpenMythos, int]:
     else:
         variant_fn = _VARIANTS.get(args.variant or "nano")
         if variant_fn is None:
-            print(f"Unknown variant '{args.variant}'. Choose from: {list(_VARIANTS)}", file=sys.stderr)
+            print(
+                f"Unknown variant '{args.variant}'. Choose from: {list(_VARIANTS)}",
+                file=sys.stderr,
+            )
             sys.exit(1)
         cfg = variant_fn()
         vocab_size = cfg.vocab_size
@@ -68,6 +71,7 @@ def _tokenize(prompt: str, vocab_size: int) -> list[int]:
     """Tokenize prompt, clipping all IDs to the model's vocab_size."""
     try:
         from open_mythos.tokenizer import MythosTokenizer
+
         enc = MythosTokenizer()
         ids = enc.encode(prompt)
     except Exception:
@@ -78,6 +82,7 @@ def _tokenize(prompt: str, vocab_size: int) -> list[int]:
 def _detokenize(ids: list[int]) -> str:
     try:
         from open_mythos.tokenizer import MythosTokenizer
+
         enc = MythosTokenizer()
         return enc.decode(ids)
     except Exception:
@@ -86,7 +91,6 @@ def _detokenize(ids: list[int]) -> str:
 
 def _safe_print(text: str, end: str = "\n", flush: bool = False) -> None:
     """Write text to stdout, replacing unencodable chars for the active console."""
-    import io
     buf = sys.stdout
     if hasattr(buf, "buffer"):
         raw = text.encode("utf-8", errors="replace")
@@ -126,7 +130,10 @@ def cmd_generate(args) -> None:
 def cmd_info(args) -> None:
     variant_fn = _VARIANTS.get(args.variant or "nano")
     if variant_fn is None:
-        print(f"Unknown variant '{args.variant}'. Choose from: {list(_VARIANTS)}", file=sys.stderr)
+        print(
+            f"Unknown variant '{args.variant}'. Choose from: {list(_VARIANTS)}",
+            file=sys.stderr,
+        )
         sys.exit(1)
     cfg = variant_fn()
     model = OpenMythos(cfg)
@@ -151,12 +158,19 @@ def main() -> None:
     gen = sub.add_parser("generate", help="Generate text from a prompt")
     gen.add_argument("--prompt", required=True, help="Input prompt string")
     gen.add_argument("--checkpoint", default=None, help="Path to a .pt checkpoint")
-    gen.add_argument("--variant", default="nano", choices=list(_VARIANTS), help="Model variant (default: nano)")
+    gen.add_argument(
+        "--variant",
+        default="nano",
+        choices=list(_VARIANTS),
+        help="Model variant (default: nano)",
+    )
     gen.add_argument("--max-tokens", type=int, default=100)
     gen.add_argument("--temperature", type=float, default=1.0)
     gen.add_argument("--top-k", type=int, default=50)
     gen.add_argument("--top-p", type=float, default=0.9)
-    gen.add_argument("--stream", action="store_true", help="Stream tokens as they are generated")
+    gen.add_argument(
+        "--stream", action="store_true", help="Stream tokens as they are generated"
+    )
     gen.add_argument("--device", default=None, help="Device: cpu / cuda / cuda:0")
 
     # --- info ---

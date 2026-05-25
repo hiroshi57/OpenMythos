@@ -81,8 +81,8 @@ class MythosConfig:
     # Dropout (set 0.0 to disable; 0.1 is standard for pretraining)
     dropout: float = 0.0
     # Paged KV cache — 0 disables paging (uses flat sliding-window cache)
-    kv_page_size: int = 64     # tokens per page
-    kv_max_pages: int = 0      # 0 = unlimited (bounded only by max_seq_len)
+    kv_page_size: int = 64  # tokens per page
+    kv_max_pages: int = 0  # 0 = unlimited (bounded only by max_seq_len)
 
 
 # ---------------------------------------------------------------------------
@@ -276,7 +276,6 @@ class GQAttention(nn.Module):
             q = q.transpose(1, 2)  # (B, H, T, head_dim)
             k = k.transpose(1, 2)
             v = v.transpose(1, 2)
-            is_causal = mask is None  # causal=True for training/prefill; False when additive mask given
             dropout_p = self.dropout_p if self.training else 0.0
             if mask is not None:
                 # Explicit additive mask (e.g. sliding window decode) — use attn_mask
@@ -545,7 +544,7 @@ class MoEFFN(nn.Module):
         for eid in range(self.n_experts):
             # mask: which (token, slot) pairs are routed to this expert
             # topk_idx: (N, topk), topk_scores: (N, topk)
-            expert_mask = (topk_idx == eid)  # (N, topk) bool
+            expert_mask = topk_idx == eid  # (N, topk) bool
             if not expert_mask.any():
                 continue
             # token indices that route to this expert (may repeat across slots)
@@ -553,7 +552,9 @@ class MoEFFN(nn.Module):
             expert_out = self.routed_experts[eid](flat[token_idx])  # (M, D)
             # sum gating weights across slots for tokens that selected this expert
             # cast to flat.dtype so index_add_ works under fp16/bf16 inference
-            weight = (topk_scores * expert_mask.to(flat.dtype)).sum(dim=-1, keepdim=True)
+            weight = (topk_scores * expert_mask.to(flat.dtype)).sum(
+                dim=-1, keepdim=True
+            )
             out.index_add_(0, token_idx, weight[token_idx] * expert_out.to(flat.dtype))
 
         # shared experts always fire for every token
@@ -719,7 +720,11 @@ class TransformerBlock(nn.Module):
         if self.gradient_checkpointing and self.training and kv_cache is None:
             return torch.utils.checkpoint.checkpoint(
                 self._forward_impl,
-                x, freqs_cis, mask, kv_cache, cache_key,
+                x,
+                freqs_cis,
+                mask,
+                kv_cache,
+                cache_key,
                 use_reentrant=False,
             )
         return self._forward_impl(x, freqs_cis, mask, kv_cache, cache_key)
@@ -1254,8 +1259,12 @@ class OpenMythos(nn.Module):
                 cur_ids, n_loops=cur_loops, kv_cache=kv_cache, start_pos=start_pos
             )
             next_tok = self._sample_token(
-                logits[:, -1, :], temperature, top_k, top_p,
-                repetition_penalty=repetition_penalty, input_ids=input_ids,
+                logits[:, -1, :],
+                temperature,
+                top_k,
+                top_p,
+                repetition_penalty=repetition_penalty,
+                input_ids=input_ids,
             )
             input_ids = torch.cat([input_ids, next_tok], dim=1)
         return input_ids
@@ -1293,13 +1302,9 @@ class OpenMythos(nn.Module):
             Token indices of shape (1, T + generated) — the best beam's full sequence.
         """
         assert input_ids.shape[0] == 1, "generate_beam supports B=1 only"
-        device = input_ids.device
-        vocab_size = self.cfg.vocab_size
 
         # Each beam: (sequence tensor (1, L), cumulative log-prob, kv_cache)
-        beams: list[tuple[torch.Tensor, float, dict]] = [
-            (input_ids, 0.0, {})
-        ]
+        beams: list[tuple[torch.Tensor, float, dict]] = [(input_ids, 0.0, {})]
         prompt_len = input_ids.shape[1]
 
         for step in range(max_new_tokens):
@@ -1334,9 +1339,7 @@ class OpenMythos(nn.Module):
                 # Expand: take top beam_width next tokens
                 top_log_probs, top_ids = log_probs.topk(beam_width)
                 for tok_log_p, tok_id in zip(top_log_probs, top_ids):
-                    new_seq = torch.cat(
-                        [seq, tok_id.view(1, 1)], dim=1
-                    )
+                    new_seq = torch.cat([seq, tok_id.view(1, 1)], dim=1)
                     new_score = score + tok_log_p.item()
                     # copy cache so beams don't share state
                     new_cache = {
@@ -1413,8 +1416,12 @@ class OpenMythos(nn.Module):
                 cur_ids, n_loops=cur_loops, kv_cache=kv_cache, start_pos=start_pos
             )
             next_tok = self._sample_token(
-                logits[:, -1, :], temperature, top_k, top_p,
-                repetition_penalty=repetition_penalty, input_ids=input_ids,
+                logits[:, -1, :],
+                temperature,
+                top_k,
+                top_p,
+                repetition_penalty=repetition_penalty,
+                input_ids=input_ids,
             )
             input_ids = torch.cat([input_ids, next_tok], dim=1)
             yield next_tok
@@ -1604,7 +1611,9 @@ class OpenMythos(nn.Module):
                 self, {nn.Linear}, dtype=torch.qint8, inplace=True
             )
         else:
-            raise ValueError(f"quantize: unsupported dtype {dtype!r}; use 'int8' or 'fp16'")
+            raise ValueError(
+                f"quantize: unsupported dtype {dtype!r}; use 'int8' or 'fp16'"
+            )
         return self
 
     def init_mup(self, base_dim: int = 256) -> "OpenMythos":
@@ -1639,7 +1648,10 @@ class OpenMythos(nn.Module):
                 nn.init.normal_(module.weight, mean=0.0, std=1.0)
             elif isinstance(module, nn.Linear):
                 fan_in = module.weight.shape[1]
-                if "head" in name and module.weight.data_ptr() == self.embed.weight.data_ptr():
+                if (
+                    "head" in name
+                    and module.weight.data_ptr() == self.embed.weight.data_ptr()
+                ):
                     # Weight-tied output projection: embedding already initialised above;
                     # skipping zero-init here preserves the embedding's std=1.0 init.
                     pass
@@ -1668,7 +1680,10 @@ class OpenMythos(nn.Module):
         except ImportError:
             raise ImportError("pip install huggingface_hub to use push_to_hub()")
 
-        import os, tempfile, json
+        import os
+        import tempfile
+        import json
+
         api = HfApi(token=token or os.environ.get("HF_TOKEN"))
         api.create_repo(repo_id=repo_id, exist_ok=True)
 
@@ -1678,11 +1693,16 @@ class OpenMythos(nn.Module):
 
             torch.save({"model": self.state_dict(), "cfg": self.cfg}, ckpt_path)
             import dataclasses
+
             with open(cfg_path, "w") as f:
                 json.dump(dataclasses.asdict(self.cfg), f, indent=2)
 
-            api.upload_file(path_or_fileobj=ckpt_path, path_in_repo="model.pt", repo_id=repo_id)
-            api.upload_file(path_or_fileobj=cfg_path, path_in_repo="config.json", repo_id=repo_id)
+            api.upload_file(
+                path_or_fileobj=ckpt_path, path_in_repo="model.pt", repo_id=repo_id
+            )
+            api.upload_file(
+                path_or_fileobj=cfg_path, path_in_repo="config.json", repo_id=repo_id
+            )
 
     @classmethod
     def from_pretrained(
@@ -1929,7 +1949,9 @@ class OpenMythos(nn.Module):
         logits = self.forward(padded, n_loops=n_loops, kv_cache=kv_cache, start_pos=0)
 
         # Decode max_new_tokens steps
-        generated = torch.zeros(len(seqs), max_new_tokens, dtype=torch.long, device=device)
+        generated = torch.zeros(
+            len(seqs), max_new_tokens, dtype=torch.long, device=device
+        )
         cur_ids = padded  # used for repetition_penalty tracking
 
         for step in range(max_new_tokens):
@@ -1937,7 +1959,7 @@ class OpenMythos(nn.Module):
                 last_logits = logits[:, -1, :]
             else:
                 step_logits = self.forward(
-                    next_tok,
+                    next_tok,  # noqa: F821 — assigned in previous iteration
                     n_loops=_decode_loops,
                     kv_cache=kv_cache,
                     start_pos=max_prompt_len + step - 1,
@@ -1945,8 +1967,12 @@ class OpenMythos(nn.Module):
                 last_logits = step_logits[:, -1, :]
 
             next_tok = self._sample_token(
-                last_logits, temperature, top_k, top_p,
-                repetition_penalty=repetition_penalty, input_ids=cur_ids,
+                last_logits,
+                temperature,
+                top_k,
+                top_p,
+                repetition_penalty=repetition_penalty,
+                input_ids=cur_ids,
             )  # (B, 1)
             generated[:, step] = next_tok.squeeze(-1)
             cur_ids = torch.cat([cur_ids, next_tok], dim=1)
