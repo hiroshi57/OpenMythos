@@ -43,7 +43,6 @@ Direct (no framework)::
 
 from __future__ import annotations
 
-import warnings
 from typing import Any, Iterator, List, Optional
 
 import torch
@@ -82,7 +81,9 @@ def _load_model(
     else:
         variant_fn = _VARIANTS.get(variant)
         if variant_fn is None:
-            raise ValueError(f"Unknown variant '{variant}'. Choose from: {list(_VARIANTS)}")
+            raise ValueError(
+                f"Unknown variant '{variant}'. Choose from: {list(_VARIANTS)}"
+            )
         cfg = variant_fn()
         model = OpenMythos(cfg)
     return model.to(dev).eval(), dev
@@ -91,6 +92,7 @@ def _load_model(
 # ---------------------------------------------------------------------------
 # Base mixin — framework-agnostic generate logic
 # ---------------------------------------------------------------------------
+
 
 class _MythosGenerateMixin:
     """Shared generation logic used by both LangChain and Swarms adapters."""
@@ -116,7 +118,7 @@ class _MythosGenerateMixin:
                 top_k=self.top_k,
                 top_p=self.top_p,
             )
-        generated = out[0, input_ids.shape[1]:].tolist()
+        generated = out[0, input_ids.shape[1] :].tolist()
         return _detokenize(generated)
 
     def _stream_text(self, prompt: str) -> Iterator[str]:
@@ -142,7 +144,7 @@ class _MythosGenerateMixin:
 
 try:
     from langchain_core.language_models.llms import BaseLLM
-    from langchain_core.outputs import Generation, LLMResult
+
     _HAS_LANGCHAIN = True
 except ImportError:
     _HAS_LANGCHAIN = False
@@ -168,6 +170,7 @@ class OpenMythosLLM(_MythosGenerateMixin, BaseLLM):  # type: ignore[misc]
     # Pydantic fields (LangChain requires class-level annotations)
     if _HAS_LANGCHAIN:
         from pydantic import Field as _Field
+
         max_new_tokens: int = 128
         temperature: float = 1.0
         top_k: int = 50
@@ -220,8 +223,11 @@ class OpenMythosLLM(_MythosGenerateMixin, BaseLLM):  # type: ignore[misc]
         **kwargs: Any,
     ):
         if not _HAS_LANGCHAIN:
-            raise ImportError("pip install langchain-core to use LangChain pipeline methods")
+            raise ImportError(
+                "pip install langchain-core to use LangChain pipeline methods"
+            )
         from langchain_core.outputs import Generation, LLMResult
+
         generations = []
         for prompt in prompts:
             text = self._generate_text(prompt)
@@ -234,8 +240,11 @@ class OpenMythosLLM(_MythosGenerateMixin, BaseLLM):  # type: ignore[misc]
 
     def _stream(self, prompt: str, stop: Optional[List[str]] = None, **kwargs: Any):
         if not _HAS_LANGCHAIN:
-            raise ImportError("pip install langchain-core to use LangChain pipeline methods")
+            raise ImportError(
+                "pip install langchain-core to use LangChain pipeline methods"
+            )
         from langchain_core.outputs import GenerationChunk
+
         for chunk in self._stream_text(prompt):
             yield GenerationChunk(text=chunk)
 
@@ -299,6 +308,7 @@ class OpenMythosLLM(_MythosGenerateMixin, BaseLLM):  # type: ignore[misc]
 
 try:
     from swarms import Agent as SwarmsAgent  # type: ignore[import]
+
     _HAS_SWARMS = True
 except ImportError:
     _HAS_SWARMS = False

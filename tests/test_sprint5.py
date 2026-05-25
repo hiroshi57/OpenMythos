@@ -12,11 +12,9 @@ Covers:
 
 from __future__ import annotations
 
-import importlib
 import os
 import sys
 import tempfile
-import types
 
 import pytest
 import torch
@@ -25,10 +23,10 @@ import torch.nn as nn
 from open_mythos import OpenMythos
 from open_mythos.variants import mythos_nano
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _nano() -> OpenMythos:
     return OpenMythos(mythos_nano())
@@ -44,15 +42,21 @@ def _batch(cfg, b: int = 2, s: int = 8):
 # 5.1.1  warmup_stable_decay
 # ---------------------------------------------------------------------------
 
+
 def _load_warmup_stable_decay():
     """Extract warmup_stable_decay from the training script via ast+compile.
 
     The training script has top-level FSDP/dataset imports that break on CPU;
     we extract only the target function's source without executing the rest.
     """
-    import ast, inspect, math, pathlib, textwrap, types
+    import ast
+    import math
+    import pathlib
+    import textwrap
 
-    src = (pathlib.Path(__file__).parents[1] / "training" / "3b_fine_web_edu.py").read_text(encoding="utf-8")
+    src = (
+        pathlib.Path(__file__).parents[1] / "training" / "3b_fine_web_edu.py"
+    ).read_text(encoding="utf-8")
     tree = ast.parse(src)
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef) and node.name == "warmup_stable_decay":
@@ -71,30 +75,42 @@ class TestWarmupStableDecay:
         self.fn = _load_warmup_stable_decay()
 
     def test_zero_at_step_zero(self):
-        lr = self.fn(0, warmup=100, stable_end=900, total=1000, max_lr=1e-3, min_lr=1e-4)
+        lr = self.fn(
+            0, warmup=100, stable_end=900, total=1000, max_lr=1e-3, min_lr=1e-4
+        )
         assert lr == pytest.approx(0.0, abs=1e-9)
 
     def test_max_at_end_of_warmup(self):
-        lr = self.fn(100, warmup=100, stable_end=900, total=1000, max_lr=1e-3, min_lr=1e-4)
+        lr = self.fn(
+            100, warmup=100, stable_end=900, total=1000, max_lr=1e-3, min_lr=1e-4
+        )
         assert lr == pytest.approx(1e-3, rel=1e-5)
 
     def test_flat_plateau(self):
-        lr_mid = self.fn(500, warmup=100, stable_end=900, total=1000, max_lr=1e-3, min_lr=1e-4)
+        lr_mid = self.fn(
+            500, warmup=100, stable_end=900, total=1000, max_lr=1e-3, min_lr=1e-4
+        )
         assert lr_mid == pytest.approx(1e-3, rel=1e-5)
 
     def test_min_at_end_of_decay(self):
-        lr = self.fn(1000, warmup=100, stable_end=900, total=1000, max_lr=1e-3, min_lr=1e-4)
+        lr = self.fn(
+            1000, warmup=100, stable_end=900, total=1000, max_lr=1e-3, min_lr=1e-4
+        )
         assert lr == pytest.approx(1e-4, abs=1e-7)
 
     def test_monotone_during_decay(self):
         steps = range(900, 1001)
-        lrs = [self.fn(s, warmup=100, stable_end=900, total=1000, max_lr=1e-3, min_lr=1e-4) for s in steps]
+        lrs = [
+            self.fn(s, warmup=100, stable_end=900, total=1000, max_lr=1e-3, min_lr=1e-4)
+            for s in steps
+        ]
         assert all(lrs[i] >= lrs[i + 1] for i in range(len(lrs) - 1))
 
 
 # ---------------------------------------------------------------------------
 # 5.1.2  init_mup
 # ---------------------------------------------------------------------------
+
 
 class TestInitMup:
     def test_returns_self(self):
@@ -125,6 +141,7 @@ class TestInitMup:
 # 5.3.1  enable_lora_finetuning / trainable_parameters
 # ---------------------------------------------------------------------------
 
+
 class TestLoraFinetuning:
     def test_returns_self(self):
         m = _nano()
@@ -149,15 +166,15 @@ class TestLoraFinetuning:
     def test_lora_grad_flows_in_backward(self):
         cfg = mythos_nano()
         m = OpenMythos(cfg).enable_lora_finetuning().train()
-        opt = torch.optim.AdamW(m.trainable_parameters(), lr=1e-3)
         x, y = _batch(cfg)
         logits = m(x)
         loss = nn.functional.cross_entropy(logits.view(-1, cfg.vocab_size), y.view(-1))
         loss.backward()
         for name, p in m.named_parameters():
             if ".lora." in name and p.requires_grad:
-                assert p.grad is not None and not torch.isnan(p.grad).any(), \
-                    f"Bad grad for LoRA param {name}"
+                assert (
+                    p.grad is not None and not torch.isnan(p.grad).any()
+                ), f"Bad grad for LoRA param {name}"
 
     def test_non_lora_params_have_no_grad(self):
         cfg = mythos_nano()
@@ -181,6 +198,7 @@ class TestLoraFinetuning:
 # ---------------------------------------------------------------------------
 # 5.2.2  from_pretrained round-trip (local, no network)
 # ---------------------------------------------------------------------------
+
 
 class TestFromPretrainedLocal:
     def test_load_from_pt_file(self):
@@ -221,12 +239,16 @@ class TestFromPretrainedLocal:
 # 5.2.1  CLI smoke tests (subprocess)
 # ---------------------------------------------------------------------------
 
+
 class TestCLI:
     def test_info_nano(self):
         import subprocess
+
         result = subprocess.run(
             [sys.executable, "-m", "open_mythos.cli", "info", "--variant", "nano"],
-            capture_output=True, text=True, timeout=60,
+            capture_output=True,
+            text=True,
+            timeout=60,
         )
         assert result.returncode == 0
         assert "Parameters" in result.stdout
@@ -234,18 +256,47 @@ class TestCLI:
 
     def test_generate_nano_no_crash(self):
         import subprocess
+
         result = subprocess.run(
-            [sys.executable, "-m", "open_mythos.cli", "generate",
-             "--variant", "nano", "--prompt", "Hello", "--max-tokens", "5"],
-            capture_output=True, encoding="utf-8", errors="replace", timeout=120,
+            [
+                sys.executable,
+                "-m",
+                "open_mythos.cli",
+                "generate",
+                "--variant",
+                "nano",
+                "--prompt",
+                "Hello",
+                "--max-tokens",
+                "5",
+            ],
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=120,
         )
         assert result.returncode == 0
 
     def test_generate_stream_no_crash(self):
         import subprocess
+
         result = subprocess.run(
-            [sys.executable, "-m", "open_mythos.cli", "generate",
-             "--variant", "nano", "--prompt", "test", "--max-tokens", "3", "--stream"],
-            capture_output=True, encoding="utf-8", errors="replace", timeout=120,
+            [
+                sys.executable,
+                "-m",
+                "open_mythos.cli",
+                "generate",
+                "--variant",
+                "nano",
+                "--prompt",
+                "test",
+                "--max-tokens",
+                "3",
+                "--stream",
+            ],
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=120,
         )
         assert result.returncode == 0

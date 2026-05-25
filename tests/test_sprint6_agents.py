@@ -17,10 +17,10 @@ import torch
 from open_mythos import OpenMythosLLM, MythosAgent, OpenMythos
 from open_mythos.variants import mythos_nano
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _llm(**kwargs) -> OpenMythosLLM:
     kwargs.setdefault("max_new_tokens", 4)
@@ -35,6 +35,7 @@ def _agent(**kwargs) -> MythosAgent:
 # ---------------------------------------------------------------------------
 # 6.3.1  OpenMythosLLM
 # ---------------------------------------------------------------------------
+
 
 class TestOpenMythosLLM:
     def test_from_variant_returns_instance(self):
@@ -100,6 +101,7 @@ class TestOpenMythosLLM:
     def test_langchain_not_installed_generate_raises(self, monkeypatch):
         """langchain_core がない場合 _generate() は ImportError を送出する。"""
         import builtins
+
         real_import = builtins.__import__
 
         def mock_import(name, *args, **kwargs):
@@ -109,6 +111,7 @@ class TestOpenMythosLLM:
 
         # agents モジュールの _HAS_LANGCHAIN を False にする
         import open_mythos.agents as agents_mod
+
         monkeypatch.setattr(agents_mod, "_HAS_LANGCHAIN", False)
 
         llm = _llm()
@@ -119,6 +122,7 @@ class TestOpenMythosLLM:
 # ---------------------------------------------------------------------------
 # 6.3.2  MythosAgent
 # ---------------------------------------------------------------------------
+
 
 class TestMythosAgent:
     def test_from_variant_returns_instance(self):

@@ -69,4 +69,5 @@ __all__ = [
     "HyperloopConfig",
     "HyperloopBlock",
     "HyperloopMythos",
+    "cli_main",
 ]
