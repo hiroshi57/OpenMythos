@@ -76,7 +76,7 @@
 
 ---
 
-## Sprint 6: 推論最適化 & 訓練高度化 & エージェント統合 & ベンチマーク (進行中)
+## Sprint 6: 推論最適化 & 訓練高度化 & エージェント統合 & ベンチマーク (完了)
 
 > ブランチ: `master`
 
@@ -99,13 +99,31 @@
 
 ---
 
+## Sprint 7: 本番 Serving テスト & データパイプライン & v0.12.0 (Next)
+
+> ブランチ: `feature/sprint7-serving-data`
+
+| task-id | 説明 | 担当 | 状態 | DoD |
+|---------|------|------|------|-----|
+| 7.1.1 | serve/ 統合テスト — FastAPI endpoints / A/B router / SLA router / monitor | Worker | cc:TODO | (a) test_sprint7_serve.py 作成 (b) httpx/TestClient でエンドポイント検証 (c) 既存テスト全 PASS |
+| 7.1.2 | serve/ Docker ビルド確認 & docker-compose.yml 追加 | Worker | cc:TODO | (a) docker build 成功 (b) docker-compose.yml (api + monitor) 作成 |
+| 7.2.1 | data パイプライン テスト — preprocess / csv_to_jsonl / eval_perplexity / finetune | Worker | cc:TODO | (a) test_sprint7_data.py 作成 (b) 各スクリプトの主要関数を単体テスト (c) 全テスト PASS |
+| 7.2.2 | HuggingFace Datasets ストリーミング統合 — `stream_dataset()` + `preprocess_stream()` | Worker | cc:TODO | (a) scripts/preprocess.py にストリーミング対応追加 (b) メモリ効率テスト追加 |
+| 7.3.1 | 分散推論サポート — `DataParallel` ラッパー + `model.to_distributed()` | Worker | cc:TODO | (a) OpenMythos に to_distributed() 追加 (b) CPU でのフォールバック動作テスト (c) 既存テスト全 PASS |
+| 7.4.1 | PyPI v0.12.0 リリース準備 — pyproject.toml 0.11.0→0.12.0 + CHANGELOG 更新 | Worker | cc:TODO | (a) version bump (b) CHANGELOG.md Sprint 7 セクション追加 (c) serve/scripts 依存を extras に追加 |
+| 7.5.1 | Sprint 7 テスト追加 + commit + push — master へ一括コミット & GitHub push | Worker | cc:TODO | (a) 全テスト PASS (目標 420+) (b) git push origin master (c) CI green |
+
+---
+
 ## 進行中の作業メモ
 
-### 現在のブランチ状態
-- `feature/hyperloop-benchmark`: 227 PASS、master に 8 commit 先行
-- master: `e03fed1` — 4-task sprint 完了時点
+### 現在のブランチ状態 (2026-05-25 更新)
+- `master`: `f96ac0c` — Sprint 2-6 一括コミット完了 (380 PASS)
+- `origin/master`: diverged (ahead 13, behind 3) — push 要
+- `feature/hyperloop-benchmark` / `feature/inference-v2`: Sprint 7 開始前に削除予定
 
 ### 重要な技術的知見
 - `freqs_cis` は必ず `[:T]` スライスして渡すこと (apply_rope ブロードキャストエラー防止)
 - LTI `get_A()` の `log_dt + log_A` は `.clamp(min=1e-6)` が必要 (float32 飽和防止)
 - decode_loops 2-phase: prefill=4 / decode=1 が最速 (2.54x)
+- stash pop 時に Plans.md でコンフリクト発生しやすい → `git checkout stash -- Plans.md` で解決
