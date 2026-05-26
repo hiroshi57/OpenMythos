@@ -4,6 +4,32 @@ All notable changes to OpenMythos are documented here.
 
 ---
 
+## [0.12.0] — 2026-05-26
+
+### Sprint 7: サービス統合 (`serve/api.py`)
+
+#### マーケティング・SEO/LLMO タスク追加
+
+- `TaskType` に `seo_content`, `llmo_optimize`, `ad_copy`, `persona_message`, `market_summary` を追加
+- `_TASK_SYSTEM_PROMPTS` — タスク別日本語システムプロンプト（E-E-A-T / LLMO / PREP法 / PASONAの法則 等）
+- `TASK_LOOPS` — タスク別推奨ループ数（`llmo_optimize: 8`, `seo_content: 6`, `ad_copy: 2` 等）
+
+#### 新エンドポイント
+
+- `POST /generate` — `GenerateRequest(prompt, task, system_prompt, n_loops, max_new_tokens)` → `GenerateResponse(text, task, latency_ms, prompt_len)`
+- `GET /generate/stream` — SSE ストリーミング生成（task, prompt, max_new_tokens クエリパラメータ）
+- `POST /agent` — `AgentRequest(task_input, task, session_id, system_prompt)` → `AgentResponse(response, session_id, turn, latency_ms)`（セッション管理付き）
+- `DELETE /agent/{session_id}` — エージェントセッションリセット（存在しない場合 404）
+
+#### `/health` 拡張
+
+- `active_sessions` フィールド追加（現在セッション数）
+- `endpoints` フィールド追加（利用可能エンドポイント一覧）
+
+Tests: 420 PASS (up from 380)
+
+---
+
 ## [0.11.0] — 2026-05-24
 
 ### Sprint 6.4: ベンチマーク & 評価 (`benchmark/`)

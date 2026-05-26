@@ -1,6 +1,6 @@
 # OpenMythos — 実装進捗
 
-> 最終更新: 2026-05-24 | バージョン: v0.11.0 | テスト: 380 PASS
+> 最終更新: 2026-05-26 | バージョン: v0.12.0 | テスト: 420 PASS
 
 ---
 
@@ -69,13 +69,25 @@
 - `tests/test_sprint6_benchmark.py` — 33テスト
 - **380 PASS** / v0.11.0
 
+### Sprint 7: サービス統合 ✅ 完了（2026-05-26）
+
+- `serve/api.py` に `OpenMythosLLM` / `MythosAgent` を統合
+- 新タスクタイプ: `seo_content`, `llmo_optimize`, `ad_copy`, `persona_message`, `market_summary`
+- `_TASK_SYSTEM_PROMPTS` — E-E-A-T / LLMO / PREP法 / PASONAの法則 対応の日本語プロンプト
+- `TASK_LOOPS` — タスク別推奨ループ数（llmo_optimize: 8, seo_content: 6, ad_copy: 2）
+- 新エンドポイント: `POST /generate`, `GET /generate/stream`, `POST /agent`, `DELETE /agent/{session_id}`
+- セッション管理: `state.agents: dict[str, MythosAgent]`
+- `/health` 拡張: `active_sessions`, `endpoints` フィールド追加
+- `tests/test_sprint7_serve.py` — 40テスト
+- **420 PASS** / v0.12.0
+
 ---
 
-## 次回の作業候補（Sprint 7）
+## 次回の作業候補（Sprint 8）
 
 1. **GPU 訓練** — GCP T4 調達 → FineWeb-Edu 300M プレトレイン → perplexity < 20 確認
 2. **ベンチマーク実行** — lm-eval で HellaSwag / ARC / WinoGrande 計測 → `benchmark/results/` に保存
-3. **サービス統合** — `serve/api.py` に `OpenMythosLLM` / `MythosAgent` を統合
+3. **本番デプロイ** — Docker化 + GCP Cloud Run / Kubernetes デプロイ
 
 ---
 
