@@ -70,6 +70,7 @@ class TrainLogger:
     def _init_wandb(self, run_name: str, project: str, config: dict) -> None:
         try:
             import wandb
+
             self._run = wandb.init(
                 project=project,
                 name=run_name,
@@ -92,6 +93,7 @@ class TrainLogger:
     def _init_mlflow(self, run_name: str, experiment: str, config: dict) -> None:
         try:
             import mlflow
+
             mlflow.set_experiment(experiment)
             self._run = mlflow.start_run(run_name=run_name)
             if config:
@@ -112,10 +114,12 @@ class TrainLogger:
     def _init_tensorboard(self, log_dir: str, run_name: str) -> None:
         try:
             from torch.utils.tensorboard import SummaryWriter
+
             self._writer = SummaryWriter(log_dir=f"{log_dir}/{run_name}")
         except ImportError:
             try:
                 from tensorboardX import SummaryWriter  # type: ignore[no-redef]
+
                 self._writer = SummaryWriter(log_dir=f"{log_dir}/{run_name}")
             except ImportError:
                 warnings.warn(
@@ -137,10 +141,12 @@ class TrainLogger:
         """
         if self.backend == "wandb" and self._run is not None:
             import wandb
+
             wandb.log(metrics, step=step)
 
         elif self.backend == "mlflow" and self._run is not None:
             import mlflow
+
             mlflow.log_metrics(metrics, step=step)
 
         elif self.backend == "tensorboard" and self._writer is not None:
@@ -159,22 +165,26 @@ class TrainLogger:
         """
         if self.backend == "wandb" and self._run is not None:
             import wandb
+
             artifact = wandb.Artifact(name=artifact_type, type=artifact_type)
             artifact.add_file(path)
             self._run.log_artifact(artifact)
 
         elif self.backend == "mlflow" and self._run is not None:
             import mlflow
+
             mlflow.log_artifact(path)
 
     def finish(self) -> None:
         """Finalise and close the logging run / writer."""
         if self.backend == "wandb" and self._run is not None:
             import wandb
+
             wandb.finish()
 
         elif self.backend == "mlflow" and self._run is not None:
             import mlflow
+
             mlflow.end_run()
 
         elif self.backend == "tensorboard" and self._writer is not None:

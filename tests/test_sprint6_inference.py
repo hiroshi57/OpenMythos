@@ -10,17 +10,15 @@ Sprint 6.1 — 推論最適化テスト
 from __future__ import annotations
 
 import torch
-import torch.nn as nn
-import pytest
 
 from open_mythos import OpenMythos
 from open_mythos.variants import mythos_nano
 from open_mythos.main import MythosConfig
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _nano_gqa() -> OpenMythos:
     cfg = mythos_nano()  # attn_type="gqa"
@@ -46,6 +44,7 @@ def _rand_ids(cfg: MythosConfig, b: int = 1, s: int = 8) -> torch.Tensor:
 # ---------------------------------------------------------------------------
 # 6.1.1  compile_model
 # ---------------------------------------------------------------------------
+
 
 class TestCompileModel:
     def test_returns_self(self):
@@ -89,6 +88,7 @@ class TestCompileModel:
 # ---------------------------------------------------------------------------
 # 6.1.2  SDPA fallback (GQA と MLA の forward)
 # ---------------------------------------------------------------------------
+
 
 class TestSDPAFallback:
     def test_gqa_forward_no_flash(self):
@@ -152,6 +152,7 @@ class TestSDPAFallback:
 # ---------------------------------------------------------------------------
 # 6.1.3  KV cache ページング
 # ---------------------------------------------------------------------------
+
 
 class TestKVCachePaging:
     def test_allocate_returns_dict(self):

@@ -16,10 +16,10 @@ import pytest
 
 from open_mythos.logger_utils import TrainLogger
 
-
 # ---------------------------------------------------------------------------
 # TrainLogger — none backend
 # ---------------------------------------------------------------------------
+
 
 class TestTrainLoggerNone:
     def test_init_none_no_crash(self):
@@ -54,10 +54,12 @@ class TestTrainLoggerNone:
 # TrainLogger — wandb missing → graceful fallback
 # ---------------------------------------------------------------------------
 
+
 class TestTrainLoggerWandbMissing:
     def test_wandb_missing_falls_back(self, monkeypatch):
         """wandb がインストールされていない環境でも fallback する。"""
         import builtins
+
         real_import = builtins.__import__
 
         def mock_import(name, *args, **kwargs):
@@ -74,6 +76,7 @@ class TestTrainLoggerWandbMissing:
 
     def test_log_after_wandb_fallback(self, monkeypatch):
         import builtins
+
         real_import = builtins.__import__
 
         def mock_import(name, *args, **kwargs):
@@ -93,9 +96,11 @@ class TestTrainLoggerWandbMissing:
 # TrainLogger — mlflow missing → graceful fallback
 # ---------------------------------------------------------------------------
 
+
 class TestTrainLoggerMlflowMissing:
     def test_mlflow_missing_falls_back(self, monkeypatch):
         import builtins
+
         real_import = builtins.__import__
 
         def mock_import(name, *args, **kwargs):
@@ -104,13 +109,14 @@ class TestTrainLoggerMlflowMissing:
             return real_import(name, *args, **kwargs)
 
         monkeypatch.setattr(builtins, "__import__", mock_import)
-        with warnings.catch_warnings(record=True) as w:
+        with warnings.catch_warnings(record=True):
             warnings.simplefilter("always")
             log = TrainLogger(backend="mlflow")
         assert log.backend == "none"
 
     def test_log_after_mlflow_fallback(self, monkeypatch):
         import builtins
+
         real_import = builtins.__import__
 
         def mock_import(name, *args, **kwargs):
@@ -130,9 +136,11 @@ class TestTrainLoggerMlflowMissing:
 # TrainLogger — tensorboard missing → graceful fallback
 # ---------------------------------------------------------------------------
 
+
 class TestTrainLoggerTensorboardMissing:
     def test_tensorboard_missing_falls_back(self, monkeypatch):
         import builtins
+
         real_import = builtins.__import__
 
         def mock_import(name, *args, **kwargs):
@@ -147,7 +155,7 @@ class TestTrainLoggerTensorboardMissing:
         monkeypatch.setitem(sys.modules, "torch.utils.tensorboard", None)  # type: ignore
         monkeypatch.setitem(sys.modules, "tensorboardX", None)  # type: ignore
 
-        with warnings.catch_warnings(record=True) as w:
+        with warnings.catch_warnings(record=True):
             warnings.simplefilter("always")
             log = TrainLogger(backend="tensorboard")
         assert log.backend == "none"
@@ -157,13 +165,16 @@ class TestTrainLoggerTensorboardMissing:
 # training script argparse
 # ---------------------------------------------------------------------------
 
+
 class TestTrainingArgparse:
     """_parse_args のデフォルト値と CLI オーバーライドを検証。"""
 
     @pytest.fixture(autouse=True)
     def _import_parse_args(self):
         """Training script の _parse_args を ast 経由で安全にインポート。"""
-        import ast, importlib.util, pathlib, textwrap
+        import ast
+        import pathlib
+        import textwrap
 
         src_path = pathlib.Path(__file__).parents[1] / "training" / "3b_fine_web_edu.py"
         src = src_path.read_text(encoding="utf-8")

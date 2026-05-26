@@ -6,9 +6,9 @@ All notable changes to OpenMythos are documented here.
 
 ## [0.12.0] — 2026-05-26
 
-### Sprint 7: サービス統合 (`serve/api.py`)
+### Sprint 7: サービス統合 & データパイプライン & 分散推論
 
-#### マーケティング・SEO/LLMO タスク追加
+#### マーケティング・SEO/LLMO タスク追加 (`serve/api.py`)
 
 - `TaskType` に `seo_content`, `llmo_optimize`, `ad_copy`, `persona_message`, `market_summary` を追加
 - `_TASK_SYSTEM_PROMPTS` — タスク別日本語システムプロンプト（E-E-A-T / LLMO / PREP法 / PASONAの法則 等）
@@ -26,7 +26,31 @@ All notable changes to OpenMythos are documented here.
 - `active_sessions` フィールド追加（現在セッション数）
 - `endpoints` フィールド追加（利用可能エンドポイント一覧）
 
-Tests: 420 PASS (up from 380)
+#### serve/ 統合テスト (`tests/test_sprint7_serve.py`)
+
+- `serve.ab_router` — ルーティング決定性・A/B 集計・スキーマ検証 (6 tests)
+- `serve.sla_router` — ループ数/バジェット解決・全タスク/モード網羅・設定更新 (7 tests)
+- `serve.monitor` — PSI 計算・SQLite ログ・ドリフト検知・ベースライン設定 (9 tests)
+- `serve.api` — MythosConfig 構築・TASK_LOOPS 網羅・Pydantic スキーマ検証 (8 tests)
+- エンドポイント統合テスト: /generate, /agent, /health（40 tests）
+
+#### データパイプライン テスト (`tests/test_sprint7_data.py`)
+
+- `scripts.preprocess` — 4タスクのプロンプトビルダー・load_jsonl・split_dataset (20 tests)
+- `scripts.csv_to_jsonl` — auto_detect_mapping 自動列推定 (5 tests)
+- `stream_dataset` / `preprocess_stream` — ストリーミング統合 (8 tests)
+
+#### HuggingFace Datasets ストリーミング統合 (`scripts/preprocess.py`)
+
+- `stream_dataset(paths, chunk_size)` — JSONL を chunk 単位でメモリ効率よく読み込む
+- `preprocess_stream(paths, task, chunk_size, tokenizer, max_length)` — ストリーム前処理
+
+#### 分散推論サポート (`open_mythos/main.py`)
+
+- `OpenMythos.to_distributed(device_ids, output_device)` — `nn.DataParallel` ラッパー
+- CPU 環境では self をそのまま返す graceful fallback
+
+Tests: 420+ PASS (up from 380)
 
 ---
 

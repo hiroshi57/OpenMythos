@@ -37,34 +37,40 @@ OPENMYTHOS_URL = "http://localhost:8000"
 
 DEFAULT_SLA: dict[str, dict[str, tuple[int, int]]] = {
     "content_quality": {
-        "fast":     (2,  300),
-        "balanced": (6,  800),
+        "fast": (2, 300),
+        "balanced": (6, 800),
         "accurate": (12, 3000),
+        "ultra": (16, 2000),  # 最高精度モード
     },
     "ad_performance": {
-        "fast":     (2,  200),   # 広告リアルタイム審査：200ms以内
-        "balanced": (4,  500),
-        "accurate": (8,  1500),
+        "fast": (2, 200),  # 広告リアルタイム審査：200ms以内
+        "balanced": (4, 500),
+        "accurate": (8, 1500),
+        "ultra": (16, 2000),
     },
     "identity_verify": {
-        "fast":     (3,  400),
-        "balanced": (6,  1000),
+        "fast": (3, 400),
+        "balanced": (6, 1000),
         "accurate": (10, 2500),
+        "ultra": (16, 2000),
     },
     "fraud_detect": {
-        "fast":     (4,  600),
-        "balanced": (8,  1500),
+        "fast": (4, 600),
+        "balanced": (8, 1500),
         "accurate": (16, 5000),  # 詐欺検知：精度優先
+        "ultra": (16, 2000),  # accurate と同ループ数、より厳しい budget
     },
     "persona_segment": {
-        "fast":     (2,  300),
-        "balanced": (4,  700),
-        "accurate": (8,  2000),
+        "fast": (2, 300),
+        "balanced": (4, 700),
+        "accurate": (8, 2000),
+        "ultra": (16, 2000),
     },
     "general": {
-        "fast":     (2,  300),
-        "balanced": (4,  800),
-        "accurate": (8,  2000),
+        "fast": (2, 300),
+        "balanced": (4, 800),
+        "accurate": (8, 2000),
+        "ultra": (16, 2000),
     },
 }
 
@@ -76,27 +82,29 @@ _sla_config: dict = {k: dict(v) for k, v in DEFAULT_SLA.items()}
 # リクエスト / レスポンス
 # ---------------------------------------------------------------------------
 
+
 class SLARequest(BaseModel):
     text: str
     task: str = "general"
-    sla_mode: Literal["fast", "balanced", "accurate"] = "balanced"
+    sla_mode: Literal["fast", "balanced", "accurate", "ultra"] = "balanced"
     # 明示的にループ数を指定する場合（SLA自動決定より優先）
     loops_override: int | None = Field(None, ge=1, le=16)
 
 
 class SLAResponse(BaseModel):
-    label:        int
-    score:        float
-    loops_used:   int
-    latency_ms:   float
-    sla_mode:     str
-    sla_met:      bool    # レイテンシ予算内に収まったか
-    budget_ms:    int
+    label: int
+    score: float
+    loops_used: int
+    latency_ms: float
+    sla_mode: str
+    sla_met: bool  # レイテンシ予算内に収まったか
+    budget_ms: int
 
 
 # ---------------------------------------------------------------------------
 # ループ数決定 & 推論
 # ---------------------------------------------------------------------------
+
 
 def _resolve_loops_and_budget(task: str, mode: str) -> tuple[int, int]:
     cfg = _sla_config.get(task, _sla_config["general"])
@@ -120,20 +128,23 @@ def _call_openmythos(text: str, task: str, loops: int) -> dict:
 # FastAPI
 # ---------------------------------------------------------------------------
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("[sla_router] started")
     yield
 
+
 app = FastAPI(title="OpenMythos SLA Router", version="0.1.0", lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=["*"],
-                   allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
+)
 
 
 @app.post("/infer", response_model=SLAResponse)
 def infer(req: SLARequest):
     if req.loops_override:
-        loops  = req.loops_override
+        loops = req.loops_override
         budget = 9999
     else:
         loops, budget = _resolve_loops_and_budget(req.task, req.sla_mode)
@@ -154,7 +165,7 @@ def infer(req: SLARequest):
         try:
             data = _call_openmythos(req.text, req.task, retry_loops)
             latency = (time.perf_counter() - t1) * 1000
-            loops   = retry_loops
+            loops = retry_loops
             sla_met = latency <= budget
         except Exception:
             pass  # リトライ失敗時は最初の結果を使う
@@ -181,8 +192,13 @@ def update_config(task: str, mode: str, loops: int, budget_ms: int):
     if task not in _sla_config:
         _sla_config[task] = {}
     _sla_config[task][mode] = (loops, budget_ms)
-    return {"status": "ok", "task": task, "mode": mode,
-            "loops": loops, "budget_ms": budget_ms}
+    return {
+        "status": "ok",
+        "task": task,
+        "mode": mode,
+        "loops": loops,
+        "budget_ms": budget_ms,
+    }
 
 
 @app.get("/health")

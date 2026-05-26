@@ -20,7 +20,7 @@
 
 ---
 
-## Sprint 2: Inference 高度化 (進行中)
+## Sprint 2: Inference 高度化 (完了)
 
 > ブランチ: `feature/inference-v2`
 
@@ -34,7 +34,7 @@
 
 ---
 
-## Sprint 3: ドキュメント & エコシステム (Backlog)
+## Sprint 3: ドキュメント & エコシステム (完了)
 
 | task-id | 説明 | 担当 | 状態 | DoD |
 |---------|------|------|------|-----|
@@ -45,7 +45,7 @@
 
 ---
 
-## Sprint 4: Training 基盤強化 & エコシステム (進行中)
+## Sprint 4: Training 基盤強化 & エコシステム (完了)
 
 > ブランチ: `master`
 
@@ -76,7 +76,7 @@
 
 ---
 
-## Sprint 6: 推論最適化 & 訓練高度化 & エージェント統合 & ベンチマーク (進行中)
+## Sprint 6: 推論最適化 & 訓練高度化 & エージェント統合 & ベンチマーク (完了)
 
 > ブランチ: `master`
 
@@ -99,13 +99,45 @@
 
 ---
 
+## Sprint 7: 本番 Serving テスト & データパイプライン & v0.12.0 (完了)
+
+> ブランチ: `feature/sprint7-serving-data`
+
+| task-id | 説明 | 担当 | 状態 | DoD |
+|---------|------|------|------|-----|
+| 7.1.1 | serve/ 統合テスト — FastAPI endpoints / A/B router / SLA router / monitor | Worker | cc:完了 | (a) test_sprint7_serve.py 作成 (b) httpx/TestClient でエンドポイント検証 (c) 既存テスト全 PASS |
+| 7.1.2 | serve/ Docker ビルド確認 & docker-compose.yml 追加 | Worker | cc:完了 | (a) docker build 成功 (b) docker-compose.yml (api + monitor) 作成 |
+| 7.2.1 | data パイプライン テスト — preprocess / csv_to_jsonl / eval_perplexity / finetune | Worker | cc:完了 | (a) test_sprint7_data.py 作成 (b) 各スクリプトの主要関数を単体テスト (c) 全テスト PASS |
+| 7.2.2 | HuggingFace Datasets ストリーミング統合 — `stream_dataset()` + `preprocess_stream()` | Worker | cc:完了 | (a) scripts/preprocess.py にストリーミング対応追加 (b) メモリ効率テスト追加 |
+| 7.3.1 | 分散推論サポート — `DataParallel` ラッパー + `model.to_distributed()` | Worker | cc:完了 | (a) OpenMythos に to_distributed() 追加 (b) CPU でのフォールバック動作テスト (c) 既存テスト全 PASS |
+| 7.4.1 | PyPI v0.12.0 リリース準備 — pyproject.toml 0.11.0→0.12.0 + CHANGELOG 更新 | Worker | cc:完了 | (a) version bump (b) CHANGELOG.md Sprint 7 セクション追加 (c) serve/scripts 依存を extras に追加 |
+| 7.5.1 | Sprint 7 テスト追加 + commit + push — master へ一括コミット & GitHub push | Worker | cc:完了 | (a) 全テスト PASS (目標 420+) (b) git push origin master (c) CI green |
+
+---
+
+## Sprint 8: 推論品質強化 & Fine-tuning パイプライン完成 (完了)
+
+> ブランチ: `feature/sprint8-finetune-quality`
+
+| task-id | 説明 | 担当 | 状態 | DoD |
+|---------|------|------|------|-----|
+| 8.1.1 | `scripts/finetune.py` 完成 — LoRA fine-tuning エンドツーエンド実行 | Worker | cc:完了 | (a) --lora フラグ追加 (b) enable_lora_finetuning() + trainable_parameters() 統合 (c) テスト PASS |
+| 8.1.2 | `scripts/eval_perplexity.py` 完成 — fine-tuned モデルの PPL 評価 | Worker | cc:完了 | (a) --checkpoint フラグ追加 (b) checkpoint ロード対応 (c) テスト PASS |
+| 8.2.1 | Serve API 品質強化 — `serve/api.py` に `/v1/chat` エンドポイント追加 | Worker | cc:完了 | (a) OpenAI 互換 `/v1/chat/completions` (b) SSE ストリーミング対応 (c) テスト PASS |
+| 8.2.2 | SLA ルーター精度モード拡張 — `serve/sla_router.py` に `ultra` モード追加 | Worker | cc:完了 | (a) ultra: loops=16, budget=2000 (b) 全タスク対応 (c) 既存テスト全 PASS |
+| 8.3.1 | Sprint 8 テスト追加 + commit + push | Worker | cc:完了 | (a) test_sprint8.py 22 tests (b) 468 PASS (c) git push origin master |
+
+---
+
 ## 進行中の作業メモ
 
-### 現在のブランチ状態
-- `feature/hyperloop-benchmark`: 227 PASS、master に 8 commit 先行
-- master: `e03fed1` — 4-task sprint 完了時点
+### 現在のブランチ状態 (2026-05-25 更新)
+- `master`: `b72c1da` — Sprint 7 全完了 (446 PASS, CI green)
+- PR #2 (`feature/inference-v2`): 2026-05-25 close 済み（master に内包）
+- Sprint 8 ブランチ: `feature/sprint8-finetune-quality` (予定)
 
 ### 重要な技術的知見
 - `freqs_cis` は必ず `[:T]` スライスして渡すこと (apply_rope ブロードキャストエラー防止)
 - LTI `get_A()` の `log_dt + log_A` は `.clamp(min=1e-6)` が必要 (float32 飽和防止)
 - decode_loops 2-phase: prefill=4 / decode=1 が最速 (2.54x)
+- stash pop 時に Plans.md でコンフリクト発生しやすい → `git checkout stash -- Plans.md` で解決
