@@ -106,9 +106,27 @@ All notable changes to OpenMythos are documented here.
 
 ---
 
-## [0.12.0] — 2026-05-25
+## [0.12.0] — 2026-05-26
 
-### Sprint 7: 本番 Serving テスト & データパイプライン & 分散推論
+### Sprint 7: サービス統合 & データパイプライン & 分散推論
+
+#### マーケティング・SEO/LLMO タスク追加 (`serve/api.py`)
+
+- `TaskType` に `seo_content`, `llmo_optimize`, `ad_copy`, `persona_message`, `market_summary` を追加
+- `_TASK_SYSTEM_PROMPTS` — タスク別日本語システムプロンプト（E-E-A-T / LLMO / PREP法 / PASONAの法則 等）
+- `TASK_LOOPS` — タスク別推奨ループ数（`llmo_optimize: 8`, `seo_content: 6`, `ad_copy: 2` 等）
+
+#### 新エンドポイント
+
+- `POST /generate` — `GenerateRequest(prompt, task, system_prompt, n_loops, max_new_tokens)` → `GenerateResponse(text, task, latency_ms, prompt_len)`
+- `GET /generate/stream` — SSE ストリーミング生成（task, prompt, max_new_tokens クエリパラメータ）
+- `POST /agent` — `AgentRequest(task_input, task, session_id, system_prompt)` → `AgentResponse(response, session_id, turn, latency_ms)`（セッション管理付き）
+- `DELETE /agent/{session_id}` — エージェントセッションリセット（存在しない場合 404）
+
+#### `/health` 拡張
+
+- `active_sessions` フィールド追加（現在セッション数）
+- `endpoints` フィールド追加（利用可能エンドポイント一覧）
 
 #### serve/ 統合テスト (`tests/test_sprint7_serve.py`)
 
@@ -116,6 +134,7 @@ All notable changes to OpenMythos are documented here.
 - `serve.sla_router` — ループ数/バジェット解決・全タスク/モード網羅・設定更新 (7 tests)
 - `serve.monitor` — PSI 計算・SQLite ログ・ドリフト検知・ベースライン設定 (9 tests)
 - `serve.api` — MythosConfig 構築・TASK_LOOPS 網羅・Pydantic スキーマ検証 (8 tests)
+- エンドポイント統合テスト: /generate, /agent, /health（40 tests）
 
 #### データパイプライン テスト (`tests/test_sprint7_data.py`)
 
