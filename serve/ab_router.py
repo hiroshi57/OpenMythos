@@ -17,6 +17,7 @@ Phase 4-2: 本番トラフィックの一部を OpenMythos に流し、
 
 import hashlib
 import json
+import math
 import time
 import urllib.request
 from collections import defaultdict
@@ -28,7 +29,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 # OpenMythos API（serve/api.py）の URL
-OPENMYTHOS_URL  = "http://localhost:8000"
+OPENMYTHOS_URL = "http://localhost:8000"
 # 既存MLモデルの推論エンドポイント（差し替えてください）
 EXISTING_ML_URL = "http://localhost:9000"
 
@@ -40,12 +41,14 @@ OPENMYTHOS_TRAFFIC_PCT = 20  # 20%を新モデルへ
 # インメモリ集計（本番はRedis等に差し替え）
 # ---------------------------------------------------------------------------
 
+
 class _Stats:
     def __init__(self):
-        self.counts:    dict[str, int]   = defaultdict(int)
-        self.latencies: dict[str, list]  = defaultdict(list)
-        self.scores:    dict[str, list]  = defaultdict(list)
-        self.correct:   dict[str, int]   = defaultdict(int)
+        self.counts: dict[str, int] = defaultdict(int)
+        self.latencies: dict[str, list] = defaultdict(list)
+        self.scores: dict[str, list] = defaultdict(list)
+        self.correct: dict[str, int] = defaultdict(int)
+
 
 stats = _Stats()
 
@@ -54,11 +57,17 @@ stats = _Stats()
 # リクエスト / レスポンス
 # ---------------------------------------------------------------------------
 
+
 class ABRequest(BaseModel):
     user_id: str = Field(..., description="ユーザーID（ルーティングのハッシュに使用）")
     text: str
-    task: Literal["identity_verify", "fraud_detect", "content_quality",
-                  "ad_performance", "general"] = "general"
+    task: Literal[
+        "identity_verify",
+        "fraud_detect",
+        "content_quality",
+        "ad_performance",
+        "general",
+    ] = "general"
     loops: int = Field(4, ge=1, le=16)
     ground_truth: int | None = Field(None, description="正解ラベル（評価用。省略可）")
 
@@ -74,6 +83,63 @@ class ABResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # ルーティング
 # ---------------------------------------------------------------------------
+
+
+def _significance_test(a: list[float], b: list[float], alpha: float = 0.05) -> dict:
+    """
+    Welch の t 検定で 2 グループのスコア平均を比較する（scipy 不要）。
+
+    Returns:
+        {
+            "p_value": float,       # 両側 p 値（近似）
+            "significant": bool,    # p_value < alpha かどうか
+            "mean_a": float,
+            "mean_b": float,
+            "n_a": int,
+            "n_b": int,
+        }
+    """
+    na, nb = len(a), len(b)
+    if na < 2 or nb < 2:
+        return {
+            "p_value": 1.0,
+            "significant": False,
+            "mean_a": sum(a) / na if na else float("nan"),
+            "mean_b": sum(b) / nb if nb else float("nan"),
+            "n_a": na,
+            "n_b": nb,
+        }
+
+    mean_a = sum(a) / na
+    mean_b = sum(b) / nb
+    var_a = sum((x - mean_a) ** 2 for x in a) / (na - 1)
+    var_b = sum((x - mean_b) ** 2 for x in b) / (nb - 1)
+
+    se = math.sqrt(var_a / na + var_b / nb)
+    if se == 0:
+        # 両グループとも分散ゼロ: 平均が同じなら p=1, 異なれば完全分離で p≈0
+        p_value = 0.0 if mean_a != mean_b else 1.0
+    else:
+        t_stat = (mean_a - mean_b) / se
+        # Welch–Satterthwaite 自由度
+        num = (var_a / na + var_b / nb) ** 2
+        den = (var_a / na) ** 2 / (na - 1) + (var_b / nb) ** 2 / (nb - 1)
+        df = num / den if den > 0 else 1.0
+        # t 分布の両側 p 値近似: 大 df では標準正規に近づく
+        z = abs(t_stat) * math.sqrt(1 + df / (df + t_stat**2 + 1e-9))
+        # 標準正規の上側確率（近似）
+        p_one = 0.5 * math.erfc(z / math.sqrt(2))
+        p_value = min(2 * p_one, 1.0)
+
+    return {
+        "p_value": round(p_value, 6),
+        "significant": p_value < alpha,
+        "mean_a": round(mean_a, 6),
+        "mean_b": round(mean_b, 6),
+        "n_a": na,
+        "n_b": nb,
+    }
+
 
 def _route(user_id: str) -> str:
     """user_id のハッシュ値でA/Bグループを決定（再現性あり）。"""
@@ -126,14 +192,17 @@ def _call_existing_ml(text: str, task: str) -> tuple[int, float, float]:
 # FastAPI
 # ---------------------------------------------------------------------------
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print(f"[ab_router] OpenMythos traffic: {OPENMYTHOS_TRAFFIC_PCT}%")
     yield
 
+
 app = FastAPI(title="OpenMythos A/B Router", version="0.1.0", lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=["*"],
-                   allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
+)
 
 
 @app.post("/infer", response_model=ABResponse)
@@ -148,7 +217,7 @@ def infer(req: ABRequest):
         model_id = "existing-ml"
 
     # 集計
-    stats.counts[group]    += 1
+    stats.counts[group] += 1
     stats.latencies[group].append(latency)
     stats.scores[group].append(score)
     if req.ground_truth is not None:
@@ -166,7 +235,7 @@ def infer(req: ABRequest):
 
 @app.get("/ab/stats")
 def ab_stats():
-    """A/Bテスト集計をリアルタイムで返す。"""
+    """A/Bテスト集計をリアルタイムで返す（統計的有意性検定付き）。"""
     result = {}
     for group in ["openmythos", "existing_ml"]:
         n = stats.counts[group]
@@ -174,13 +243,21 @@ def ab_stats():
         scrs = stats.scores[group]
         corr = stats.correct[group]
         result[group] = {
-            "requests":       n,
+            "requests": n,
             "avg_latency_ms": round(sum(lats) / n, 2) if n else None,
-            "avg_score":      round(sum(scrs) / n, 4) if n else None,
-            "accuracy":       round(corr / n, 4)      if n else None,
-            "traffic_pct":    OPENMYTHOS_TRAFFIC_PCT if group == "openmythos"
-                              else 100 - OPENMYTHOS_TRAFFIC_PCT,
+            "avg_score": round(sum(scrs) / n, 4) if n else None,
+            "accuracy": round(corr / n, 4) if n else None,
+            "traffic_pct": (
+                OPENMYTHOS_TRAFFIC_PCT
+                if group == "openmythos"
+                else 100 - OPENMYTHOS_TRAFFIC_PCT
+            ),
         }
+
+    # スコアの統計的有意性検定（両グループにデータが 2 件以上ある場合）
+    sig = _significance_test(stats.scores["openmythos"], stats.scores["existing_ml"])
+    result["significance_test"] = sig
+
     return result
 
 

@@ -4,6 +4,108 @@ All notable changes to OpenMythos are documented here.
 
 ---
 
+## [0.14.0] — 2026-05-27
+
+### Sprint 10: LLMO生成 & Extended Thinking & Structured Output & DPO
+
+#### 戦略
+競合 (Jasper AI・MarketMuse・ClaudeMythos) に対して3軸で差別化:
+① LLMO生成パイプライン（独自差別化）② Extended Thinking（ClaudeMythos追随）③ Structured Output/DPO（競合パリティ）
+
+#### LLMO スコアリングモジュール (`open_mythos/llmo.py`) [新規]
+
+- `LLMOScorer` — entity_density / answer_directness / citability の 3 スコア計算エンジン
+- `LLMOScore` — スコア集約データクラス (entities リスト・word_count・sentence_count 含む)
+- `LLMOScorer.batch_score()` — 複数テキストの一括スコアリング
+- `LLMOScorer.rank()` — LLMO スコア降順ランキング
+- `LLMOScorer.compare()` — 2テキストの差分比較 (improvement_pct 付き)
+- entity_density: エンティティ密度 sigmoid 正規化。15個/100語 ≈ 0.75
+- answer_directness: 冒頭 1 文の answer-first パターン + 短文スコア
+- citability: 引用誘発パターン + 構造マーカー + 文書長 bell curve + 平均文長
+
+#### SEO/LLMO コンテンツ生成パイプライン (`scripts/generate_seo.py`) [新規]
+
+- `generate_seo_content()` — スタイル別 SEO コンテンツ生成 + LLMO スコア付き出力
+- 3 スタイル: `answer_first` / `faq` / `entity_rich`
+- `generate_all_styles()` — 3 スタイル全比較・LLMO スコア降順ソート
+- モデルの `n_loops` を活用した精度/速度トレードオフ制御
+- max_prompt_len で freqs_cis ブロードキャストエラーを防止
+
+#### SEO/LLMO API エンドポイント (`serve/api.py`) [追加]
+
+- `POST /v1/seo/score` — テキスト → {entity_density, answer_directness, citability, llmo_total}
+- `POST /v1/seo/generate` — prompt+style → LLMO スコア付き生成テキスト
+
+#### Extended Thinking (`open_mythos/thinking.py`) [新規]
+
+- `ThinkingEngine` — ClaudeMythos Extended Thinking に対応するオープン実装
+- `generate_with_thinking(prompt, think_loops, answer_loops)` — 思考/回答フェーズ分離生成
+- `_LoopCaptureBlock` — 各ループの隠れ状態ノルムを non-intrusive にキャプチャ
+- `ThinkingResult` — `{thinking: str, answer: str, loop_states: list, ...}` 集約
+- `_classify_loop_phase()` — ノルム変化を Exploring/Refining/Converging/Stable に分類
+- Thinking フェーズは ACT 早期終了なし（全ループ走破）で内部状態を完全記録
+
+#### Extended Thinking API エンドポイント (`serve/api.py`) [追加]
+
+- `POST /v1/thinking` — <thinking>...</thinking> ブロック付き回答生成
+- `think_loops` / `answer_loops` / `include_loop_states` パラメータ対応
+
+#### Structured Output / JSON Mode (`open_mythos/structured.py`) [新規]
+
+- `StructuredGenerator` — JSON Schema 準拠の構造化出力生成エンジン
+- `SchemaValidator` — JSON Schema (object/array/string/number/boolean/integer) 検証
+- 3 内蔵スキーマ: `AD_PERFORMANCE_SCHEMA` / `MARKETING_REPORT_SCHEMA` / `SEO_CONTENT_SCHEMA`
+- `BUILTIN_SCHEMAS` ディクショナリ (`ad_performance` / `marketing_report` / `seo_content`)
+- `_complete_json()` — 不完全 JSON の自動補完ヘルパー
+- `_coerce_value()` — 型・enum・range の強制変換
+- n_attempts リトライ + フォールバックで例外を投げない設計
+
+#### DPO Fine-tuning (`scripts/train_dpo.py`) [新規]
+
+- `compute_dpo_loss()` — DPO 損失 (Rafailov et al., 2023) の純 PyTorch 実装
+- 参照モデルとのlog prob差分: `β·(log π - log π_ref)` の sigmoidal 比較
+- `train_dpo()` — AdamW + 線形 warmup LR スケジューラ + 勾配クリッピング
+- `generate_sample_data()` — テスト用 JSONL preference pair 自動生成
+- `DPOConfig` — β / lr / epochs / warmup_steps 設定データクラス
+- 学習中 reward_margin・accuracy をリアルタイム表示
+
+#### テスト
+
+- `tests/test_sprint10.py` — 52 テスト追加
+- 全体: **560 PASS** (508 → +52)
+
+---
+
+## [0.13.0] — 2026-05-25
+
+### Sprint 9: マーケティング評価強化 & バッチ API & v0.13.0
+
+#### マーケティング特化評価 (`scripts/eval_marketing.py`) [新規]
+
+- `evaluate_ctr_prediction()` — CTR/CVR/ROAS の MAE・RMSE・Spearman 相関評価
+- `evaluate_content_quality()` — 品質スコア・LLMO 可視性の MAE・Spearman 評価
+- `evaluate_persona_classification()` — ペルソナ分類精度・クラス数レポート
+- `evaluate_ad_performance_tier()` — 広告 Tier 分類 Accuracy・high-tier F1・ordinal MAE
+- `run_evaluation(task, records, out_dir)` — CSV レポート一括出力
+- `TASK_EVALUATORS` ディスパッチテーブル（4 タスク対応）
+
+#### A/B テスト統計的有意性検定 (`serve/ab_router.py`)
+
+- `_significance_test(a, b)` — Welch t 検定（stdlib のみ、scipy 不要）
+- `/ab/stats` レスポンスに `significance_test.p_value` / `significant` フィールド追加
+
+#### バッチ推論 API (`serve/api.py`)
+
+- `POST /v1/batch` — 最大 64 テキストの一括推論エンドポイント
+- `BatchRequest` / `BatchResponse` / `BatchResponseItem` スキーマ
+- タスク別ループ数自動適用・`total_latency_ms` レポート
+
+#### テスト (`tests/test_sprint9.py`)
+
+- 46 tests 追加 (468 → **514 PASS**)
+
+---
+
 ## [0.12.0] — 2026-05-26
 
 ### Sprint 7: サービス統合 & データパイプライン & 分散推論

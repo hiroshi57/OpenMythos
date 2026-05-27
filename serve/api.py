@@ -679,3 +679,296 @@ def chat_completions(req: ChatRequest):
             total_tokens=prompt_tokens + completion_tokens,
         ),
     )
+
+
+# ---------------------------------------------------------------------------
+# バッチ推論 /v1/batch
+# ---------------------------------------------------------------------------
+
+
+class BatchItem(BaseModel):
+    text: str
+    task: TaskType = "general"
+    loops: int = Field(DEFAULT_LOOPS, ge=1, le=16)
+
+
+class BatchRequest(BaseModel):
+    items: list[BatchItem] = Field(..., min_length=1, max_length=64)
+
+
+class BatchResponseItem(BaseModel):
+    index: int
+    score: float
+    label: int
+    loops_used: int
+    latency_ms: float
+    task: str
+
+
+class BatchResponse(BaseModel):
+    results: list[BatchResponseItem]
+    total_latency_ms: float
+    n_items: int
+
+
+@app.post("/v1/batch", response_model=BatchResponse)
+def batch_infer(req: BatchRequest):
+    """複数テキストを一括推論する。
+
+    各アイテムは独立に推論され、ループ数はアイテムごとに指定可能。
+    最大 64 アイテムまで対応。
+    """
+    t_start = time.perf_counter()
+    results: list[BatchResponseItem] = []
+
+    for i, item in enumerate(req.items):
+        loops = min(item.loops, MAX_LOOPS)
+        if item.task != "general" and item.loops == DEFAULT_LOOPS:
+            loops = TASK_LOOPS.get(item.task, DEFAULT_LOOPS)
+
+        enc = state.tokenizer(
+            item.text,
+            return_tensors="pt",
+            truncation=True,
+            max_length=512,
+        )
+        input_ids = enc["input_ids"].to(state.device)
+
+        t0 = time.perf_counter()
+        with torch.no_grad():
+            logits = state.model(input_ids, n_loops=loops)
+        latency_ms = (time.perf_counter() - t0) * 1000
+
+        last_logit = logits[0, -1, :]
+        probs = torch.softmax(last_logit, dim=-1)
+        score = float(probs.max())
+        label = 1 if score >= 0.5 else 0
+
+        results.append(
+            BatchResponseItem(
+                index=i,
+                score=round(score, 4),
+                label=label,
+                loops_used=loops,
+                latency_ms=round(latency_ms, 2),
+                task=item.task,
+            )
+        )
+
+    total_ms = (time.perf_counter() - t_start) * 1000
+    return BatchResponse(
+        results=results,
+        total_latency_ms=round(total_ms, 2),
+        n_items=len(results),
+    )
+
+
+# ---------------------------------------------------------------------------
+# SEO / LLMO エンドポイント
+# ---------------------------------------------------------------------------
+
+from open_mythos.llmo import LLMOScorer  # noqa: E402
+
+_llmo_scorer = LLMOScorer()
+
+
+class SEOScoreRequest(BaseModel):
+    text: str = Field(..., description="スコアリング対象テキスト")
+
+
+class SEOScoreResponse(BaseModel):
+    entity_density: float
+    answer_directness: float
+    citability: float
+    llmo_total: float
+    entities: list[str]
+    word_count: int
+    latency_ms: float
+
+
+class SEOGenerateRequest(BaseModel):
+    prompt: str = Field(..., description="生成プロンプト")
+    style: Literal["answer_first", "faq", "entity_rich"] = Field(
+        "answer_first",
+        description="コンテンツスタイル",
+    )
+    max_new_tokens: int = Field(128, ge=1, le=512)
+    loops: int = Field(DEFAULT_LOOPS, ge=1, le=16)
+    temperature: float = Field(0.8, ge=0.0, le=2.0)
+    top_p: float = Field(0.9, ge=0.0, le=1.0)
+
+
+class SEOGenerateResponse(BaseModel):
+    text: str
+    style: str
+    llmo_total: float
+    entity_density: float
+    answer_directness: float
+    citability: float
+    entities: list[str]
+    word_count: int
+    loops_used: int
+    latency_ms: float
+
+
+@app.post("/v1/seo/score", response_model=SEOScoreResponse)
+def seo_score(req: SEOScoreRequest):
+    """テキストの LLMO / SEO スコアを計算する。
+
+    entity_density / answer_directness / citability の 3 軸と
+    加重平均の llmo_total (0–1) を返す。
+    """
+    t0 = time.perf_counter()
+    result = _llmo_scorer.score(req.text)
+    latency_ms = (time.perf_counter() - t0) * 1000
+
+    return SEOScoreResponse(
+        entity_density=result.entity_density,
+        answer_directness=result.answer_directness,
+        citability=result.citability,
+        llmo_total=result.llmo_total,
+        entities=result.entities,
+        word_count=result.word_count,
+        latency_ms=round(latency_ms, 2),
+    )
+
+
+def _seo_style_prefix(style: str) -> str:
+    prefixes = {
+        "answer_first": (
+            "[System]: Always start with a direct answer. Then supporting details.\n"
+        ),
+        "faq": (
+            "[System]: Format your response as Q&A pairs. Each answer: 2-4 sentences.\n"
+        ),
+        "entity_rich": (
+            "[System]: Include specific numbers, dates, proper nouns, and tech terms.\n"
+        ),
+    }
+    return prefixes.get(style, prefixes["answer_first"])
+
+
+@app.post("/v1/seo/generate", response_model=SEOGenerateResponse)
+def seo_generate(req: SEOGenerateRequest):
+    """SEO / LLMO 最適化コンテンツを生成し、スコアを付与して返す。
+
+    prompt に対して style に応じたシステムプレフィックスを付与して生成し、
+    生成結果を即座に LLMO スコアリングする。
+    """
+    loops = min(req.loops, MAX_LOOPS)
+    prefix = _seo_style_prefix(req.style)
+    full_prompt = f"{prefix}[User]: {req.prompt}\n[Assistant]:"
+
+    enc = state.tokenizer(
+        full_prompt,
+        return_tensors="pt",
+        truncation=True,
+        max_length=512,
+    )
+    input_ids = enc["input_ids"].to(state.device)
+    prompt_tokens = input_ids.shape[1]
+
+    t0 = time.perf_counter()
+    generated_ids: list[int] = []
+    cur_ids = input_ids
+
+    with torch.no_grad():
+        for _ in range(req.max_new_tokens):
+            logits = state.model(cur_ids, n_loops=loops)
+            next_logits = logits[0, -1, :] / max(req.temperature, 1e-6)
+            if req.top_p < 1.0:
+                sorted_logits, sorted_idx = torch.sort(next_logits, descending=True)
+                cum_probs = torch.cumsum(
+                    torch.softmax(sorted_logits, dim=-1), dim=-1
+                )
+                mask = cum_probs - torch.softmax(sorted_logits, dim=-1) > req.top_p
+                sorted_logits[mask] = float("-inf")
+                next_logits = sorted_logits.scatter(0, sorted_idx, sorted_logits)
+            probs = torch.softmax(next_logits, dim=-1)
+            next_token = int(torch.multinomial(probs, 1).item())
+            generated_ids.append(next_token)
+            cur_ids = torch.cat(
+                [cur_ids, torch.tensor([[next_token]], device=state.device)], dim=1
+            )
+            if next_token == state.tokenizer.eos_token_id:
+                break
+
+    latency_ms = (time.perf_counter() - t0) * 1000
+    generated_text = state.tokenizer.decode(generated_ids, skip_special_tokens=True)
+
+    # LLMO スコアリング
+    llmo = _llmo_scorer.score(generated_text)
+
+    return SEOGenerateResponse(
+        text=generated_text,
+        style=req.style,
+        llmo_total=llmo.llmo_total,
+        entity_density=llmo.entity_density,
+        answer_directness=llmo.answer_directness,
+        citability=llmo.citability,
+        entities=llmo.entities,
+        word_count=llmo.word_count,
+        loops_used=loops,
+        latency_ms=round(latency_ms, 2),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Extended Thinking エンドポイント
+# ---------------------------------------------------------------------------
+
+
+class ThinkingRequest(BaseModel):
+    prompt: str = Field(..., description="思考対象プロンプト")
+    think_loops: int = Field(8, ge=1, le=16, description="思考フェーズのループ数")
+    answer_loops: int = Field(4, ge=1, le=16, description="回答フェーズのループ数")
+    max_new_tokens: int = Field(128, ge=1, le=512)
+    temperature: float = Field(0.9, ge=0.0, le=2.0)
+    top_p: float = Field(0.9, ge=0.0, le=1.0)
+    include_loop_states: bool = Field(
+        False, description="ループごとの内部状態メタ情報を返すか"
+    )
+
+
+class ThinkingResponse(BaseModel):
+    thinking: str = Field(description="思考トレース (<thinking>...</thinking>)")
+    answer: str = Field(description="最終回答テキスト")
+    loops_used: int
+    think_loops: int
+    answer_loops: int
+    loop_states: list[dict] = Field(default_factory=list)
+    latency_ms: float
+
+
+@app.post("/v1/thinking", response_model=ThinkingResponse)
+def extended_thinking(req: ThinkingRequest):
+    """Extended Thinking — 思考トレース付きで回答を生成する。
+
+    ClaudeMythos の Extended Thinking 相当機能。
+    think_loops 回のループで深い推論を行い、内部状態変化を
+    <thinking>...</thinking> ブロックとして外部公開する。
+    その後 answer_loops 回のループで最終回答を生成する。
+    """
+    from open_mythos.thinking import ThinkingEngine
+
+    engine = ThinkingEngine(state.model, device=str(state.device))
+
+    result = engine.generate_with_thinking(
+        prompt=req.prompt,
+        think_loops=req.think_loops,
+        answer_loops=req.answer_loops,
+        max_new_tokens=req.max_new_tokens,
+        temperature=req.temperature,
+        top_p=req.top_p,
+        vocab_size=state.tokenizer.vocab_size,
+    )
+
+    return ThinkingResponse(
+        thinking=result.thinking,
+        answer=result.answer,
+        loops_used=result.loops_used,
+        think_loops=result.think_loops,
+        answer_loops=result.answer_loops,
+        loop_states=result.loop_states if req.include_loop_states else [],
+        latency_ms=result.latency_ms,
+    )
