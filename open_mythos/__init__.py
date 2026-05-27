@@ -21,6 +21,16 @@ from open_mythos.moda import MoDAConfig, MoDAModel
 from open_mythos.hyperloop import HyperloopConfig, HyperloopBlock, HyperloopMythos
 from open_mythos.logger_utils import TrainLogger
 from open_mythos.agents import OpenMythosLLM, MythosAgent
+from open_mythos.llmo import LLMOScorer, LLMOScore
+from open_mythos.thinking import ThinkingEngine, ThinkingResult
+from open_mythos.structured import (
+    StructuredGenerator,
+    SchemaValidator,
+    AD_PERFORMANCE_SCHEMA,
+    MARKETING_REPORT_SCHEMA,
+    SEO_CONTENT_SCHEMA,
+    BUILTIN_SCHEMAS,
+)
 from open_mythos.variants import (
     mythos_nano,
     mythos_1b,
@@ -70,4 +80,15 @@ __all__ = [
     "HyperloopBlock",
     "HyperloopMythos",
     "cli_main",
+    # Sprint 10: LLMO / Thinking / Structured Output
+    "LLMOScorer",
+    "LLMOScore",
+    "ThinkingEngine",
+    "ThinkingResult",
+    "StructuredGenerator",
+    "SchemaValidator",
+    "AD_PERFORMANCE_SCHEMA",
+    "MARKETING_REPORT_SCHEMA",
+    "SEO_CONTENT_SCHEMA",
+    "BUILTIN_SCHEMAS",
 ]
