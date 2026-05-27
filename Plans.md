@@ -150,15 +150,15 @@
 
 | task-id | 説明 | 担当 | 状態 | DoD |
 |---------|------|------|------|-----|
-| 10.1.1 | `open_mythos/llmo.py` — LLMO スコアリングモジュール (entity_density / answer_directness / citability) | Worker | cc:TODO | (a) `LLMOScorer` クラス実装 (b) 3スコア計算 (entity_density・answer_directness・citability) (c) テスト PASS |
-| 10.1.2 | `scripts/generate_seo.py` — SEO/LLMO最適化コンテンツ生成パイプライン | Worker | cc:TODO | (a) `generate_seo_content(prompt, style)` 実装 (b) answer-first / FAQ / entity-rich の3スタイル (c) eval_marketing と統合して LLMO スコア付き出力 |
-| 10.1.3 | `serve/api.py` に `/v1/seo/score` & `/v1/seo/generate` 追加 | Worker | cc:TODO | (a) `/v1/seo/score`: text → {entity_density, answer_directness, citability, llmo_total} (b) `/v1/seo/generate`: prompt+style → {text, llmo_score, entities} (c) テスト PASS |
-| 10.2.1 | `open_mythos/thinking.py` — Extended Thinking (per-loop 内部状態エクスポート) | Worker | cc:TODO | (a) `generate_with_thinking(prompt, think_loops, answer_loops)` 実装 (b) 戻り値: `{thinking: str, answer: str, loops_used: int, loop_states: list}` (c) テスト PASS |
-| 10.2.2 | `serve/api.py` に `/v1/thinking` エンドポイント + ChatRequest に `thinking` フラグ追加 | Worker | cc:TODO | (a) `/v1/thinking` POST: thinking + answer を分離返却 (b) `/v1/chat/completions` の `thinking=true` で thinking ブロック付与 (c) テスト PASS |
-| 10.3.1 | `open_mythos/structured.py` — JSON mode / Structured Output (greedy JSON デコード) | Worker | cc:TODO | (a) `generate_json(schema: dict, prompt: str)` 実装 (b) JSON schema バリデーション (c) ad_performance / marketing_report スキーマ例 (d) テスト PASS |
-| 10.3.2 | `scripts/train_dpo.py` — DPO (Direct Preference Optimization) fine-tuning | Worker | cc:TODO | (a) preference pair (chosen/rejected) データ読み込み (b) DPO loss 実装 (reference model logprob との差分) (c) テスト PASS |
-| 10.4.1 | PyPI v0.14.0 リリース準備 — pyproject.toml 0.13.0→0.14.0 + CHANGELOG Sprint 10 追加 | Worker | cc:TODO | (a) version bump (b) CHANGELOG.md Sprint 10 セクション追加 |
-| 10.5.1 | Sprint 10 テスト追加 + commit + push | Worker | cc:TODO | (a) test_sprint10.py (b) 548 PASS 目標 (c) git push origin master |
+| 10.1.1 | `open_mythos/llmo.py` — LLMO スコアリングモジュール (entity_density / answer_directness / citability) | Worker | cc:完了 [ae264dd] | (a) `LLMOScorer` クラス実装 (b) 3スコア計算 (entity_density・answer_directness・citability) (c) テスト PASS |
+| 10.1.2 | `scripts/generate_seo.py` — SEO/LLMO最適化コンテンツ生成パイプライン | Worker | cc:完了 [ae264dd] | (a) `generate_seo_content(prompt, style)` 実装 (b) answer-first / FAQ / entity-rich の3スタイル (c) eval_marketing と統合して LLMO スコア付き出力 |
+| 10.1.3 | `serve/api.py` に `/v1/seo/score` & `/v1/seo/generate` 追加 | Worker | cc:完了 [ae264dd] | (a) `/v1/seo/score`: text → {entity_density, answer_directness, citability, llmo_total} (b) `/v1/seo/generate`: prompt+style → {text, llmo_score, entities} (c) テスト PASS |
+| 10.2.1 | `open_mythos/thinking.py` — Extended Thinking (per-loop 内部状態エクスポート) | Worker | cc:完了 [ae264dd] | (a) `generate_with_thinking(prompt, think_loops, answer_loops)` 実装 (b) 戻り値: `{thinking: str, answer: str, loops_used: int, loop_states: list}` (c) テスト PASS |
+| 10.2.2 | `serve/api.py` に `/v1/thinking` エンドポイント + ChatRequest に `thinking` フラグ追加 | Worker | cc:完了 [ae264dd] | (a) `/v1/thinking` POST: thinking + answer を分離返却 (b) `/v1/chat/completions` の `thinking=true` で thinking ブロック付与 (c) テスト PASS |
+| 10.3.1 | `open_mythos/structured.py` — JSON mode / Structured Output (greedy JSON デコード) | Worker | cc:完了 [ae264dd] | (a) `generate_json(schema: dict, prompt: str)` 実装 (b) JSON schema バリデーション (c) ad_performance / marketing_report スキーマ例 (d) テスト PASS |
+| 10.3.2 | `scripts/train_dpo.py` — DPO (Direct Preference Optimization) fine-tuning | Worker | cc:完了 [ae264dd] | (a) preference pair (chosen/rejected) データ読み込み (b) DPO loss 実装 (reference model logprob との差分) (c) テスト PASS |
+| 10.4.1 | PyPI v0.14.0 リリース準備 — pyproject.toml 0.13.0→0.14.0 + CHANGELOG Sprint 10 追加 | Worker | cc:完了 [ae264dd] | (a) version bump (b) CHANGELOG.md Sprint 10 セクション追加 |
+| 10.5.1 | Sprint 10 テスト追加 + commit + push | Worker | cc:完了 [ae264dd] | (a) test_sprint10.py 52 tests (b) 560 PASS (c) commit ae264dd |
 
 ---
 
