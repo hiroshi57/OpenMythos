@@ -432,15 +432,20 @@ class TestBatchInference:
 
 
 class TestVersionBump:
-    def test_version_is_013(self):
+    def test_version_is_013_or_later(self):
+        """Sprint 9 で 0.13.0 以上にバンプされていることを確認 (Sprint 10 以降も PASS)。"""
+        import re
         from pathlib import Path
 
         content = (Path(__file__).parent.parent / "pyproject.toml").read_text(
             encoding="utf-8"
         )
-        assert (
-            'version = "0.13.0"' in content
-        ), "pyproject.toml の version が 0.13.0 であること"
+        m = re.search(r'^version = "(\d+)\.(\d+)\.(\d+)"', content, re.MULTILINE)
+        assert m is not None, "pyproject.toml に version フィールドが見つからない"
+        major, minor, patch = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        assert (major, minor, patch) >= (0, 13, 0), (
+            f"version {major}.{minor}.{patch} は 0.13.0 以上であること"
+        )
 
     def test_changelog_has_013(self):
         from pathlib import Path
