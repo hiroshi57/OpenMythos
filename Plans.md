@@ -63,13 +63,13 @@
 
 | task-id | 説明 | 担当 | 状態 | DoD |
 |---------|------|------|------|-----|
-| 12.1.1 | `open_mythos/react.py` — ReActAgent (Think→Act→Observe ループ + format_agent_trace) | Worker | cc:完了 | (a) AgentStep/AgentResult (b) ループ実装 (c) テスト PASS |
-| 12.1.2 | `serve/api.py` に `/v1/agent/run` エンドポイント追加 | Worker | cc:完了 | (a) AgentRunRequest/Response (b) max_iterations 制御 (c) テスト PASS |
-| 12.2.1 | `open_mythos/prefix_cache.py` — PromptPrefixCache (LRU prefill キャッシュ) | Worker | cc:完了 | (a) cache_prefix() (b) generate_with_cache() (c) hit_rate 統計 (d) テスト PASS |
-| 12.3.1 | `open_mythos/conversation.py` — ConversationMemory + SessionStore | Worker | cc:完了 | (a) add_turn() / to_context_string() (b) 自動圧縮 (c) セッション管理 (d) テスト PASS |
-| 12.3.2 | `serve/api.py` に `/v1/sessions/*` エンドポイント追加 | Worker | cc:完了 | (a) POST/GET/DELETE /v1/sessions (b) POST turns (c) GET context (d) テスト PASS |
-| 12.4.1 | PyPI v0.16.0 — pyproject.toml 0.15.0→0.16.0 + CHANGELOG Sprint 12 追加 | Worker | cc:完了 | (a) version bump (b) CHANGELOG 追加 |
-| 12.5.1 | Sprint 12 テスト追加 + commit + push | Worker | cc:完了 | (a) test_sprint12.py 65 tests (b) 729 PASS (c) git push |
+| 12.1.1 | `open_mythos/react.py` — ReActAgent (Think→Act→Observe ループ + format_agent_trace) | Worker | cc:完了 [292fd88] | (a) AgentStep/AgentResult (b) ループ実装 (c) テスト PASS |
+| 12.1.2 | `serve/api.py` に `/v1/agent/run` エンドポイント追加 | Worker | cc:完了 [292fd88] | (a) AgentRunRequest/Response (b) max_iterations 制御 (c) テスト PASS |
+| 12.2.1 | `open_mythos/prefix_cache.py` — PromptPrefixCache (LRU prefill キャッシュ) | Worker | cc:完了 [292fd88] | (a) cache_prefix() (b) generate_with_cache() (c) hit_rate 統計 (d) テスト PASS |
+| 12.3.1 | `open_mythos/conversation.py` — ConversationMemory + SessionStore | Worker | cc:完了 [292fd88] | (a) add_turn() / to_context_string() (b) 自動圧縮 (c) セッション管理 (d) テスト PASS |
+| 12.3.2 | `serve/api.py` に `/v1/sessions/*` エンドポイント追加 | Worker | cc:完了 [292fd88] | (a) POST/GET/DELETE /v1/sessions (b) POST turns (c) GET context (d) テスト PASS |
+| 12.4.1 | PyPI v0.16.0 — pyproject.toml 0.15.0→0.16.0 + CHANGELOG Sprint 12 追加 | Worker | cc:完了 [292fd88] | (a) version bump (b) CHANGELOG 追加 |
+| 12.5.1 | Sprint 12 テスト追加 + commit + push | Worker | cc:完了 [292fd88] | (a) test_sprint12.py 65 tests (b) 729 PASS (c) git push |
 
 ---
 
