@@ -1,5 +1,3 @@
-from transformers import AutoTokenizer
-
 DEFAULT_MODEL_ID = "openai/gpt-oss-20b"
 
 
@@ -62,6 +60,7 @@ class MythosTokenizer:
         Args:
             model_id (str): HuggingFace model identifier or path to tokenizer files.
         """
+        from transformers import AutoTokenizer  # lazy import to avoid mock contamination
         self.tokenizer = AutoTokenizer.from_pretrained(model_id)
 
     @property

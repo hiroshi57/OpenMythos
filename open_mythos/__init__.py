@@ -72,6 +72,22 @@ from open_mythos.conversation import (
     ConversationMemory,
     SessionStore,
 )
+from open_mythos.swarm import (
+    SwarmConfig,
+    SwarmAgentResult,
+    SwarmResult,
+    SwarmOrchestrator,
+)
+from open_mythos.mod import (
+    MoDConfig,
+    TokenRouter,
+    MixtureOfDepthsBlock,
+    MoDTransformer,
+    MoDAnalytics,
+    precompute_mod_rope_freqs,
+    apply_mod_rope,
+    routing_entropy,
+)
 from open_mythos.variants import (
     mythos_nano,
     mythos_1b,
@@ -121,6 +137,20 @@ __all__ = [
     "HyperloopBlock",
     "HyperloopMythos",
     "cli_main",
+    # Sprint 13: SwarmOrchestrator
+    "SwarmConfig",
+    "SwarmAgentResult",
+    "SwarmResult",
+    "SwarmOrchestrator",
+    # Sprint 13: Mixture-of-Depths
+    "MoDConfig",
+    "TokenRouter",
+    "MixtureOfDepthsBlock",
+    "MoDTransformer",
+    "MoDAnalytics",
+    "precompute_mod_rope_freqs",
+    "apply_mod_rope",
+    "routing_entropy",
     # Sprint 12: ReAct Agent / Prefix Cache / Conversation Memory
     "AgentStep",
     "AgentResult",
