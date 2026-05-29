@@ -972,3 +972,224 @@ def extended_thinking(req: ThinkingRequest):
         loop_states=result.loop_states if req.include_loop_states else [],
         latency_ms=result.latency_ms,
     )
+
+
+# ---------------------------------------------------------------------------
+# Tool Use / Function Calling エンドポイント
+# ---------------------------------------------------------------------------
+
+from open_mythos.tools import ToolRegistry as _ToolRegistry, ToolCall, execute_tool_calls  # noqa: E402
+
+# デフォルトのマーケ特化ツールレジストリ (起動時1回構築)
+_default_tool_registry = _ToolRegistry.default()
+
+
+class ToolCallRequest(BaseModel):
+    name: str = Field(..., description="呼び出すツール名")
+    arguments: dict = Field(default_factory=dict, description="ツール引数")
+    call_id: str = Field("", description="呼び出しID (オプション)")
+
+
+class ToolCallResponse(BaseModel):
+    tool_name: str
+    content: dict = Field(default_factory=dict)
+    success: bool
+    error: str = ""
+    latency_ms: float
+
+
+class ToolsBatchRequest(BaseModel):
+    calls: list[ToolCallRequest] = Field(..., min_length=1, max_length=16)
+
+
+class ToolsBatchResponse(BaseModel):
+    results: list[ToolCallResponse]
+    total_latency_ms: float
+
+
+class ToolsListResponse(BaseModel):
+    tools: list[dict]
+    n_tools: int
+
+
+@app.get("/v1/tools", response_model=ToolsListResponse)
+def list_tools():
+    """利用可能なツール一覧を OpenAI 互換 schema で返す。"""
+    return ToolsListResponse(
+        tools=_default_tool_registry.to_openai_tools(),
+        n_tools=len(_default_tool_registry),
+    )
+
+
+@app.post("/v1/tools/call", response_model=ToolCallResponse)
+def call_tool(req: ToolCallRequest):
+    """単一のツールを呼び出す。
+
+    マーケ特化ツール: search_competitor / calculate_roi / fetch_trend / score_content
+    """
+    tc = ToolCall(name=req.name, arguments=req.arguments, call_id=req.call_id)
+    result = _default_tool_registry.call(tc)
+
+    content = {}
+    if result.content is not None:
+        if isinstance(result.content, dict):
+            content = result.content
+        else:
+            content = {"result": result.content}
+
+    return ToolCallResponse(
+        tool_name=result.tool_name,
+        content=content,
+        success=result.success,
+        error=result.error,
+        latency_ms=result.latency_ms,
+    )
+
+
+@app.post("/v1/tools/batch", response_model=ToolsBatchResponse)
+def call_tools_batch(req: ToolsBatchRequest):
+    """複数ツールを一括呼び出しする (最大16件)。"""
+    t_start = time.perf_counter()
+    tool_calls = [
+        ToolCall(name=r.name, arguments=r.arguments, call_id=r.call_id)
+        for r in req.calls
+    ]
+    results = execute_tool_calls(tool_calls, _default_tool_registry)
+    total_ms = (time.perf_counter() - t_start) * 1000
+
+    responses = []
+    for r in results:
+        content = {}
+        if r.content is not None:
+            content = r.content if isinstance(r.content, dict) else {"result": r.content}
+        responses.append(ToolCallResponse(
+            tool_name=r.tool_name,
+            content=content,
+            success=r.success,
+            error=r.error,
+            latency_ms=r.latency_ms,
+        ))
+
+    return ToolsBatchResponse(
+        results=responses,
+        total_latency_ms=round(total_ms, 2),
+    )
+
+
+# ---------------------------------------------------------------------------
+# RAG エンドポイント
+# ---------------------------------------------------------------------------
+
+from open_mythos.rag import RAGPipeline as _RAGPipeline  # noqa: E402
+
+# グローバル RAG パイプライン (起動後にドキュメントを追加して使う)
+_rag_pipeline: Optional[_RAGPipeline] = None
+
+
+def _get_rag() -> _RAGPipeline:
+    global _rag_pipeline
+    if _rag_pipeline is None:
+        _rag_pipeline = _RAGPipeline(state.model, device=str(state.device))
+    return _rag_pipeline
+
+
+class RAGIndexRequest(BaseModel):
+    texts: list[str] = Field(..., min_length=1, max_length=256, description="インデックスするテキスト群")
+    doc_ids: list[str] = Field(default_factory=list, description="ドキュメントID (省略可)")
+    metadatas: list[dict] = Field(default_factory=list, description="メタデータ (省略可)")
+
+
+class RAGIndexResponse(BaseModel):
+    added: int
+    total_docs: int
+
+
+class RAGQueryRequest(BaseModel):
+    query: str = Field(..., description="検索クエリ")
+    top_k: int = Field(3, ge=1, le=10, description="取得するドキュメント数")
+    max_new_tokens: int = Field(128, ge=1, le=512)
+    loops: int = Field(DEFAULT_LOOPS, ge=1, le=16)
+    temperature: float = Field(0.8, ge=0.0, le=2.0)
+    generate: bool = Field(True, description="False の場合は検索のみ (生成なし)")
+
+
+class RAGDocResult(BaseModel):
+    doc_id: str
+    text: str
+    score: float
+    metadata: dict = Field(default_factory=dict)
+
+
+class RAGQueryResponse(BaseModel):
+    query: str
+    answer: str = ""
+    retrieved_docs: list[RAGDocResult]
+    n_docs_in_store: int
+    latency_ms: float
+
+
+@app.post("/v1/rag/index", response_model=RAGIndexResponse)
+def rag_index(req: RAGIndexRequest):
+    """ドキュメントをRAGインデックスに追加する。"""
+    rag = _get_rag()
+    n = rag.add_documents(
+        texts=req.texts,
+        doc_ids=req.doc_ids or None,
+        metadatas=req.metadatas or None,
+    )
+    return RAGIndexResponse(added=n, total_docs=rag.n_docs())
+
+
+@app.post("/v1/rag", response_model=RAGQueryResponse)
+def rag_query(req: RAGQueryRequest):
+    """RAG検索 + 生成を実行する。
+
+    `generate=False` の場合は検索結果のみ返す。
+    `generate=True` (デフォルト) の場合は検索結果をコンテキストに組み込んで生成する。
+    """
+    rag = _get_rag()
+    loops = min(req.loops, MAX_LOOPS)
+
+    if req.generate:
+        result = rag.generate_with_context(
+            query=req.query,
+            top_k=req.top_k,
+            max_new_tokens=req.max_new_tokens,
+            temperature=req.temperature,
+            loops=loops,
+        )
+        return RAGQueryResponse(
+            query=req.query,
+            answer=result.answer,
+            retrieved_docs=[
+                RAGDocResult(
+                    doc_id=d.doc_id,
+                    text=d.text,
+                    score=round(d.score, 4),
+                    metadata=d.metadata,
+                )
+                for d in result.retrieved_docs
+            ],
+            n_docs_in_store=result.n_docs_in_store,
+            latency_ms=result.latency_ms,
+        )
+    else:
+        # 検索のみ
+        t0 = time.perf_counter()
+        docs = rag.retrieve(req.query, top_k=req.top_k)
+        latency_ms = (time.perf_counter() - t0) * 1000
+        return RAGQueryResponse(
+            query=req.query,
+            answer="",
+            retrieved_docs=[
+                RAGDocResult(
+                    doc_id=d.doc_id,
+                    text=d.text,
+                    score=round(d.score, 4),
+                    metadata=d.metadata,
+                )
+                for d in docs
+            ],
+            n_docs_in_store=rag.n_docs(),
+            latency_ms=round(latency_ms, 2),
+        )

@@ -31,6 +31,30 @@ from open_mythos.structured import (
     SEO_CONTENT_SCHEMA,
     BUILTIN_SCHEMAS,
 )
+from open_mythos.tools import (
+    ToolDefinition,
+    ToolCall,
+    ToolResult,
+    ToolRegistry,
+    tool,
+    execute_tool_call,
+    execute_tool_calls,
+    parse_tool_calls,
+    build_tool_prompt,
+)
+from open_mythos.tools_marketing import register_marketing_tools
+from open_mythos.rope_extension import (
+    RopeScalingConfig,
+    yarn_rope_freqs,
+    get_rope_freqs,
+    extend_model_context,
+)
+from open_mythos.rag import (
+    Document,
+    VectorStore,
+    RAGPipeline,
+    RAGResult,
+)
 from open_mythos.variants import (
     mythos_nano,
     mythos_1b,
@@ -80,6 +104,25 @@ __all__ = [
     "HyperloopBlock",
     "HyperloopMythos",
     "cli_main",
+    # Sprint 11: Tool Use / Long Context / RAG
+    "ToolDefinition",
+    "ToolCall",
+    "ToolResult",
+    "ToolRegistry",
+    "tool",
+    "execute_tool_call",
+    "execute_tool_calls",
+    "parse_tool_calls",
+    "build_tool_prompt",
+    "register_marketing_tools",
+    "RopeScalingConfig",
+    "yarn_rope_freqs",
+    "get_rope_freqs",
+    "extend_model_context",
+    "Document",
+    "VectorStore",
+    "RAGPipeline",
+    "RAGResult",
     # Sprint 10: LLMO / Thinking / Structured Output
     "LLMOScorer",
     "LLMOScore",
