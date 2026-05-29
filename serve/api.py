@@ -1193,3 +1193,193 @@ def rag_query(req: RAGQueryRequest):
             n_docs_in_store=rag.n_docs(),
             latency_ms=round(latency_ms, 2),
         )
+
+
+# ---------------------------------------------------------------------------
+# ReAct エージェント エンドポイント
+# ---------------------------------------------------------------------------
+
+from open_mythos.react import ReActAgent as _ReActAgent, AgentStep as _AgentStep  # noqa: E402
+
+# デフォルトエージェント (ツールレジストリ付き)
+_default_agent: Optional[_ReActAgent] = None
+
+
+def _get_agent() -> _ReActAgent:
+    global _default_agent
+    if _default_agent is None:
+        _default_agent = _ReActAgent(
+            model=state.model,
+            registry=_default_tool_registry,
+            device=str(state.device),
+        )
+    return _default_agent
+
+
+class AgentRunRequest(BaseModel):
+    task: str = Field(..., description="エージェントに解決させるタスク")
+    system_prompt: str = Field("", description="カスタムシステムプロンプト (省略可)")
+    max_iterations: int = Field(6, ge=1, le=12, description="最大イテレーション数")
+    max_new_tokens: int = Field(128, ge=1, le=512, description="各ステップの最大生成トークン数")
+    temperature: float = Field(0.7, ge=0.0, le=2.0)
+    loops: int = Field(DEFAULT_LOOPS, ge=1, le=16)
+
+
+class AgentStepResponse(BaseModel):
+    step_type: str
+    content: str
+    iteration: int
+    latency_ms: float
+    tool_name: str = ""
+    tool_success: bool = True
+
+
+class AgentRunResponse(BaseModel):
+    task: str
+    final_answer: str
+    steps: list[AgentStepResponse]
+    iterations_used: int
+    n_tool_calls: int
+    stopped_reason: str
+    total_latency_ms: float
+
+
+@app.post("/v1/agent/run", response_model=AgentRunResponse)
+def agent_run(req: AgentRunRequest):
+    """ReAct エージェントループでタスクを解決する。
+
+    Tool Use (Sprint 11) を活用して複数ステップのタスクを自律実行する。
+    """
+    agent = _get_agent()
+    agent.max_iterations = req.max_iterations
+    agent.max_new_tokens = req.max_new_tokens
+    agent.temperature = req.temperature
+    agent.loops = min(req.loops, MAX_LOOPS)
+
+    result = agent.run(task=req.task, system_prompt=req.system_prompt)
+
+    step_responses = []
+    for step in result.steps:
+        tool_name = step.tool_call.name if step.tool_call else ""
+        tool_success = step.tool_result.success if step.tool_result else True
+        step_responses.append(AgentStepResponse(
+            step_type=step.step_type,
+            content=step.content[:500],  # 最大500文字
+            iteration=step.iteration,
+            latency_ms=step.latency_ms,
+            tool_name=tool_name,
+            tool_success=tool_success,
+        ))
+
+    return AgentRunResponse(
+        task=result.task,
+        final_answer=result.final_answer,
+        steps=step_responses,
+        iterations_used=result.iterations_used,
+        n_tool_calls=result.n_tool_calls,
+        stopped_reason=result.stopped_reason,
+        total_latency_ms=result.total_latency_ms,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Sessions / Conversation Memory エンドポイント
+# ---------------------------------------------------------------------------
+
+from open_mythos.conversation import SessionStore as _SessionStore  # noqa: E402
+
+_session_store = _SessionStore(max_sessions=500, max_turns=20, max_chars=4000)
+
+
+class SessionCreateRequest(BaseModel):
+    session_id: str = Field("", description="セッション ID (省略時は自動生成)")
+    system_msg: str = Field("", description="システムメッセージ")
+
+
+class SessionCreateResponse(BaseModel):
+    session_id: str
+    created: bool
+
+
+class TurnAddRequest(BaseModel):
+    role: str = Field(..., description="'user' または 'assistant'")
+    content: str = Field(..., description="ターンの内容")
+
+
+class SessionStatsResponse(BaseModel):
+    session_id: str
+    n_turns: int
+    total_chars: int
+    has_summary: bool
+    summary_turns: int
+
+
+class SessionContextResponse(BaseModel):
+    session_id: str
+    context: str
+    n_turns: int
+
+
+@app.post("/v1/sessions", response_model=SessionCreateResponse)
+def create_session(req: SessionCreateRequest):
+    """新しい会話セッションを作成する。"""
+    sid = req.session_id if req.session_id else None
+    already_exists = sid is not None and _session_store.get(sid) is not None
+    new_sid, _ = _session_store.get_or_create(session_id=sid, system_msg=req.system_msg)
+    return SessionCreateResponse(session_id=new_sid, created=not already_exists)
+
+
+@app.get("/v1/sessions/{session_id}", response_model=SessionStatsResponse)
+def get_session(session_id: str):
+    """セッションの統計情報を取得する。"""
+    mem = _session_store.get(session_id)
+    if mem is None:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
+    s = mem.stats()
+    return SessionStatsResponse(
+        session_id=session_id,
+        n_turns=s["n_turns"],
+        total_chars=s["total_chars"],
+        has_summary=s["has_summary"],
+        summary_turns=s["summary_turns"],
+    )
+
+
+@app.delete("/v1/sessions/{session_id}")
+def delete_session(session_id: str):
+    """セッションを削除する。"""
+    deleted = _session_store.delete(session_id)
+    return {"deleted": deleted, "session_id": session_id}
+
+
+@app.post("/v1/sessions/{session_id}/turns", response_model=SessionStatsResponse)
+def add_turn(session_id: str, req: TurnAddRequest):
+    """セッションにターンを追加する。"""
+    mem = _session_store.get(session_id)
+    if mem is None:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
+    mem.add_turn(req.role, req.content)
+    s = mem.stats()
+    return SessionStatsResponse(
+        session_id=session_id,
+        n_turns=s["n_turns"],
+        total_chars=s["total_chars"],
+        has_summary=s["has_summary"],
+        summary_turns=s["summary_turns"],
+    )
+
+
+@app.get("/v1/sessions/{session_id}/context", response_model=SessionContextResponse)
+def get_session_context(session_id: str):
+    """セッションのコンテキスト文字列を取得する。"""
+    mem = _session_store.get(session_id)
+    if mem is None:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
+    return SessionContextResponse(
+        session_id=session_id,
+        context=mem.to_context_string(),
+        n_turns=mem.n_turns,
+    )

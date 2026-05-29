@@ -4,6 +4,56 @@ All notable changes to OpenMythos are documented here.
 
 ---
 
+## [0.16.0] — 2026-05-29
+
+### Sprint 12: ReAct エージェントループ & プロンプトキャッシュ & 会話メモリ
+
+#### 戦略
+A) ReAct Agent Loop — Tool Use を活用した自律エージェント
+B) Prompt KV Prefix Cache — 共通プレフィックスの prefill 省略で TTFT 削減
+C) Conversation Memory — rolling window + 要約圧縮 + セッション管理
+
+#### ReAct エージェントループ (`open_mythos/react.py`) [新規]
+
+- `AgentStep` — 1ステップの思考/行動/観察コンテナ (thought/action/observation/answer)
+- `AgentResult` — エージェント実行結果 (steps/iterations_used/stopped_reason)
+- `ReActAgent` — Think→Act→Observe ループエンジン
+  - `parse_tool_calls()` でツール呼び出しを検出して実行
+  - `max_iterations` で暴走防止 (デフォルト: 6)
+  - 停止条件: "Final Answer:" パターン / ツール不要 / max_iterations
+- `format_agent_trace()` — エージェント実行ログをデバッグ用テキストに整形
+
+#### プロンプト KV プレフィックスキャッシュ (`open_mythos/prefix_cache.py`) [新規]
+
+- `PrefixCacheEntry` — prefill 済み KV ロジットキャッシュエントリ
+- `PromptPrefixCache` — LRU キャッシュ管理 (max_entries, hit_rate 統計)
+  - `cache_prefix()` — プレフィックスを prefill してキャッシュ保存
+  - `generate_with_cache()` — キャッシュヒット時は prefill をスキップして継続生成
+  - `evict()` / `clear()` — キャッシュ操作
+- `CachedGenResult` — cache_hit / prefill_skipped_tokens などの統計付き生成結果
+
+#### 会話メモリ (`open_mythos/conversation.py`) [新規]
+
+- `Turn` — 1ターン (role / content / turn_id / metadata)
+- `MemorySummary` — 圧縮されたサマリー (compression_ratio 付き)
+- `ConversationMemory` — rolling window + 自動要約圧縮
+  - `add_turn()` / `add_user()` / `add_assistant()` — ターン追加
+  - `to_context_string()` — プロンプト用コンテキスト文字列生成
+  - `to_messages()` — OpenAI messages 形式変換
+  - `compress_now()` — 手動圧縮
+- `SessionStore` — セッション ID ベースのメモリ管理 (LRU eviction / TTL)
+
+#### Serve API 拡張 (`serve/api.py`)
+
+- `POST /v1/agent/run` — ReAct エージェントループでタスクを解決
+- `POST /v1/sessions` — 新規会話セッション作成
+- `GET /v1/sessions/{id}` — セッション統計取得
+- `DELETE /v1/sessions/{id}` — セッション削除
+- `POST /v1/sessions/{id}/turns` — ターン追加
+- `GET /v1/sessions/{id}/context` — コンテキスト文字列取得
+
+---
+
 ## [0.15.0] — 2026-05-29
 
 ### Sprint 11: Tool Use / Long Context (YaRN RoPE) / RAG Pipeline
