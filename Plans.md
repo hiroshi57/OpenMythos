@@ -162,12 +162,30 @@
 
 ---
 
+## Sprint 11: Tool Use / Long Context / RAG & v0.15.0 (完了)
+
+> ブランチ: `feature/sprint11-tools-longctx-rag`
+> 戦略: A) Tool Use/Function Calling B) Long Context 32K C) RAG Pipeline — 全3トラック並行実装
+
+| task-id | 説明 | 担当 | 状態 | DoD |
+|---------|------|------|------|-----|
+| 11.1.1 | `open_mythos/tools.py` — ToolRegistry / ToolCall / ToolResult スキーマ + 実行エンジン | Worker | cc:完了 | (a) `ToolRegistry` クラス (b) `@tool` デコレータ (c) `execute_tool_call()` 実装 (d) テスト PASS |
+| 11.1.2 | マーケ特化ツール実装 — `search_competitor` / `calculate_roi` / `fetch_trend` / `score_content` | Worker | cc:完了 | (a) 4ツール実装 (b) ToolRegistry に登録 (c) テスト PASS |
+| 11.1.3 | `/v1/chat/completions` に `tools` & `tool_choice` パラメータ追加 (OpenAI互換) | Worker | cc:完了 | (a) `tools` リスト受付 (b) tool_call → 実行 → 結果をコンテキストに注入 (c) テスト PASS |
+| 11.2.1 | `open_mythos/rope_extension.py` — YaRN Dynamic NTK-aware RoPE scaling (32K対応) | Worker | cc:完了 | (a) `yarn_rope_freqs()` 実装 (b) `MythosConfig` に `rope_scaling_factor` 追加 (c) テスト PASS |
+| 11.2.2 | Long Context 推論テスト — 4K→32K シーケンス長対応確認 | Worker | cc:完了 | (a) max_seq_len=32768 で forward 動作 (b) `/v1/seo/generate` max_length 拡大 (c) テスト PASS |
+| 11.3.1 | `open_mythos/rag.py` — RAGPipeline (numpy cosine similarity、FAISS オプション) | Worker | cc:完了 | (a) `RAGPipeline.add_documents()` (b) `retrieve(query, top_k)` (c) `generate_with_context()` (d) テスト PASS |
+| 11.3.2 | `serve/api.py` に `/v1/rag` エンドポイント追加 | Worker | cc:完了 | (a) `POST /v1/rag`: query → retrieved_docs + answer (b) `POST /v1/rag/index`: ドキュメント追加 (c) テスト PASS |
+| 11.4.1 | PyPI v0.15.0 リリース準備 — pyproject.toml 0.14.0→0.15.0 + CHANGELOG Sprint 11 追加 | Worker | cc:完了 | (a) version bump (b) CHANGELOG.md Sprint 11 セクション追加 |
+| 11.5.1 | Sprint 11 テスト追加 + commit + push | Worker | cc:完了 | (a) test_sprint11.py (b) 664 PASS (c) git push |
+
+---
+
 ## 進行中の作業メモ
 
-### 現在のブランチ状態 (2026-05-27 更新)
-- `master`: `c8c24a9` — Sprint 8 全完了 (468 PASS, CI green)
-- `feature/sprint9-eval-batch`: `c29f775` — Sprint 9 全完了 (508 PASS) **→ master merge 待ち**
-- Sprint 9 ブランチは全タスク cc:完了。PR 作成 & master merge が次ステップ。
+### 現在のブランチ状態 (2026-05-29 更新)
+- `master`: `48c53ca` — Sprint 9+10 全完了 (560 PASS / v0.14.0)
+- `feature/sprint11-tools-longctx-rag`: Sprint 11 全完了 (664 PASS / v0.15.0) — master merge 待ち
 
 ### 重要な技術的知見
 - `freqs_cis` は必ず `[:T]` スライスして渡すこと (apply_rope ブロードキャストエラー防止)

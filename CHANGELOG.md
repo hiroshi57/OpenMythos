@@ -4,6 +4,61 @@ All notable changes to OpenMythos are documented here.
 
 ---
 
+## [0.15.0] — 2026-05-29
+
+### Sprint 11: Tool Use / Long Context (YaRN RoPE) / RAG Pipeline
+
+#### 戦略
+A) Tool Use/Function Calling — OpenAI互換ツール実行エンジン
+B) Long Context 32K — YaRN Dynamic NTK-aware RoPE スケーリング
+C) RAG Pipeline — numpy cosine similarity + FAISS オプション
+
+#### Tool Use エンジン (`open_mythos/tools.py`) [新規]
+
+- `ToolDefinition` — OpenAI 互換 function definition (to_openai_schema() 実装)
+- `ToolCall` / `ToolResult` — ツール呼び出し・結果スキーマ (OpenAI tool message 互換)
+- `ToolRegistry` — ツール登録・検索・実行レジストリ (global/local 両対応)
+- `@tool` デコレータ — 関数を自動登録 (シグネチャからパラメータ自動推論)
+- `execute_tool_call()` / `execute_tool_calls()` — エラーハンドリング付き実行エンジン
+- `parse_tool_calls()` — `<tool_call>` / ` ```json ` 両フォーマット対応パーサ
+- `build_tool_prompt()` — ツール一覧をシステムプロンプトに整形
+
+#### マーケ特化ツール (`open_mythos/tools_marketing.py`) [新規]
+
+- `search_competitor(company, metric, period)` — 競合広告費・CTR・SEOスコア取得
+- `calculate_roi(ad_spend, revenue, cogs, clicks, impressions)` — ROI/ROAS/CTR/CPA計算
+- `fetch_trend(keyword, region, category)` — トレンドスコア・LLMO人気度・関連KW
+- `score_content(text, target_keyword, style)` — SEO/LLMOスコア + 改善推奨生成
+- `register_marketing_tools(registry)` — 4ツールをレジストリに一括登録
+
+#### Long Context YaRN RoPE (`open_mythos/rope_extension.py`) [新規]
+
+- `yarn_rope_freqs()` — YaRN (Yet another RoPE extensioN) 周波数生成 (Peng et al., 2023)
+  - 高周波成分保護 / 低周波成分延伸 / 中間は beta_fast/beta_slow で滑らか補間
+- `get_rope_freqs()` — config に応じて none/linear/ntk/yarn を自動選択
+- `RopeScalingConfig` — スケーリング設定 (for_32k() / for_8k() ファクトリ)
+- `extend_model_context()` — 学習済みモデルの freqs_cis を in-place で 32K 対応に差し替え
+- `MythosConfig.rope_scaling_factor` — config からスケーリング係数を参照可能
+
+#### RAG Pipeline (`open_mythos/rag.py`) [新規]
+
+- `Document` — テキスト・埋め込みベクトル・メタデータのコンテナ
+- `VectorStore` — numpy cosine similarity + FAISS オプション (graceful fallback)
+- `_BagOfCharsEncoder` — 外部モデル不要の軽量 Bag-of-Chars 埋め込みエンコーダ
+- `RAGPipeline.add_documents()` — テキストをエンコードしてインデックスに追加
+- `RAGPipeline.retrieve()` — クエリに類似したドキュメント検索 (top_k)
+- `RAGPipeline.generate_with_context()` — 検索結果をコンテキストに組み込んで生成
+
+#### Serve API 拡張 (`serve/api.py`)
+
+- `GET /v1/tools` — 利用可能ツール一覧 (OpenAI 互換 schema)
+- `POST /v1/tools/call` — 単一ツール呼び出し
+- `POST /v1/tools/batch` — 最大16件の一括ツール呼び出し
+- `POST /v1/rag/index` — ドキュメントをRAGインデックスに追加
+- `POST /v1/rag` — RAG検索 + 生成 (generate=False で検索のみ)
+
+---
+
 ## [0.14.0] — 2026-05-27
 
 ### Sprint 10: LLMO生成 & Extended Thinking & Structured Output & DPO
