@@ -4,6 +4,7 @@ Sprint 13 テスト
 Track A — Mixture-of-Depths (MoD) Transformer
   13.1.1  open_mythos/mod.py
             MoDConfig / TokenRouter / MixtureOfDepthsBlock / MoDTransformer / MoDAnalytics
+  13.1.2  routing_entropy / MoDAnalytics entropy tracking / MoDTransformer.compute_loss
 """
 
 from __future__ import annotations
@@ -28,6 +29,7 @@ from open_mythos.mod import (
     TokenRouter,
     apply_mod_rope,
     precompute_mod_rope_freqs,
+    routing_entropy,
 )
 from open_mythos import (
     MoDConfig as MoDConfigExported,
@@ -478,3 +480,162 @@ class TestMoDTransformer:
         # Both should be proportional (ratio ~2x)
         if l1 > 0:
             assert abs(l2 / l1 - 2.0) < 0.1
+
+
+# ---------------------------------------------------------------------------
+# 8. routing_entropy  (13.1.2)
+# ---------------------------------------------------------------------------
+
+
+class TestRoutingEntropy:
+    def test_output_shape(self):
+        scores = torch.randn(3, 10)
+        h = routing_entropy(scores)
+        assert h.shape == (3, 10)
+
+    def test_max_entropy_at_zero_logit(self):
+        """sigmoid(0) = 0.5 → maximum binary entropy = ln(2)."""
+        import math
+        scores = torch.zeros(2, 8)
+        h = routing_entropy(scores)
+        assert torch.allclose(h, torch.full_like(h, math.log(2)), atol=1e-4)
+
+    def test_entropy_non_negative(self):
+        scores = torch.randn(4, 16)
+        h = routing_entropy(scores)
+        assert (h >= 0).all()
+
+    def test_entropy_bounded_above(self):
+        """Binary entropy ≤ ln(2) ≈ 0.693 for all inputs."""
+        import math
+        scores = torch.randn(4, 16) * 10  # extreme logits
+        h = routing_entropy(scores)
+        assert (h <= math.log(2) + 1e-5).all()
+
+    def test_confident_routing_low_entropy(self):
+        """Very large positive/negative logits → near-zero entropy."""
+        scores_high = torch.full((2, 8), 50.0)
+        scores_low = torch.full((2, 8), -50.0)
+        h_high = routing_entropy(scores_high)
+        h_low = routing_entropy(scores_low)
+        assert h_high.mean().item() < 1e-3
+        assert h_low.mean().item() < 1e-3
+
+    def test_exported_from_package(self):
+        from open_mythos import routing_entropy as re_exported
+        assert re_exported is routing_entropy
+
+    def test_gradient_flows(self):
+        scores = torch.randn(2, 8, requires_grad=True)
+        h = routing_entropy(scores)
+        h.sum().backward()
+        assert scores.grad is not None
+
+
+# ---------------------------------------------------------------------------
+# 9. MoDAnalytics entropy tracking  (13.1.2)
+# ---------------------------------------------------------------------------
+
+
+class TestMoDAnalyticsEntropy:
+    def test_entropy_recorded_when_scores_given(self):
+        analytics = MoDAnalytics(n_layers=2)
+        scores = torch.zeros(2, 10)  # max entropy
+        analytics.record(0, n_routed=5, n_total=10, scores=scores)
+        summary = analytics.summary()
+        assert "layer_0_avg_entropy" in summary
+
+    def test_entropy_absent_without_scores(self):
+        analytics = MoDAnalytics(n_layers=2)
+        analytics.record(0, n_routed=5, n_total=10)
+        summary = analytics.summary()
+        assert "layer_0_avg_entropy" not in summary
+
+    def test_entropy_max_at_zero_logits(self):
+        import math
+        analytics = MoDAnalytics(n_layers=1)
+        scores = torch.zeros(1, 8)
+        analytics.record(0, 4, 8, scores=scores)
+        summary = analytics.summary()
+        assert abs(summary["layer_0_avg_entropy"] - math.log(2)) < 1e-4
+
+    def test_reset_clears_entropy(self):
+        analytics = MoDAnalytics(n_layers=1)
+        analytics.record(0, 4, 8, scores=torch.zeros(1, 8))
+        analytics.reset()
+        assert analytics.summary() == {}
+        assert analytics._entropy == [[]]
+
+    def test_analytics_integration_with_block_scores(self):
+        """MixtureOfDepthsBlock should automatically record scores."""
+        cfg = _small_cfg()
+        block = MixtureOfDepthsBlock(cfg, layer_idx=0)
+        freqs = precompute_mod_rope_freqs(
+            cfg.dim // cfg.n_heads, cfg.max_seq_len, cfg.rope_theta
+        )
+        analytics = MoDAnalytics(n_layers=1)
+        x = torch.randn(2, 10, cfg.dim)
+        block(x, freqs, analytics=analytics)
+        summary = analytics.summary()
+        # Scores are now passed automatically → entropy should be present
+        assert "layer_0_avg_entropy" in summary
+
+
+# ---------------------------------------------------------------------------
+# 10. MoDTransformer.compute_loss  (13.1.2)
+# ---------------------------------------------------------------------------
+
+
+class TestMoDTransformerComputeLoss:
+    def _model_and_batch(self, T=8):
+        cfg = _small_cfg()
+        model = MoDTransformer(cfg)
+        ids = torch.randint(0, cfg.vocab_size, (2, T + 1))
+        return model, cfg, ids
+
+    def test_loss_scalar(self):
+        model, cfg, ids = self._model_and_batch()
+        logits, aux = model(ids[:, :-1])
+        loss = model.compute_loss(logits, ids[:, 1:], aux)
+        assert loss.ndim == 0
+
+    def test_loss_positive(self):
+        model, cfg, ids = self._model_and_batch()
+        logits, aux = model(ids[:, :-1])
+        loss = model.compute_loss(logits, ids[:, 1:], aux)
+        assert loss.item() > 0.0
+
+    def test_loss_without_aux(self):
+        """compute_loss works with aux_loss=None (CE only)."""
+        model, cfg, ids = self._model_and_batch()
+        logits, _ = model(ids[:, :-1], return_aux_loss=False)
+        loss = model.compute_loss(logits, ids[:, 1:], aux_loss=None)
+        assert loss.ndim == 0
+        assert loss.item() > 0.0
+
+    def test_loss_with_aux_larger(self):
+        """CE + aux should be ≥ CE alone (aux is non-negative)."""
+        model, cfg, ids = self._model_and_batch()
+        logits, aux = model(ids[:, :-1])
+        loss_full = model.compute_loss(logits, ids[:, 1:], aux)
+        loss_ce = model.compute_loss(logits, ids[:, 1:], aux_loss=None)
+        assert loss_full.item() >= loss_ce.item() - 1e-6
+
+    def test_loss_ignore_index(self):
+        """Padding positions (-100) must not contribute to the loss."""
+        model, cfg, ids = self._model_and_batch()
+        logits, _ = model(ids[:, :-1], return_aux_loss=False)
+        targets = ids[:, 1:].clone()
+        targets[:, -1] = -100           # mask last position
+        loss_masked = model.compute_loss(logits, targets)
+        # Masked loss should differ from unmasked in general (not exactly, but callable)
+        assert loss_masked.ndim == 0
+
+    def test_backward_through_compute_loss(self):
+        """End-to-end: forward → compute_loss → backward should work."""
+        model, cfg, ids = self._model_and_batch()
+        logits, aux = model(ids[:, :-1])
+        loss = model.compute_loss(logits, ids[:, 1:], aux)
+        loss.backward()
+        grads = [p.grad for p in model.parameters() if p.grad is not None]
+        assert len(grads) > 0

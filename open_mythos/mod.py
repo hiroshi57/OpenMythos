@@ -35,7 +35,7 @@ Key properties
 Exports
 -------
 MoDConfig, TokenRouter, MixtureOfDepthsBlock, MoDTransformer, MoDAnalytics,
-precompute_mod_rope_freqs, apply_mod_rope
+precompute_mod_rope_freqs, apply_mod_rope, routing_entropy
 """
 
 from __future__ import annotations
@@ -166,6 +166,39 @@ def apply_mod_rope(
     # freqs_cis: (B, T, head_dim//2) → (B, T, 1, head_dim//2) to broadcast over H
     rotated = xc * freqs_cis.unsqueeze(2)
     return torch.view_as_real(rotated).flatten(-2).to(x.dtype)
+
+
+# ---------------------------------------------------------------------------
+# Routing-diversity metric
+# ---------------------------------------------------------------------------
+
+
+def routing_entropy(scores: torch.Tensor) -> torch.Tensor:
+    """
+    Per-token binary routing entropy (in nats).
+
+    Treats each token's routing logit as a Bernoulli parameter and returns
+    the binary entropy H = -p*log(p) - (1-p)*log(1-p), where p = sigmoid(scores).
+
+    Higher entropy ≈ more uncertain routing (router treats both "route" and
+    "skip" as equally likely).  Values near 0 mean the router is confident.
+
+    Args:
+        scores : ``(B, T)`` routing logits (un-normalised)
+
+    Returns:
+        ``(B, T)`` per-token entropy in nats (always ≥ 0, ≤ ln 2 ≈ 0.693)
+
+    Example::
+
+        scores = torch.zeros(2, 8)      # 50/50 uncertainty
+        h = routing_entropy(scores)
+        assert (h - math.log(2)).abs().max() < 1e-5   # maximum entropy
+    """
+    eps = 1e-8
+    p = torch.sigmoid(scores)                    # (B, T)
+    h = -(p * (p + eps).log() + (1.0 - p) * (1.0 - p + eps).log())
+    return h
 
 
 # ---------------------------------------------------------------------------
@@ -377,19 +410,42 @@ class MoDAnalytics:
         self.n_layers = n_layers
         self._routed: List[List[int]] = [[] for _ in range(n_layers)]
         self._total: List[List[int]] = [[] for _ in range(n_layers)]
+        self._entropy: List[List[float]] = [[] for _ in range(n_layers)]
 
-    def record(self, layer_idx: int, n_routed: int, n_total: int) -> None:
-        """Record one forward-pass observation for ``layer_idx``."""
+    def record(
+        self,
+        layer_idx: int,
+        n_routed: int,
+        n_total: int,
+        scores: Optional[torch.Tensor] = None,
+    ) -> None:
+        """Record one forward-pass observation for ``layer_idx``.
+
+        Args:
+            layer_idx : zero-based layer index
+            n_routed  : number of tokens actually routed this step
+            n_total   : total sequence length this step
+            scores    : optional ``(B, T)`` routing logits; when provided,
+                        the mean binary routing entropy for this step is
+                        stored and included in :meth:`summary`.
+        """
         self._routed[layer_idx].append(n_routed)
         self._total[layer_idx].append(n_total)
+        if scores is not None:
+            with torch.no_grad():
+                mean_h = routing_entropy(scores).mean().item()
+            self._entropy[layer_idx].append(mean_h)
 
     def summary(self) -> Dict[str, float]:
         """
         Return a flat dict with per-layer routing statistics.
 
-        Keys:
+        Keys (always present when data exists):
             ``layer_{i}_avg_routed``   — average number of tokens routed
-            ``layer_{i}_avg_capacity`` — average fraction of tokens routed
+            ``layer_{i}_avg_capacity`` — average fraction of tokens routed (0–1)
+
+        Keys (present only when scores were supplied to :meth:`record`):
+            ``layer_{i}_avg_entropy``  — average mean binary routing entropy (nats)
         """
         result: Dict[str, float] = {}
         for i in range(self.n_layers):
@@ -402,12 +458,17 @@ class MoDAnalytics:
             ) / len(self._routed[i])
             result[f"layer_{i}_avg_routed"] = avg_routed
             result[f"layer_{i}_avg_capacity"] = avg_cap
+            if self._entropy[i]:
+                result[f"layer_{i}_avg_entropy"] = (
+                    sum(self._entropy[i]) / len(self._entropy[i])
+                )
         return result
 
     def reset(self) -> None:
         """Clear all recorded observations."""
         self._routed = [[] for _ in range(self.n_layers)]
         self._total = [[] for _ in range(self.n_layers)]
+        self._entropy = [[] for _ in range(self.n_layers)]
 
 
 # ---------------------------------------------------------------------------
@@ -509,7 +570,7 @@ class MixtureOfDepthsBlock(nn.Module):
 
         # ── 8. Record analytics ───────────────────────────────────────────
         if analytics is not None:
-            analytics.record(self.layer_idx, actual_capacity, T)
+            analytics.record(self.layer_idx, actual_capacity, T, scores=scores)
 
         return out, scores
 
@@ -627,6 +688,48 @@ class MoDTransformer(nn.Module):
 
         aux_loss = self.compute_aux_loss(all_router_scores) if return_aux_loss else None
         return logits, aux_loss
+
+    def compute_loss(
+        self,
+        logits: torch.Tensor,
+        targets: torch.Tensor,
+        aux_loss: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """
+        Compute the training loss: cross-entropy + optional routing aux loss.
+
+        This is a convenience method that combines the language-modelling
+        objective with the load-balancing penalty returned by :meth:`forward`.
+
+        Args:
+            logits   : ``(B, T, vocab_size)`` raw logits from :meth:`forward`
+            targets  : ``(B, T)`` target token IDs; positions with value
+                       ``-100`` are masked out of the loss (standard PyTorch
+                       convention for padding / teacher-forcing ignoring)
+            aux_loss : scalar routing aux loss from :meth:`forward` (or
+                       ``None`` to compute CE only)
+
+        Returns:
+            Scalar total loss = CE_loss + (aux_loss if provided else 0)
+
+        Example::
+
+            model = MoDTransformer(cfg)
+            ids = torch.randint(0, cfg.vocab_size, (B, T))
+            logits, aux = model(ids)
+            # Shift for next-token prediction
+            loss = model.compute_loss(logits[:, :-1], ids[:, 1:], aux)
+            loss.backward()
+        """
+        B, T, V = logits.shape
+        ce = F.cross_entropy(
+            logits.reshape(B * T, V),
+            targets.reshape(B * T),
+            ignore_index=-100,
+        )
+        if aux_loss is not None:
+            return ce + aux_loss
+        return ce
 
     @torch.no_grad()
     def generate(

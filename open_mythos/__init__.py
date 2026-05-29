@@ -80,6 +80,7 @@ from open_mythos.mod import (
     MoDAnalytics,
     precompute_mod_rope_freqs,
     apply_mod_rope,
+    routing_entropy,
 )
 from open_mythos.variants import (
     mythos_nano,
@@ -138,6 +139,7 @@ __all__ = [
     "MoDAnalytics",
     "precompute_mod_rope_freqs",
     "apply_mod_rope",
+    "routing_entropy",
     # Sprint 12: ReAct Agent / Prefix Cache / Conversation Memory
     "AgentStep",
     "AgentResult",
