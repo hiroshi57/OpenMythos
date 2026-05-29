@@ -55,6 +55,23 @@ from open_mythos.rag import (
     RAGPipeline,
     RAGResult,
 )
+from open_mythos.react import (
+    AgentStep,
+    AgentResult,
+    ReActAgent,
+    format_agent_trace,
+)
+from open_mythos.prefix_cache import (
+    PrefixCacheEntry,
+    PromptPrefixCache,
+    CachedGenResult,
+)
+from open_mythos.conversation import (
+    Turn,
+    MemorySummary,
+    ConversationMemory,
+    SessionStore,
+)
 from open_mythos.variants import (
     mythos_nano,
     mythos_1b,
@@ -104,6 +121,18 @@ __all__ = [
     "HyperloopBlock",
     "HyperloopMythos",
     "cli_main",
+    # Sprint 12: ReAct Agent / Prefix Cache / Conversation Memory
+    "AgentStep",
+    "AgentResult",
+    "ReActAgent",
+    "format_agent_trace",
+    "PrefixCacheEntry",
+    "PromptPrefixCache",
+    "CachedGenResult",
+    "Turn",
+    "MemorySummary",
+    "ConversationMemory",
+    "SessionStore",
     # Sprint 11: Tool Use / Long Context / RAG
     "ToolDefinition",
     "ToolCall",
