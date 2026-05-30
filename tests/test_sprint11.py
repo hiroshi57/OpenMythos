@@ -357,7 +357,7 @@ class TestCalculateROI:
         )
         assert "ctr" in r
         assert r["ctr"] == pytest.approx(0.02)
-        assert "cpa_usd" in r
+        assert "cpc_usd" in r
 
     def test_zero_ad_spend_returns_error(self):
         from open_mythos.tools_marketing import calculate_roi

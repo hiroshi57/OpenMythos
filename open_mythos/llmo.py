@@ -88,7 +88,7 @@ _NUM_PATTERN = re.compile(
 
 # 固有名詞パターン (英数字大文字で始まる語 / カタカナ連続 / ブランド名)
 _PROPER_NOUN_EN = re.compile(r"\b[A-Z][a-zA-Z]{2,}(?:\s+[A-Z][a-zA-Z]{2,}){0,3}\b")
-_KATAKANA = re.compile(r"[ァ-ヶー]{3,}")  # 3文字以上カタカナ
+_KATAKANA = re.compile(r"[ァ-ヶー]{2,}")  # 3文字以上カタカナ
 
 # 専門語パターン (英数字混在の略語・技術語)
 _TECH_TERM = re.compile(r"\b[A-Z]{2,}(?:\d+)?(?:\.[0-9]+)?\b")
@@ -358,7 +358,7 @@ class LLMOScorer:
             avg_sent_len = word_count / len(sentences)
             if 10 <= avg_sent_len <= 30:
                 score += 0.15
-            elif avg_sent_len < 10 or avg_sent_len <= 40:
+            elif avg_sent_len < 10 or (30 < avg_sent_len <= 40):
                 score += 0.08
 
         return min(1.0, score)

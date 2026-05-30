@@ -74,6 +74,18 @@ AD_PERFORMANCE_SCHEMA: dict[str, Any] = {
             "type": "string",
             "description": "推奨アクション (1文)",
         },
+        "quality_score": {
+            "type": "integer",
+            "description": "Google広告 Quality Score (1–10)",
+            "minimum": 1,
+            "maximum": 10,
+        },
+        "impression_share": {
+            "type": "number",
+            "description": "インプレッションシェア (0–1)",
+            "minimum": 0.0,
+            "maximum": 1.0,
+        },
     },
     "required": ["ctr", "tier", "confidence"],
 }
@@ -142,6 +154,22 @@ SEO_CONTENT_SCHEMA: dict[str, Any] = {
             "description": "AI引用されやすさスコア (0–1)",
             "minimum": 0.0,
             "maximum": 1.0,
+        },
+        "keyword_density": {
+            "type": "number",
+            "description": "ターゲットキーワード密度 (0–1, SEO推奨: 0.01–0.02)",
+            "minimum": 0.0,
+            "maximum": 1.0,
+        },
+        "lcp_score": {
+            "type": "string",
+            "description": "Core Web Vitals LCP評価",
+            "enum": ["good", "needs_improvement", "poor"],
+        },
+        "cls_score": {
+            "type": "string",
+            "description": "Core Web Vitals CLS評価",
+            "enum": ["good", "needs_improvement", "poor"],
         },
     },
     "required": ["headline", "style", "citability_score"],

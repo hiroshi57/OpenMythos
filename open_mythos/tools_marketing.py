@@ -13,6 +13,7 @@ score_content      -- コンテンツの SEO/LLMO スコアを算出
 from __future__ import annotations
 
 import math
+import re
 import random
 from typing import Optional
 
@@ -88,7 +89,7 @@ def calculate_roi(
         impressions -- インプレッション数 (オプション)
 
     Returns:
-        {roi_pct, roas, gross_profit, cpa, ctr, ...}
+        {roi_pct, roas, gross_profit, cpc_usd, ctr, ...}
     """
     if ad_spend <= 0:
         return {"error": "ad_spend must be > 0"}
@@ -107,7 +108,7 @@ def calculate_roi(
     }
 
     if clicks is not None and clicks > 0:
-        result["cpa_usd"] = round(ad_spend / clicks, 4)  # Cost Per Acquisition
+        result["cpc_usd"] = round(ad_spend / clicks, 4)  # Cost Per Click
         result["revenue_per_click"] = round(revenue / clicks, 4)
 
     if clicks is not None and impressions is not None and impressions > 0:
@@ -186,9 +187,10 @@ def score_content(
     # キーワード密度
     keyword_density = 0.0
     if target_keyword and text:
-        kw_lower = target_keyword.lower()
+        kw_lower = re.escape(target_keyword.lower())
         words = text.lower().split()
-        keyword_density = words.count(kw_lower) / len(words) if words else 0.0
+        matches = re.findall(r'\b' + kw_lower + r'\b', text.lower())
+        keyword_density = len(matches) / len(words) if words else 0.0
 
     # 改善推奨を生成
     recommendations: list[str] = []
@@ -198,8 +200,8 @@ def score_content(
         recommendations.append("冒頭1文で直接答える answer-first 形式に変更してください")
     if llmo.citability < 0.4:
         recommendations.append("統計データや出典を追加して引用されやすさを向上させてください")
-    if keyword_density > 0.05:
-        recommendations.append(f"キーワード'{target_keyword}'の出現が多すぎます (密度: {keyword_density:.1%})")
+    if keyword_density > 0.02:
+        recommendations.append(f"キーワード'{target_keyword}'の出現が多すぎます (密度: {keyword_density:.1%}, SEO推奨: 1-2%)")
     if not recommendations:
         recommendations.append("コンテンツ品質は良好です")
 

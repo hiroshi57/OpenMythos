@@ -435,7 +435,7 @@ class SessionStore:
 
         # LRU eviction
         if len(self._sessions) >= self.max_sessions:
-            oldest = min(self._created_at, key=self._created_at.get)
+            oldest = min(self._created_at, key=lambda k: self._created_at[k])
             self._sessions.pop(oldest, None)
             self._created_at.pop(oldest, None)
 

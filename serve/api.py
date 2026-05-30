@@ -605,7 +605,7 @@ def chat_completions(req: ChatRequest):
                     )
                     mask = cum_probs - torch.softmax(sorted_logits, dim=-1) > req.top_p
                     sorted_logits[mask] = float("-inf")
-                    next_logits = sorted_logits.scatter(0, sorted_idx, sorted_logits)
+                    next_logits = torch.full_like(next_logits, float("-inf")).scatter(0, sorted_idx, sorted_logits)
                 probs = torch.softmax(next_logits, dim=-1)
                 next_token = int(torch.multinomial(probs, 1).item())
                 generated.append(next_token)
@@ -883,7 +883,7 @@ def seo_generate(req: SEOGenerateRequest):
                 )
                 mask = cum_probs - torch.softmax(sorted_logits, dim=-1) > req.top_p
                 sorted_logits[mask] = float("-inf")
-                next_logits = sorted_logits.scatter(0, sorted_idx, sorted_logits)
+                next_logits = torch.full_like(next_logits, float("-inf")).scatter(0, sorted_idx, sorted_logits)
             probs = torch.softmax(next_logits, dim=-1)
             next_token = int(torch.multinomial(probs, 1).item())
             generated_ids.append(next_token)
