@@ -1,6 +1,6 @@
 # OpenMythos — 実装進捗
 
-> 最終更新: 2026-05-26 | バージョン: v0.12.0 | テスト: 420 PASS
+> 最終更新: 2026-05-30 | バージョン: v0.17.0 | テスト: 440+ PASS
 
 ---
 
@@ -81,12 +81,24 @@
 - `tests/test_sprint7_serve.py` — 40テスト
 - **420 PASS** / v0.12.0
 
+### Sprint 8: GPU訓練 & ベンチマーク & Cloud Runデプロイ ✅ 完了（2026-05-30）
+
+- `scripts/pretrain.py` — FineWeb-Edu streaming 事前学習（bf16/GC/warmup-stable-decay）
+- `scripts/pretrain_gcp.sh` — GCP T4 VM での tmux 実行スクリプト
+- `benchmark/run_eval.py` — perplexity + lm-eval 一括実行・JSON保存・README更新
+- `benchmark/results/` — 評価結果保存ディレクトリ
+- `serve/deploy_cloudrun.sh` — Artifact Registry + Cloud Run デプロイ自動化
+- `serve/cloudrun.env.example` — 環境変数サンプル
+- `tests/test_sprint8_pretrain.py` — 20テスト
+- **440+ PASS** / v0.17.0
+
 ---
 
-## 次回の作業候補（Sprint 8）
+## 次回の作業候補（Sprint 9）
 
-1. **GPU 訓練** — GCP T4 調達 → FineWeb-Edu 300M プレトレイン → perplexity < 20 確認
-2. **ベンチマーク実行** — lm-eval で HellaSwag / ARC / WinoGrande 計測 → `benchmark/results/` に保存
+1. **GPU 実訓練** — GCP T4 でプレトレイン実行 → perplexity < 20 確認・結果をbenchmark/results/に保存
+2. **Cloud Run 本番デプロイ** — GCPプロジェクト作成後に deploy_cloudrun.sh 実行
+3. **ベンチマーク結果テーブル** — README.md に実測値を反映
 3. **本番デプロイ** — Docker化 + GCP Cloud Run / Kubernetes デプロイ
 
 ---

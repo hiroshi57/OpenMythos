@@ -4,6 +4,44 @@ All notable changes to OpenMythos are documented here.
 
 ---
 
+## [0.17.0] — 2026-05-30
+
+### Sprint 8: GPU訓練 & ベンチマーク一括実行 & Cloud Runデプロイ
+
+#### 事前学習スクリプト (`scripts/pretrain.py`)
+
+- `StreamingTokenDataset` — FineWeb-Edu streaming (sample-10BT) からの逐次チャンク読み込み
+- `warmup_stable_decay_schedule()` — 3-phase LR (linear warmup → stable → cosine decay)
+- bf16 autocast (CUDA) / float32 fallback (CPU)
+- `TransformerBlock.gradient_checkpointing` による GPU メモリ削減
+- チェックポイント形式: `{"model": state_dict, "cfg": cfg}` (perplexity.py / lm_eval_harness.py 互換)
+- seq_len を `model.cfg.max_seq_len` に自動クリップ (RoPE クラッシュ防止)
+- CLI: `--variant`, `--max-tokens`, `--grad-accum`, `--save-every`, `--eval-every`, `--resume`
+
+#### GCP T4 実行スクリプト (`scripts/pretrain_gcp.sh`)
+
+- tmux + nohup でバックグラウンド実行
+- VM作成・依存インストール手順のコメント付き
+- `VARIANT`, `BATCH`, `GRAD_ACCUM` 等を環境変数で上書き可能
+
+#### ベンチマーク一括実行 (`benchmark/run_eval.py`)
+
+- `run_perplexity_eval()` — WikiText-2 test-set PPL 評価
+- `run_lm_eval()` — HellaSwag / ARC-Easy / WinoGrande (lm-eval 未インストール時は LAMBADA fallback)
+- `save_results()` — `benchmark/results/{variant}_{timestamp}.json` に保存
+- `update_readme()` — README.md の `<!-- BENCHMARK_TABLE_START/END -->` タグを自動更新
+- `benchmark/results/` ディレクトリ追加
+
+#### GCP Cloud Run デプロイ (`serve/deploy_cloudrun.sh`, `serve/cloudrun.env.example`)
+
+- Artifact Registry へのイメージプッシュ
+- `gcloud run deploy` (--memory 4Gi, --cpu 2, --concurrency 10, --min-instances 0, --max-instances 3)
+- デプロイ後にサービス URL とサンプル curl コマンドを表示
+
+Tests: 440+ PASS (up from 420)
+
+---
+
 ## [0.16.0] — 2026-05-29
 
 ### Sprint 12: ReAct エージェントループ & プロンプトキャッシュ & 会話メモリ
