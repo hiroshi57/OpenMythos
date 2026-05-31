@@ -10,7 +10,7 @@ from __future__ import annotations
 import sys
 import types
 import uuid
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 import torch
@@ -56,7 +56,8 @@ def mock_transformers():
 @pytest.fixture(scope="module")
 def api_constants():
     """serve/api.py から TASK_LOOPS と _TASK_SYSTEM_PROMPTS を取得。"""
-    import ast, pathlib
+    import ast
+    import pathlib
     src = pathlib.Path("serve/api.py").read_text(encoding="utf-8")
     tree = ast.parse(src)
 
@@ -150,7 +151,7 @@ def client():
     from fastapi.testclient import TestClient
     from open_mythos.variants import mythos_nano
     from open_mythos.main import OpenMythos
-    from open_mythos.agents import OpenMythosLLM, MythosAgent
+    from open_mythos.agents import OpenMythosLLM
 
     cfg = mythos_nano()
     model = OpenMythos(cfg).eval()

@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import json
 import re
-import time
 from typing import Any, Optional
 
 import torch
@@ -371,8 +370,6 @@ class StructuredGenerator:
         cur_ids = input_ids
         generated: list[int] = []
         brace_depth = 1  # 最初の { はプロンプトに含まれている
-
-        vsize = self.model.cfg.vocab_size
 
         with torch.no_grad():
             for _ in range(max_new_tokens):

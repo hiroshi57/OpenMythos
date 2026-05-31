@@ -33,7 +33,10 @@ from __future__ import annotations
 import math
 import time
 from dataclasses import dataclass, field
-from typing import Optional, Sequence
+from typing import TYPE_CHECKING, Optional, Sequence
+
+if TYPE_CHECKING:
+    from open_mythos.main import OpenMythos
 
 import torch
 import torch.nn.functional as F
@@ -224,7 +227,7 @@ class VectorStore:
         top_k = min(top_k, len(self._docs))
 
         if self._use_faiss and self._faiss_index is not None:
-            import faiss, numpy as np
+            import faiss
 
             q = query_embedding.float().unsqueeze(0).numpy()
             faiss.normalize_L2(q)

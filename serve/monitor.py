@@ -16,15 +16,12 @@
     uvicorn serve.monitor:monitor_app --port 8002
 """
 
-import json
 import math
 import sqlite3
 import threading
-import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Literal
 
 from fastapi import FastAPI
 from pydantic import BaseModel
@@ -124,7 +121,6 @@ def _psi(expected: list[float], actual: list[float], bins: int = 10) -> float:
     if not expected or not actual:
         return 0.0
     lo, hi = 0.0, 1.0
-    edges = [lo + (hi - lo) * i / bins for i in range(bins + 1)]
     def hist(data):
         counts = [0] * bins
         for v in data:

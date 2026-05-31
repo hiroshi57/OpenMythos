@@ -40,8 +40,7 @@ precompute_mod_rope_freqs, apply_mod_rope, routing_entropy
 
 from __future__ import annotations
 
-import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 import torch

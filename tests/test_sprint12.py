@@ -651,14 +651,14 @@ class TestAPISessionsEndpoints:
 
 class TestSprint12Imports:
     def test_react_importable(self):
-        from open_mythos import AgentStep, AgentResult, ReActAgent, format_agent_trace
+        from open_mythos import ReActAgent
         assert ReActAgent is not None
 
     def test_prefix_cache_importable(self):
-        from open_mythos import PrefixCacheEntry, PromptPrefixCache, CachedGenResult
+        from open_mythos import PromptPrefixCache
         assert PromptPrefixCache is not None
 
     def test_conversation_importable(self):
-        from open_mythos import Turn, MemorySummary, ConversationMemory, SessionStore
+        from open_mythos import ConversationMemory, SessionStore
         assert ConversationMemory is not None
         assert SessionStore is not None

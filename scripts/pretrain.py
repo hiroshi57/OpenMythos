@@ -23,10 +23,9 @@ from __future__ import annotations
 
 import argparse
 import math
-import os
 import time
 from pathlib import Path
-from typing import Iterator, Optional
+from typing import Iterator
 
 import torch
 import torch.nn as nn
@@ -57,8 +56,6 @@ def warmup_stable_decay_schedule(
     min_lr_ratio: float = 0.1,
 ) -> torch.optim.lr_scheduler.LambdaLR:
     """3-phase schedule: linear warmup → stable LR → cosine decay."""
-
-    total = warmup_steps + stable_steps + decay_steps
 
     def lr_lambda(step: int) -> float:
         if step < warmup_steps:

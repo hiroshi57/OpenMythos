@@ -32,7 +32,7 @@ from __future__ import annotations
 import json
 import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional, TYPE_CHECKING
 
 import torch
@@ -48,7 +48,7 @@ from open_mythos.tools import (
 )
 
 if TYPE_CHECKING:
-    pass
+    from open_mythos.main import OpenMythos
 
 
 # ---------------------------------------------------------------------------
@@ -356,7 +356,7 @@ def format_agent_trace(result: AgentResult, max_content_len: int = 120) -> str:
         整形されたテキスト
     """
     lines = [
-        f"=== ReAct Agent Trace ===",
+        "=== ReAct Agent Trace ===",
         f"Task: {result.task}",
         f"Iterations: {result.iterations_used} / stopped: {result.stopped_reason}",
         f"Tool calls: {result.n_tool_calls}",

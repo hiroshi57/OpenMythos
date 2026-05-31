@@ -7,13 +7,10 @@ downloading any datasets.  All tests run on CPU with the nano variant.
 
 from __future__ import annotations
 
-import argparse
-import math
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-import pytest
 import torch
 import torch.nn as nn
 from torch.optim import AdamW
@@ -24,7 +21,6 @@ from scripts.pretrain import (
     StreamingTokenDataset,
     warmup_stable_decay_schedule,
     _enable_gradient_checkpointing,
-    _disable_gradient_checkpointing,
     _save_checkpoint,
     _load_checkpoint,
     _parse_args,

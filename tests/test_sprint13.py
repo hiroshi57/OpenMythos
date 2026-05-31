@@ -10,11 +10,9 @@ Track A — Mixture-of-Depths (MoD) Transformer
 from __future__ import annotations
 
 import math
-from typing import List
 
 import pytest
 import torch
-import torch.nn as nn
 
 
 # ---------------------------------------------------------------------------
@@ -495,7 +493,6 @@ class TestRoutingEntropy:
 
     def test_max_entropy_at_zero_logit(self):
         """sigmoid(0) = 0.5 → maximum binary entropy = ln(2)."""
-        import math
         scores = torch.zeros(2, 8)
         h = routing_entropy(scores)
         assert torch.allclose(h, torch.full_like(h, math.log(2)), atol=1e-4)
@@ -507,7 +504,6 @@ class TestRoutingEntropy:
 
     def test_entropy_bounded_above(self):
         """Binary entropy ≤ ln(2) ≈ 0.693 for all inputs."""
-        import math
         scores = torch.randn(4, 16) * 10  # extreme logits
         h = routing_entropy(scores)
         assert (h <= math.log(2) + 1e-5).all()
@@ -552,7 +548,6 @@ class TestMoDAnalyticsEntropy:
         assert "layer_0_avg_entropy" not in summary
 
     def test_entropy_max_at_zero_logits(self):
-        import math
         analytics = MoDAnalytics(n_layers=1)
         scores = torch.zeros(1, 8)
         analytics.record(0, 4, 8, scores=scores)

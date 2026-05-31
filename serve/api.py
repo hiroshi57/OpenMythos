@@ -384,8 +384,6 @@ def generate(req: GenerateRequest):
     sys_prompt = req.system_prompt or _TASK_SYSTEM_PROMPTS.get(req.task, _TASK_SYSTEM_PROMPTS["general"])
     full_prompt = f"{sys_prompt}\n\n{req.prompt}" if sys_prompt else req.prompt
 
-    n_loops = req.n_loops or TASK_LOOPS.get(req.task, DEFAULT_LOOPS)
-
     # 入力トークン数を計測
     enc = state.tokenizer(full_prompt, return_tensors="pt", truncation=True, max_length=512)
     prompt_len = enc["input_ids"].shape[1]
@@ -866,7 +864,6 @@ def seo_generate(req: SEOGenerateRequest):
         max_length=512,
     )
     input_ids = enc["input_ids"].to(state.device)
-    prompt_tokens = input_ids.shape[1]
 
     t0 = time.perf_counter()
     generated_ids: list[int] = []
@@ -1199,7 +1196,7 @@ def rag_query(req: RAGQueryRequest):
 # ReAct エージェント エンドポイント
 # ---------------------------------------------------------------------------
 
-from open_mythos.react import ReActAgent as _ReActAgent, AgentStep as _AgentStep  # noqa: E402
+from open_mythos.react import ReActAgent as _ReActAgent  # noqa: E402
 
 # デフォルトエージェント (ツールレジストリ付き)
 _default_agent: Optional[_ReActAgent] = None
@@ -1245,7 +1242,7 @@ class AgentRunResponse(BaseModel):
 
 
 @app.post("/v1/agent/run", response_model=AgentRunResponse)
-def agent_run(req: AgentRunRequest):
+def react_agent_run(req: AgentRunRequest):
     """ReAct エージェントループでタスクを解決する。
 
     Tool Use (Sprint 11) を活用して複数ステップのタスクを自律実行する。

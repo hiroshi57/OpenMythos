@@ -18,7 +18,6 @@ Track C — RAG Pipeline
 from __future__ import annotations
 
 import json
-import math
 import sys
 import types
 from unittest.mock import MagicMock
@@ -493,7 +492,7 @@ class TestYarnRopeFreqs:
 
     def test_factor_1_equals_standard_rope(self):
         """factor=1.0 の場合、通常 RoPE と同じ周波数になる。"""
-        from open_mythos.rope_extension import yarn_rope_freqs, get_rope_freqs, RopeScalingConfig
+        from open_mythos.rope_extension import yarn_rope_freqs
         from open_mythos.main import precompute_rope_freqs
 
         dim, max_len, theta = 32, 64, 500000.0
@@ -757,18 +756,16 @@ class TestAPIRAGModels:
 class TestSprint11Imports:
     def test_tools_importable(self):
         from open_mythos import (
-            ToolDefinition, ToolCall, ToolResult, ToolRegistry,
-            tool, execute_tool_call, execute_tool_calls,
-            parse_tool_calls, build_tool_prompt, register_marketing_tools,
+            ToolRegistry,
         )
         assert ToolRegistry is not None
 
     def test_rope_extension_importable(self):
         from open_mythos import (
-            RopeScalingConfig, yarn_rope_freqs, get_rope_freqs, extend_model_context
+            RopeScalingConfig
         )
         assert RopeScalingConfig is not None
 
     def test_rag_importable(self):
-        from open_mythos import Document, VectorStore, RAGPipeline, RAGResult
+        from open_mythos import RAGPipeline
         assert RAGPipeline is not None

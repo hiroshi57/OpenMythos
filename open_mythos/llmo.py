@@ -29,7 +29,7 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass, field
-from typing import Sequence, Optional
+from typing import Sequence
 
 # 日本語形態素解析: janome → fugashi → フォールバック の順で試みる
 _JANOME_TOKENIZER = None

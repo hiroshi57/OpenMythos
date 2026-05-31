@@ -12,8 +12,6 @@ Sprint 10 テスト
 from __future__ import annotations
 
 import json
-import math
-from pathlib import Path
 
 import pytest
 import torch
@@ -598,20 +596,20 @@ class TestAPINewEndpoints:
     """FastAPI のエンドポイントをインポートレベルで検証する。"""
 
     def test_seo_score_response_model_exists(self):
-        from serve.api import SEOScoreRequest, SEOScoreResponse
+        from serve.api import SEOScoreRequest
 
         req = SEOScoreRequest(text="OpenMythos 32% CTR improvement.")
         assert req.text
 
     def test_seo_generate_response_model_exists(self):
-        from serve.api import SEOGenerateRequest, SEOGenerateResponse
+        from serve.api import SEOGenerateRequest
 
         req = SEOGenerateRequest(prompt="test", style="faq")
         assert req.prompt == "test"
         assert req.style == "faq"
 
     def test_thinking_request_model_exists(self):
-        from serve.api import ThinkingRequest, ThinkingResponse
+        from serve.api import ThinkingRequest
 
         req = ThinkingRequest(prompt="テスト", think_loops=4, answer_loops=2)
         assert req.think_loops == 4
@@ -657,10 +655,6 @@ class TestSprint10Imports:
     def test_structured_generator_importable(self):
         from open_mythos import (
             StructuredGenerator,
-            SchemaValidator,
-            AD_PERFORMANCE_SCHEMA,
-            MARKETING_REPORT_SCHEMA,
-            SEO_CONTENT_SCHEMA,
             BUILTIN_SCHEMAS,
         )
 

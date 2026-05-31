@@ -28,7 +28,6 @@ RecurrentBlockの各ループステップで内部状態をキャプチャし、
 
 from __future__ import annotations
 
-import math
 import time
 from dataclasses import dataclass, field
 from typing import Optional
@@ -36,7 +35,7 @@ from typing import Optional
 import torch
 import torch.nn as nn
 
-from open_mythos.main import OpenMythos, MythosConfig, RMSNorm
+from open_mythos.main import OpenMythos
 
 
 # ---------------------------------------------------------------------------
@@ -121,9 +120,6 @@ class _LoopCaptureBlock(nn.Module):
         """
         from open_mythos.main import (
             loop_index_embedding,
-            LTIInjection,
-            ACTHalting,
-            LoRAAdapter,
         )
 
         rb = self.recurrent

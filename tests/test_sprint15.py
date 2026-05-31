@@ -11,7 +11,6 @@ Sprint 15 テスト — Opus 4.8 対抗機能の検証
 
 from __future__ import annotations
 
-import pytest
 
 
 # ===========================================================================

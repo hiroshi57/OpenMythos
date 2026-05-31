@@ -127,7 +127,7 @@ def phase2_write(strategy: dict) -> dict:
     )
 
     print("\n" + "=" * 60)
-    print(f"  Phase 2: 執筆フェーズ（Phase 1 と完全分離）")
+    print("  Phase 2: 執筆フェーズ（Phase 1 と完全分離）")
     print("=" * 60)
 
     # サンプルコンテンツを生成（ルールベース、実際はモデルが生成）
@@ -157,7 +157,7 @@ def phase2_write(strategy: dict) -> dict:
     seo_report = score_content(sample_content, target_keyword=keyword)
 
     print(f"\n[生成コンテンツ（抜粋）]\n{sample_content[:300]}...\n")
-    print(f"[LLMO スコア評価]")
+    print("[LLMO スコア評価]")
     print(f"  llmo_total       : {llmo_result.llmo_total:.3f}")
     print(f"  entity_density   : {llmo_result.entity_density:.3f}")
     print(f"  answer_directness: {llmo_result.answer_directness:.3f}")
@@ -171,7 +171,7 @@ def phase2_write(strategy: dict) -> dict:
     print(f"\n  Phase 2 drift_score: {final_drift:.3f} "
           + ("⚠️ リセット推奨" if final_drift >= DRIFT_WARNING_THRESHOLD else "✅"))
 
-    print(f"\n[改善推奨]")
+    print("\n[改善推奨]")
     for rec in seo_report["recommendations"]:
         print(f"  • {rec}")
 
@@ -251,5 +251,5 @@ if __name__ == "__main__":
     print(f"  Phase 1 drift: {strategy['phase1_drift_score']:.3f}")
     print(f"  Phase 2 drift: {result['phase2_drift_score']:.3f}")
     print(f"  最終 LLMO スコア: {result['llmo_score'].llmo_total:.3f}")
-    print(f"\n  ✅ 戦略・執筆の分離により、コンテキストドリフトを回避しました")
+    print("\n  ✅ 戦略・執筆の分離により、コンテキストドリフトを回避しました")
     print("=" * 60)

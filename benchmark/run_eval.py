@@ -24,8 +24,6 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
-import sys
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -80,7 +78,6 @@ def run_perplexity_eval(
     from benchmark.perplexity import evaluate_perplexity, _load_corpus, _tokenize_corpus
 
     model, dev = _load_model_and_device(variant, checkpoint, device)
-    n_params = sum(p.numel() for p in model.parameters())
 
     print("[run_eval] running perplexity (WikiText-2 test)…")
     try:

@@ -27,10 +27,9 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Optional
 
 from open_mythos.llmo import LLMOScorer, LLMOScore
-from open_mythos.tools_marketing import fetch_trend, score_content
+from open_mythos.tools_marketing import fetch_trend
 from open_mythos.swarm import SwarmOrchestrator, SwarmConfig, SwarmResult
 from open_mythos.conversation import ConversationMemory
 

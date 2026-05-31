@@ -12,7 +12,6 @@ score_content      -- コンテンツの SEO/LLMO スコアを算出
 
 from __future__ import annotations
 
-import math
 import re
 import random
 from typing import Optional

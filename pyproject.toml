@@ -68,6 +68,10 @@ pytest = "*"
 
 [tool.ruff]
 line-length = 88
+exclude = ["examples/*.ipynb"]
+
+[tool.ruff.lint.per-file-ignores]
+"examples/*.ipynb" = ["E402"]
 
 [tool.black]
 target-version = ["py310"]
