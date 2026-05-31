@@ -40,50 +40,61 @@ class TestWarmupStableDecaySchedule:
     def _make_scheduler(self, warmup, stable, decay):
         model = nn.Linear(4, 4)
         opt = AdamW(model.parameters(), lr=1.0)
+        # ダミー勾配を設定して opt.step() が呼べる状態にする
+        for p in model.parameters():
+            p.grad = torch.zeros_like(p)
         return warmup_stable_decay_schedule(opt, warmup, stable, decay), opt
+
+    def _step(self, opt, sched):
+        """PyTorch の正しい順序: opt.step() → sched.step()"""
+        opt.step()
+        sched.step()
 
     def test_warmup_phase_lr_increases(self):
         sched, opt = self._make_scheduler(warmup=10, stable=10, decay=10)
         lrs = []
         for _ in range(10):
             lrs.append(sched.get_last_lr()[0])
-            sched.step()
+            self._step(opt, sched)
         # LR should be monotonically non-decreasing during warmup
         assert all(lrs[i] <= lrs[i + 1] for i in range(len(lrs) - 1))
 
     def test_stable_phase_lr_constant(self):
         sched, opt = self._make_scheduler(warmup=5, stable=10, decay=5)
         for _ in range(5):
-            sched.step()
+            self._step(opt, sched)
         # After warmup, LR should be ~1.0 (max)
         stable_lrs = [sched.get_last_lr()[0]]
         for _ in range(4):
-            sched.step()
+            self._step(opt, sched)
             stable_lrs.append(sched.get_last_lr()[0])
         assert max(stable_lrs) - min(stable_lrs) < 1e-6
 
     def test_decay_phase_lr_decreases(self):
         sched, opt = self._make_scheduler(warmup=2, stable=2, decay=10)
         for _ in range(4):  # skip warmup + stable
-            sched.step()
+            self._step(opt, sched)
         decay_lrs = []
         for _ in range(10):
             decay_lrs.append(sched.get_last_lr()[0])
-            sched.step()
+            self._step(opt, sched)
         # LR should be monotonically non-increasing during decay
         assert all(decay_lrs[i] >= decay_lrs[i + 1] for i in range(len(decay_lrs) - 1))
 
     def test_zero_warmup_steps_no_crash(self):
         sched, opt = self._make_scheduler(warmup=0, stable=5, decay=5)
         for _ in range(10):
-            sched.step()
+            self._step(opt, sched)
 
     def test_end_lr_near_min(self):
         min_lr_ratio = 0.1
         model = nn.Linear(4, 4)
         opt = AdamW(model.parameters(), lr=1.0)
+        for p in model.parameters():
+            p.grad = torch.zeros_like(p)
         sched = warmup_stable_decay_schedule(opt, 2, 2, 100, min_lr_ratio=min_lr_ratio)
         for _ in range(104):
+            opt.step()
             sched.step()
         final_lr = sched.get_last_lr()[0]
         assert final_lr <= min_lr_ratio + 0.05

@@ -365,6 +365,17 @@ class TestCalculateROI:
         r = calculate_roi(ad_spend=0, revenue=1000.0)
         assert "error" in r
 
+    def test_cogs_reduces_roi(self):
+        # cogs を指定すると ROI が減少することを確認
+        from open_mythos.tools_marketing import calculate_roi
+
+        r_no_cogs = calculate_roi(ad_spend=1000.0, revenue=3000.0, cogs=0.0)
+        r_with_cogs = calculate_roi(ad_spend=1000.0, revenue=3000.0, cogs=500.0)
+        assert r_with_cogs["roi_pct"] < r_no_cogs["roi_pct"]
+        # cogs=500 → gross_profit=2500, roi=(2500-1000)/1000*100=150%
+        assert r_with_cogs["roi_pct"] == pytest.approx(150.0)
+        assert r_with_cogs["gross_profit_usd"] == pytest.approx(2500.0)
+
 
 class TestFetchTrend:
     def test_returns_required_fields(self):

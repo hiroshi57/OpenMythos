@@ -259,6 +259,12 @@ class TestMap:
         result = swarm.map(["a", "b", "c"])
         assert result.n_successful == 3
 
+    def test_empty_task_list_no_crash(self, swarm):
+        """空タスクリストで map() がクラッシュしないことを確認。"""
+        result = swarm.map([])
+        assert result.n_agents == 0
+        assert result.success_rate == pytest.approx(0.0)
+
 
 # ---------------------------------------------------------------------------
 # 7. pipeline strategy

@@ -189,6 +189,16 @@ class TestReActAgent:
         result = agent.run(task="latency test")
         assert result.total_latency_ms >= 0.0
 
+    def test_max_iterations_zero_no_crash(self):
+        """max_iterations=0 で UnboundLocalError が出ないことを確認（バグ修正テスト）。"""
+        from open_mythos.react import ReActAgent
+        from open_mythos.tools import ToolRegistry
+        model = _tiny_model()
+        agent = ReActAgent(model, ToolRegistry(), max_iterations=0, max_new_tokens=3, loops=1)
+        result = agent.run(task="zero iterations test")
+        assert result.iterations_used == 0
+        assert isinstance(result.final_answer, str)
+
 
 class TestFormatAgentTrace:
     def test_returns_string(self):

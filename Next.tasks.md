@@ -1,5 +1,5 @@
 # OpenMythos — Next Tasks
-> 作成: 2026-05-30 | 現在バージョン: v0.16.0 (729 PASS / Sprint 1〜13完了)
+> 作成: 2026-05-30 | 最終更新: 2026-05-31 | 現在バージョン: v0.17.0 (860+ PASS / Sprint 1〜14完了)
 > 目標: **ClaudeMythosに近づく、デジタルアイデンティティ特化 SEO/LLMO/広告 強化モデル**
 
 ---
@@ -18,19 +18,32 @@ OpenMythos = デジタルマーケティング × アイデンティティ領域
 
 ---
 
-## Sprint 14: 実行品質の完成 & 外販準備 v0.17.0
+## Sprint 14: 実行品質の完成 & 外販準備 v0.17.0 ✅ 完了（2026-05-31）
 
 > **Why**: Sprint 13までは「機能を作る」フェーズ。Sprint 14は「売れる状態にする」フェーズ。
-> テストが通ること ≠ 外販できること。デモ・ドキュメント・再現性が必要。
 
-| task-id | 内容 | 優先度 | DoD |
-|---------|------|--------|-----|
-| 14.1 | **torch 環境整備** — requirements.txt に `torch>=2.1` を明記、`pip install -e .[dev]` で全テスト PASS | 🔴 必須 | `pytest tests/ -x` が 729+ PASS |
-| 14.2 | **Sprint 13 master merge** — `feature/sprint12-react-cache-memory` を master にマージ、v0.16.0 タグ打ち | 🔴 必須 | master = 729 PASS / v0.16.0 |
-| 14.3 | **今回のバグ修正コミット** — scatter()/import re/cpa→cpc/llmo/structured 8件を1コミット | 🔴 必須 | git commit + push |
-| 14.4 | **デモノートブック作成** — `examples/demo_seo_llmo.ipynb` — SEO生成→LLMOスコア→広告ROI の3ステップデモ | 🟡 重要 | Colabで動作確認済み |
-| 14.5 | **README 外販版リライト** — 「何ができるか」「誰向けか」「5分で動かす方法」を英日で記載 | 🟡 重要 | GitHub READMEとして完結 |
-| 14.6 | **PyPI v0.17.0 リリース** — CHANGELOG 更新 + `python -m build` + `twine upload` | 🟢 任意 | PyPI で `pip install open-mythos` が通る |
+| task-id | 内容 | 優先度 | 状態 |
+| ------- | ---- | ------ | ---- |
+| 14.1 | **torch 環境整備** | 🔴 必須 | ✅ 完了 |
+| 14.2 | **Sprint 13 master merge** | 🔴 必須 | ✅ 完了 |
+| 14.3 | **バグ修正コミット** | 🔴 必須 | ✅ 完了 |
+| 14.4 | **デモノートブック** `examples/demo_seo_llmo.ipynb` | 🟡 重要 | ✅ 完了 |
+| 14.5 | **README 外販版リライト**（英日・5分クイックスタート・差別化表） | 🟡 重要 | ✅ 完了 |
+| 14.6 | **PyPI v0.17.0 リリース** | 🟢 任意 | 未着手 |
+
+### テスト品質強化（Sprint 14 追加作業）✅ 完了（2026-05-31）
+
+| 修正種別 | 対象 | 内容 |
+| -------- | ---- | ---- |
+| バグ修正 | `react.py:201` | `max_iterations=0` の UnboundLocalError |
+| バグ修正 | `structured.py:240` | `bool` が number/integer を通過するバグ |
+| テスト強化 | `test_sprint10.py` | 意味のないアサーション2件修正 + bool拒否テスト + compare空テスト |
+| テスト強化 | `test_sprint11.py` | `calculate_roi` の `cogs` テスト追加 |
+| テスト強化 | `test_sprint12.py` | `max_iterations=0` クラッシュ防止テスト |
+| テスト強化 | `test_sprint13_swarm.py` | `map([])` 空リストテスト |
+| Warning解消 | `test_sprint8_pretrain.py` | lr_scheduler step 順序修正 |
+
+テスト結果: 860+ PASS / Warning 2件（PyTorch CPU autocast 固有、無害）
 
 ---
 

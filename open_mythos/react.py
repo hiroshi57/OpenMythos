@@ -199,6 +199,7 @@ class ReActAgent:
 
         final_answer = ""
         stopped_reason = "completed"
+        iteration = -1
 
         for iteration in range(self.max_iterations):
             t_step = time.perf_counter()
@@ -293,7 +294,7 @@ class ReActAgent:
             task=task,
             final_answer=final_answer,
             steps=steps,
-            iterations_used=min(iteration + 1, self.max_iterations),
+            iterations_used=min(iteration + 1, self.max_iterations) if iteration >= 0 else 0,
             total_latency_ms=round(total_ms, 2),
             stopped_reason=stopped_reason,
         )

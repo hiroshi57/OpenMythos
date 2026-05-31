@@ -33,16 +33,116 @@
   </a>
   <a href="https://github.com/The-Swarm-Corporation/OpenMythos" target="_blank">
     <picture>
-      <source srcset="https://img.shields.io/badge/Tests-380%20PASS-brightgreen?style=for-the-badge" media="(prefers-color-scheme: dark)">
-      <img alt="Tests" src="https://img.shields.io/badge/Tests-380%20PASS-brightgreen?style=for-the-badge">
+      <source srcset="https://img.shields.io/badge/Tests-440%20PASS-brightgreen?style=for-the-badge" media="(prefers-color-scheme: dark)">
+      <img alt="Tests" src="https://img.shields.io/badge/Tests-440%20PASS-brightgreen?style=for-the-badge">
     </picture>
   </a>
 </p>
 
 > **Disclaimer:** OpenMythos is an independent, community-driven theoretical reconstruction based solely on publicly available research and speculation. It is not affiliated with, endorsed by, or connected to Anthropic or any of their proprietary systems.
 
-OpenMythos is an open-source, theoretical implementation of the Claude Mythos model. It implements a Recurrent-Depth Transformer (RDT) with three stages: **Prelude** (transformer blocks), a looped **Recurrent Block** (up to `max_loop_iters`), and a final **Coda**. Attention is switchable between MLA and GQA, and the feed-forward uses a sparse MoE with routed and shared experts ideal for exploring compute-adaptive, depth-variable reasoning.
+---
 
+## What is OpenMythos? / OpenMythos とは？
+
+**EN:** OpenMythos is an open-source LLM specialized for **SEO / LLMO (AI-search optimization) / digital advertising ROI** — domains where general-purpose models like GPT-4o are not purpose-built. It combines a Recurrent-Depth Transformer (RDT) with a marketing-native toolset so that content teams, SEO engineers, and ad-tech developers can integrate deep reasoning directly into their workflows.
+
+**JA:** OpenMythos は **SEO・LLMO（AIサーチ最適化）・デジタル広告 ROI** に特化したオープンソース LLM です。汎用モデルが苦手とするマーケティング領域の推論を、Recurrent-Depth Transformer（RDT）アーキテクチャと専用ツール群で解決します。コンテンツチーム・SEO エンジニア・広告テック開発者が対象です。
+
+---
+
+## Who is it for? / 誰向けか？
+
+| Role / 職種 | Use Case / ユースケース |
+| ----------- | ----------------------- |
+| SEO Engineer / SEO エンジニア | LLMO score evaluation, keyword density analysis / LLMOスコア評価・KW密度分析 |
+| Content Marketer / コンテンツマーケター | AI-search-ready content generation / AIサーチ対応コンテンツ生成 |
+| Ad-tech Developer / 広告テック開発者 | ROI / ROAS / CTR calculation, competitor analysis / ROI・ROAS・CTR 計算・競合分析 |
+| ML Researcher / ML 研究者 | Recurrent-Depth Transformer experiments / RDT アーキテクチャ研究 |
+
+---
+
+## Quickstart — 5 minutes / 5分で動かす
+
+### 1. Install / インストール
+
+```bash
+pip install open-mythos
+# uv pip install open-mythos  # uv を使う場合
+```
+
+Flash Attention 2 を有効化する場合（CUDA 環境が必要）:
+
+```bash
+pip install open-mythos[flash]
+```
+
+### 2. LLMO Score — AIサーチ向けコンテンツ評価
+
+```python
+from open_mythos.llmo import LLMOScorer
+
+scorer = LLMOScorer()
+result = scorer.score("""
+デジタルマーケティングとは、Google・Meta などのプラットフォームを活用して
+顧客を獲得する手法です。2024年の調査では SEO 投資は前年比 32% 増加しています。
+""")
+
+print(f"LLMO スコア: {result.llmo_total:.3f}")       # 0.0–1.0
+print(f"エンティティ密度: {result.entity_density:.3f}")
+print(f"回答直接性: {result.answer_directness:.3f}")
+print(f"引用されやすさ: {result.citability:.3f}")
+```
+
+### 3. Advertising ROI — 広告 ROI 計算
+
+```python
+from open_mythos.tools_marketing import calculate_roi
+
+roi = calculate_roi(
+    ad_spend=500_000,    # 広告費
+    revenue=1_900_000,   # 売上
+    cogs=400_000,        # 原価
+    clicks=3_800,
+    impressions=120_000,
+)
+
+print(f"ROI: {roi['roi_pct']:+.1f}%")   # +200.0%
+print(f"ROAS: {roi['roas']:.2f}x")      # 3.80x
+print(f"CPC: ¥{roi['cpc_usd']:.0f}")   # ¥131
+```
+
+### 4. SEO Content Analysis — コンテンツ品質スコア
+
+```python
+from open_mythos.tools_marketing import score_content
+
+report = score_content(
+    text="あなたのコンテンツをここに...",
+    target_keyword="デジタルマーケティング",
+)
+
+print(report["llmo_total"])          # 総合スコア
+print(report["recommendations"])     # 改善推奨リスト
+```
+
+> **Full demo notebook:** [`examples/demo_seo_llmo.ipynb`](examples/demo_seo_llmo.ipynb) — SEO生成 → LLMOスコア → 広告ROI の3ステップを Colab でそのまま実行できます。
+
+---
+
+## Why OpenMythos over GPT-4o / Claude? / なぜ GPT-4o・Claude より OpenMythos か？
+
+| Capability / 機能 | GPT-4o / Claude | OpenMythos |
+| ----------------- | --------------- | ---------- |
+| LLMO score (AI-search optimization) | ✗ No built-in metric | ✅ `LLMOScorer` (entity / directness / citability) |
+| Ad ROI / ROAS / CPC calculation | ✗ Prompt engineering required | ✅ `calculate_roi()` — structured output |
+| Competitor ad analysis | ✗ No API | ✅ `search_competitor()` |
+| Keyword trend + LLMO popularity | ✗ Requires external tools | ✅ `fetch_trend()` — LLMO popularity score |
+| Recurrent reasoning (more loops = deeper) | ✗ Fixed depth | ✅ RDT — inference-time depth scaling |
+| Open weights | ✗ Closed / API only | ✅ MIT License — fully open |
+| On-premise / air-gapped deployment | ✗ | ✅ Pure Python + PyTorch |
+
+---
 
 ## Installation
 

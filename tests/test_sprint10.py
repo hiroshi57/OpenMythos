@@ -123,8 +123,8 @@ class TestLLMOScorerScore:
         vague = "Well, it depends on many factors. Let me explain in detail."
         r_af = s.score(answer_first)
         r_v = s.score(vague)
-        # answer_first パターンは directness が高い傾向
-        assert r_af.answer_directness >= 0.0
+        # answer_first パターンは vague テキストより directness が高いことを確認
+        assert r_af.answer_directness > r_v.answer_directness
 
     def test_word_count_populated(self):
         from open_mythos.llmo import LLMOScorer
@@ -141,8 +141,8 @@ class TestLLMOScorerScore:
         text = "OpenMythos achieved 32% CTR boost. GPT-4 comparison shows ROAS=3.2."
         r = s.score(text)
         assert isinstance(r.entities, list)
-        # 少なくとも何らかのエンティティが検出される
-        assert len(r.entities) >= 0  # may be 0 for edge cases
+        # エンティティ豊富なテキストで少なくとも1件検出されることを確認
+        assert len(r.entities) >= 1
 
     def test_batch_score(self):
         from open_mythos.llmo import LLMOScorer
@@ -175,6 +175,17 @@ class TestLLMOScorerScore:
         assert "improvement_pct" in result
         assert "baseline_total" in result
         assert "candidate_total" in result
+
+    def test_compare_empty_baseline_improvement_pct_is_zero(self):
+        # baseline が空文字のとき improvement_pct はゼロ (ゼロ除算ガード確認)
+        from open_mythos.llmo import LLMOScorer
+
+        s = LLMOScorer()
+        result = s.compare("", "OpenMythos 32% CTR improvement in Q3 2025.")
+        assert result["baseline_total"] == 0.0
+        assert result["improvement_pct"] == 0.0
+        # delta はゼロ以上 (candidate > baseline=0)
+        assert result["delta"] >= 0.0
 
 
 # ===========================================================================
@@ -404,6 +415,24 @@ class TestSchemaValidator:
         }
         ok, msg = v.validate(data, SEO_CONTENT_SCHEMA)
         assert ok, msg
+
+    def test_bool_rejected_as_number(self):
+        # Python では bool は int のサブクラスだが、number フィールドに bool を渡すと失敗すべき
+        from open_mythos.structured import SchemaValidator, AD_PERFORMANCE_SCHEMA
+
+        v = SchemaValidator()
+        data = {"ctr": True, "tier": "high", "confidence": 0.9}
+        ok, msg = v.validate(data, AD_PERFORMANCE_SCHEMA)
+        assert not ok, "bool が number フィールドを通過してしまっている"
+
+    def test_bool_rejected_as_integer(self):
+        # bool は integer フィールドも通過すべきでない
+        from open_mythos.structured import SchemaValidator, AD_PERFORMANCE_SCHEMA
+
+        v = SchemaValidator()
+        data = {"ctr": 0.03, "tier": "high", "confidence": 0.9, "quality_score": True}
+        ok, msg = v.validate(data, AD_PERFORMANCE_SCHEMA)
+        assert not ok, "bool が integer フィールドを通過してしまっている"
 
 
 class TestStructuredGenerator:

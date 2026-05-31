@@ -238,7 +238,8 @@ class SchemaValidator:
                 return False, f"{path}: value {data!r} not in enum {enum}"
 
         elif schema_type == "number":
-            if not isinstance(data, (int, float)):
+            # bool は Python では int のサブクラスだが number として扱わない
+            if isinstance(data, bool) or not isinstance(data, (int, float)):
                 return False, f"{path}: expected number, got {type(data).__name__}"
             minimum = schema.get("minimum")
             maximum = schema.get("maximum")
@@ -252,7 +253,8 @@ class SchemaValidator:
                 return False, f"{path}: expected boolean, got {type(data).__name__}"
 
         elif schema_type == "integer":
-            if not isinstance(data, int):
+            # bool は Python では int のサブクラスだが integer として扱わない
+            if isinstance(data, bool) or not isinstance(data, int):
                 return False, f"{path}: expected integer, got {type(data).__name__}"
 
         return True, ""
