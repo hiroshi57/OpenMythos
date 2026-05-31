@@ -21,7 +21,7 @@ from open_mythos.moda import MoDAConfig, MoDAModel
 from open_mythos.hyperloop import HyperloopConfig, HyperloopBlock, HyperloopMythos
 from open_mythos.logger_utils import TrainLogger
 from open_mythos.agents import OpenMythosLLM, MythosAgent
-from open_mythos.llmo import LLMOScorer, LLMOScore
+from open_mythos.llmo import LLMOScorer, LLMOScore, ABTestResult
 from open_mythos.thinking import ThinkingEngine, ThinkingResult
 from open_mythos.structured import (
     StructuredGenerator,
@@ -185,6 +185,7 @@ __all__ = [
     # Sprint 10: LLMO / Thinking / Structured Output
     "LLMOScorer",
     "LLMOScore",
+    "ABTestResult",
     "ThinkingEngine",
     "ThinkingResult",
     "StructuredGenerator",

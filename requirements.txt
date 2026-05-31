@@ -5,3 +5,7 @@ pytest>=7.0.0
 
 # optional — enables Flash Attention 2 in GQAttention (requires CUDA + build tools)
 # flash-attn>=2.8.3
+
+# optional — enables Japanese morphological analysis in LLMOScorer (install either one)
+# janome>=0.5.0
+# fugashi>=1.3.0  (also requires: ipadic or unidic)

@@ -271,6 +271,37 @@ class ConversationMemory:
                 return turn
         return None
 
+    @property
+    def drift_score(self) -> float:
+        """
+        コンテキストドリフトリスクスコア (0.0–1.0)。
+
+        Claude Opus 4.8 の弱点である「長文・複合指示によるコンテキストドリフト」を
+        定量化する指標。高いほどドリフトリスクが高い。
+
+        計算式:
+            turn_ratio  × 0.4  (ターン数 / max_turns)
+          + char_ratio  × 0.3  (総文字数 / max_chars)
+          + topic_shift × 0.3  (直近3ターンの語彙多様性比率)
+        """
+        if not self._turns:
+            return 0.0
+
+        turn_ratio = min(1.0, self.n_turns / max(self.max_turns, 1))
+        char_ratio = min(1.0, self.total_chars / max(self.max_chars, 1))
+
+        # 直近3ターンの語彙多様性でトピックシフトを近似
+        # unique_words / total_words が高い = 話題が散漫 = ドリフトリスク高
+        recent = self._turns[-3:]
+        all_words = " ".join(t.content for t in recent).lower().split()
+        if len(all_words) >= 4:
+            topic_shift = min(1.0, len(set(all_words)) / len(all_words))
+        else:
+            topic_shift = 0.0
+
+        score = turn_ratio * 0.4 + char_ratio * 0.3 + topic_shift * 0.3
+        return round(min(1.0, score), 4)
+
     def stats(self) -> dict:
         return {
             "session_id": self._session_id,
@@ -280,6 +311,7 @@ class ConversationMemory:
             "summary_turns": self._summary.turns_summarized if self._summary else 0,
             "max_turns": self.max_turns,
             "max_chars": self.max_chars,
+            "drift_score": self.drift_score,
         }
 
     # ------------------------------------------------------------------
