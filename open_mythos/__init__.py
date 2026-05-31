@@ -72,6 +72,8 @@ from open_mythos.conversation import (
     ConversationMemory,
     SessionStore,
 )
+from open_mythos.seo_pipeline import SEOPipeline, SEOPipelineResult
+from open_mythos.security import InputGuard, OutputGuard, SecurityCheckResult
 from open_mythos.swarm import (
     SwarmConfig,
     SwarmAgentResult,
@@ -137,6 +139,12 @@ __all__ = [
     "HyperloopBlock",
     "HyperloopMythos",
     "cli_main",
+    # Sprint 16: SEO Pipeline / Security
+    "SEOPipeline",
+    "SEOPipelineResult",
+    "InputGuard",
+    "OutputGuard",
+    "SecurityCheckResult",
     # Sprint 13: SwarmOrchestrator
     "SwarmConfig",
     "SwarmAgentResult",
