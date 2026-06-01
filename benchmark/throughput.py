@@ -28,7 +28,7 @@ import json
 import math
 import time
 from dataclasses import dataclass, asdict
-from typing import List, Optional
+from typing import Optional
 
 import torch
 
@@ -102,7 +102,8 @@ def _peak_mem_mb(device: str) -> float:
     if device.startswith("cuda"):
         return torch.cuda.max_memory_allocated(device) / 1024 / 1024
     try:
-        import psutil, os
+        import psutil
+        import os
         proc = psutil.Process(os.getpid())
         return proc.memory_info().rss / 1024 / 1024
     except ImportError:
@@ -133,7 +134,6 @@ def measure_latency(
     ``time.perf_counter`` and, for CUDA, surrounding ``torch.cuda.synchronize``
     calls so that async kernels are correctly attributed.
     """
-    vocab_size = model.cfg.vocab_size
     ids_t = torch.tensor(prompt_ids, dtype=torch.long, device=device)
     ids_t = ids_t.unsqueeze(0).expand(batch_size, -1)  # (B, P)
 

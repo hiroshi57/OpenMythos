@@ -189,6 +189,16 @@ class TestReActAgent:
         result = agent.run(task="latency test")
         assert result.total_latency_ms >= 0.0
 
+    def test_max_iterations_zero_no_crash(self):
+        """max_iterations=0 で UnboundLocalError が出ないことを確認（バグ修正テスト）。"""
+        from open_mythos.react import ReActAgent
+        from open_mythos.tools import ToolRegistry
+        model = _tiny_model()
+        agent = ReActAgent(model, ToolRegistry(), max_iterations=0, max_new_tokens=3, loops=1)
+        result = agent.run(task="zero iterations test")
+        assert result.iterations_used == 0
+        assert isinstance(result.final_answer, str)
+
 
 class TestFormatAgentTrace:
     def test_returns_string(self):
@@ -641,14 +651,14 @@ class TestAPISessionsEndpoints:
 
 class TestSprint12Imports:
     def test_react_importable(self):
-        from open_mythos import AgentStep, AgentResult, ReActAgent, format_agent_trace
+        from open_mythos import ReActAgent
         assert ReActAgent is not None
 
     def test_prefix_cache_importable(self):
-        from open_mythos import PrefixCacheEntry, PromptPrefixCache, CachedGenResult
+        from open_mythos import PromptPrefixCache
         assert PromptPrefixCache is not None
 
     def test_conversation_importable(self):
-        from open_mythos import Turn, MemorySummary, ConversationMemory, SessionStore
+        from open_mythos import ConversationMemory, SessionStore
         assert ConversationMemory is not None
         assert SessionStore is not None

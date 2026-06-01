@@ -34,7 +34,10 @@ import hashlib
 import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from open_mythos.main import OpenMythos
 
 import torch
 import torch.nn.functional as F

@@ -122,7 +122,6 @@ def evaluate_perplexity(
         dict with keys: ``ppl``, ``nll``, ``n_tokens``, ``elapsed_sec``,
         ``tokens_per_sec``.
     """
-    vocab_size = model.cfg.vocab_size
     ids_tensor = torch.tensor(token_ids, dtype=torch.long)
     n_total = len(ids_tensor)
 

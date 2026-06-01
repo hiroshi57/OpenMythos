@@ -27,8 +27,7 @@ log-likelihood scorer that evaluates ``lambada`` via the HuggingFace
 from __future__ import annotations
 
 import argparse
-import math
-from typing import Any, Iterator, List, Optional, Tuple, Union
+from typing import Optional
 
 import torch
 import torch.nn.functional as F
@@ -82,7 +81,6 @@ def _tokenize(text: str, vocab_size: int) -> list[int]:
 
 try:
     from lm_eval.api.model import LM
-    from lm_eval.api.instance import Instance
     _HAS_LM_EVAL = True
 except ImportError:
     _HAS_LM_EVAL = False

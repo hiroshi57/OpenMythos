@@ -22,8 +22,11 @@ YaRN (Yet another RoPE extensioN) は RoPE の周波数をスケーリングし�
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
-from typing import Literal, Optional
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Literal, Optional
+
+if TYPE_CHECKING:
+    from open_mythos.main import OpenMythos
 
 import torch
 

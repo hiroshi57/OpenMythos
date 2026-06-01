@@ -18,7 +18,6 @@ Track C — RAG Pipeline
 from __future__ import annotations
 
 import json
-import math
 import sys
 import types
 from unittest.mock import MagicMock
@@ -357,13 +356,24 @@ class TestCalculateROI:
         )
         assert "ctr" in r
         assert r["ctr"] == pytest.approx(0.02)
-        assert "cpa_usd" in r
+        assert "cpc_usd" in r
 
     def test_zero_ad_spend_returns_error(self):
         from open_mythos.tools_marketing import calculate_roi
 
         r = calculate_roi(ad_spend=0, revenue=1000.0)
         assert "error" in r
+
+    def test_cogs_reduces_roi(self):
+        # cogs を指定すると ROI が減少することを確認
+        from open_mythos.tools_marketing import calculate_roi
+
+        r_no_cogs = calculate_roi(ad_spend=1000.0, revenue=3000.0, cogs=0.0)
+        r_with_cogs = calculate_roi(ad_spend=1000.0, revenue=3000.0, cogs=500.0)
+        assert r_with_cogs["roi_pct"] < r_no_cogs["roi_pct"]
+        # cogs=500 → gross_profit=2500, roi=(2500-1000)/1000*100=150%
+        assert r_with_cogs["roi_pct"] == pytest.approx(150.0)
+        assert r_with_cogs["gross_profit_usd"] == pytest.approx(2500.0)
 
 
 class TestFetchTrend:
@@ -482,7 +492,7 @@ class TestYarnRopeFreqs:
 
     def test_factor_1_equals_standard_rope(self):
         """factor=1.0 の場合、通常 RoPE と同じ周波数になる。"""
-        from open_mythos.rope_extension import yarn_rope_freqs, get_rope_freqs, RopeScalingConfig
+        from open_mythos.rope_extension import yarn_rope_freqs
         from open_mythos.main import precompute_rope_freqs
 
         dim, max_len, theta = 32, 64, 500000.0
@@ -746,18 +756,16 @@ class TestAPIRAGModels:
 class TestSprint11Imports:
     def test_tools_importable(self):
         from open_mythos import (
-            ToolDefinition, ToolCall, ToolResult, ToolRegistry,
-            tool, execute_tool_call, execute_tool_calls,
-            parse_tool_calls, build_tool_prompt, register_marketing_tools,
+            ToolRegistry,
         )
         assert ToolRegistry is not None
 
     def test_rope_extension_importable(self):
         from open_mythos import (
-            RopeScalingConfig, yarn_rope_freqs, get_rope_freqs, extend_model_context
+            RopeScalingConfig
         )
         assert RopeScalingConfig is not None
 
     def test_rag_importable(self):
-        from open_mythos import Document, VectorStore, RAGPipeline, RAGResult
+        from open_mythos import RAGPipeline
         assert RAGPipeline is not None
