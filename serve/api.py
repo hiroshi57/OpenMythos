@@ -1908,6 +1908,105 @@ def ab_infer(req: ABInferRequest):
 
 
 # ---------------------------------------------------------------------------
+# Sprint 22: Profiler Agent endpoints
+# ---------------------------------------------------------------------------
+
+
+class ProfileRunRequest(BaseModel):
+    input_text: str = Field(..., description="パイプラインへの入力テキスト")
+    stages: Optional[list] = Field(None, description="使用するステージ名リスト (省略時はデフォルト3ステージ)")
+
+
+class ProfileFixRequest(BaseModel):
+    input_text: str = Field(..., description="パイプラインへの入力テキスト")
+
+
+def _default_stages():
+    """デモ用デフォルトステージ (スコア付き)。"""
+    from open_mythos.llmo import LLMOScorer
+    scorer = LLMOScorer()
+
+    def fetch(text: str):
+        return text + " [fetched]", scorer.score(text).llmo_total
+
+    def rank(text: str):
+        ranked = text + " [ranked]"
+        return ranked, scorer.score(ranked).llmo_total
+
+    def fmt(text: str):
+        formatted = f"## 結果\n{text}\n[formatted]"
+        return formatted, scorer.score(formatted).llmo_total
+
+    return {"fetch": fetch, "rank": rank, "format": fmt}
+
+
+@app.post(
+    "/v1/profile/run",
+    tags=["profiler"],
+    summary="パイプラインプロファイル",
+    description="各ステージの実行時間・スコアを計測し、ボトルネック候補を返す。",
+)
+def profile_run(req: ProfileRunRequest, _: str = Depends(verify_api_key)):
+    from open_mythos.profiler import PipelineProfiler, BottleneckDetector
+
+    stages = _default_stages()
+    profiler = PipelineProfiler(stages)
+    result = profiler.run(req.input_text)
+    report = BottleneckDetector().detect(result)
+
+    return {
+        "total_latency_ms": result.total_latency_ms,
+        "stages": {
+            name: {
+                "latency_ms": m.latency_ms,
+                "score": round(m.score, 4) if m.score >= 0 else None,
+                "ok": m.ok,
+            }
+            for name, m in result.stages.items()
+        },
+        "bottleneck_stage": report.bottleneck_stage,
+        "bottleneck_type": report.bottleneck_type,
+        "severity": report.severity,
+        "diagnosis": report.diagnosis,
+        "suggested_fix": report.suggested_fix,
+    }
+
+
+@app.post(
+    "/v1/profile/fix",
+    tags=["profiler"],
+    summary="ボトルネック自動修正",
+    description="profile → detect → auto_fix を一括実行し、修正前後のレイテンシ改善率を返す。",
+)
+def profile_fix(req: ProfileFixRequest, _: str = Depends(verify_api_key)):
+    from open_mythos.profiler import ProfilerAgent
+
+    agent = ProfilerAgent(_default_stages())
+    fix_result = agent.profile_and_fix(req.input_text)
+
+    return {
+        "bottleneck_stage": fix_result.bottleneck_report.bottleneck_stage,
+        "bottleneck_type": fix_result.bottleneck_report.bottleneck_type,
+        "before_latency_ms": fix_result.before_profile.total_latency_ms,
+        "after_latency_ms": fix_result.after_profile.total_latency_ms,
+        "latency_improvement_pct": fix_result.latency_improvement_pct,
+        "score_improvement": fix_result.score_improvement,
+        "fixed": fix_result.fixed,
+        "fix_description": fix_result.fix_description,
+    }
+
+
+@app.get(
+    "/v1/profile/report",
+    tags=["profiler"],
+    summary="プロファイル履歴",
+    description="直近のプロファイル実行結果サマリーを返す (スタブ)。",
+)
+def profile_report(_: str = Depends(verify_api_key)):
+    return {"message": "プロファイル履歴機能は今後のバージョンで実装予定です。"}
+
+
+# ---------------------------------------------------------------------------
 # Sprint 21: KPI Agent endpoints
 # ---------------------------------------------------------------------------
 

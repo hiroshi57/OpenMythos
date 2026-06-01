@@ -4,6 +4,33 @@ All notable changes to OpenMythos are documented here.
 
 ---
 
+## [0.25.0] — 2026-06-01
+
+### Sprint 22: ボトルネック発見・解消 — ProfilerAgent (P3パターン)
+
+#### ProfilerAgent (`open_mythos/profiler.py`)
+
+- `StageMetrics` — latency_ms / score / error / ok / error_rate
+- `ProfileResult` — slowest_stage() / lowest_score_stage() / latencies() / scores()
+- `BottleneckReport` — bottleneck_type (latency/score/error/none) / severity / has_bottleneck
+- `AutoFixResult` — latency_improvement_pct / score_improvement / fixed / fix_description
+- `PipelineProfiler.run()` — 全ステージを順次実行・各ステージの latency/score/error を計測
+- `BottleneckDetector.detect()` — IQR法 (Q3+1.5×IQR) でレイテンシ外れ値を検出、スコア下限外れ値も検出
+- `ProfilerAgent.auto_fix()` — latency→出力長制限パッチ / score→品質強化パッチ / error→フォールバックパッチ
+- `ProfilerAgent.profile_and_fix()` — profile→detect→auto_fix を一括実行
+
+#### API (`serve/api.py`)
+
+- `POST /v1/profile/run` — 全ステージ計測 + ボトルネック検出結果を返す
+- `POST /v1/profile/fix` — profile_and_fix() を実行し latency_improvement_pct を返す
+- `GET  /v1/profile/report` — プロファイル履歴 (スタブ)
+
+#### テスト (`tests/test_sprint22.py`)
+
+- `tests/test_sprint22.py` — 61 tests ALL PASS
+
+---
+
 ## [0.24.0] — 2026-06-01
 
 ### Sprint 21: KPI駆動自己改善 — KPIAgent (P2パターン)

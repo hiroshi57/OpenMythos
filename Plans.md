@@ -251,13 +251,13 @@
 
 | task-id | 説明 | 状態 |
 |---------|------|------|
-| 22.1 | `open_mythos/profiler.py` — `StageMetrics` / `BottleneckReport` dataclass | 未着手 |
-| 22.2 | `open_mythos/profiler.py` — `PipelineProfiler.profile()` — SEOPipeline / SwarmOrchestrator の各ステージ計測 | 未着手 |
-| 22.3 | `open_mythos/profiler.py` — `BottleneckDetector.detect()` — latency/error_rate/score の外れ値検出 (IQR法) | 未着手 |
-| 22.4 | `open_mythos/profiler.py` — `ProfilerAgent.auto_fix()` — ボトルネックステージのパラメータ自動調整 | 未着手 |
-| 22.5 | `serve/api.py` — `/v1/profile/run` / `/v1/profile/report` / `/v1/profile/fix` エンドポイント | 未着手 |
-| 22.T | `tests/test_sprint22.py` — 35 tests (StageMetrics / BottleneckDetector / auto_fix / API) | 未着手 |
-| 22.V | PyPI v0.25.0 + CHANGELOG | 未着手 |
+| 22.1 | `open_mythos/profiler.py` — `StageMetrics` / `ProfileResult` / `BottleneckReport` / `AutoFixResult` dataclass | cc:完了 |
+| 22.2 | `open_mythos/profiler.py` — `PipelineProfiler.run()` — 全ステージを順次実行・計測 | cc:完了 |
+| 22.3 | `open_mythos/profiler.py` — `BottleneckDetector.detect()` — IQR法で latency / score / error 外れ値検出 | cc:完了 |
+| 22.4 | `open_mythos/profiler.py` — `ProfilerAgent.auto_fix()` — latency/score/error 別パッチ適用・再計測 | cc:完了 |
+| 22.5 | `serve/api.py` — `/v1/profile/run` / `/v1/profile/fix` / `/v1/profile/report` エンドポイント | cc:完了 |
+| 22.T | `tests/test_sprint22.py` — 35 tests (StageMetrics / BottleneckDetector / ProfilerAgent / API) | cc:完了 |
+| 22.V | PyPI v0.25.0 + CHANGELOG | cc:完了 |
 
 **DoD**: 意図的に遅くしたステージを正しく検出し latency -20% 改善できること
 

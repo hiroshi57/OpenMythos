@@ -80,6 +80,15 @@ from open_mythos.debate import (
     ConsensusEngine,
     DebateOrchestrator,
 )
+from open_mythos.profiler import (
+    StageMetrics,
+    ProfileResult,
+    BottleneckReport,
+    AutoFixResult,
+    PipelineProfiler,
+    BottleneckDetector,
+    ProfilerAgent,
+)
 from open_mythos.kpi_agent import (
     KPIDefinition,
     KPISnapshot,
@@ -155,6 +164,14 @@ __all__ = [
     "HyperloopBlock",
     "HyperloopMythos",
     "cli_main",
+    # Sprint 22: Profiler Agent
+    "StageMetrics",
+    "ProfileResult",
+    "BottleneckReport",
+    "AutoFixResult",
+    "PipelineProfiler",
+    "BottleneckDetector",
+    "ProfilerAgent",
     # Sprint 21: KPI Agent
     "KPIDefinition",
     "KPISnapshot",
