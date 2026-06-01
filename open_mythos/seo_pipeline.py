@@ -33,7 +33,6 @@ from open_mythos.tools_marketing import fetch_trend
 from open_mythos.swarm import SwarmOrchestrator, SwarmConfig, SwarmResult
 from open_mythos.conversation import ConversationMemory
 
-
 # ---------------------------------------------------------------------------
 # 結果データクラス
 # ---------------------------------------------------------------------------
@@ -280,7 +279,9 @@ class SEOPipeline:
                 f"出典付き統計・年号・見出し構造を強化"
             )
         if not actions:
-            actions.append(f"現在スコア {llmo.llmo_total:.3f} — 良好。競合比較で差別化を強化")
+            actions.append(
+                f"現在スコア {llmo.llmo_total:.3f} — 良好。競合比較で差別化を強化"
+            )
 
         plan = f"【改善アクションプラン】(現在 LLMO: {llmo.llmo_total:.3f})\n"
         plan += "\n".join(f"  {i+1}. {a}" for i, a in enumerate(actions))
@@ -299,7 +300,8 @@ class SEOPipeline:
             strategy="pipeline",
         )
         with SwarmOrchestrator(
-            self.model, cfg,
+            self.model,
+            cfg,
             device=self.device,
             max_new_tokens=self.max_new_tokens,
         ) as swarm:

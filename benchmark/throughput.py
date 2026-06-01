@@ -34,7 +34,11 @@ import torch
 
 from open_mythos.main import MythosConfig, OpenMythos
 from open_mythos.variants import (
-    mythos_nano, mythos_1b, mythos_3b, mythos_7b, mythos_10b,
+    mythos_nano,
+    mythos_1b,
+    mythos_3b,
+    mythos_7b,
+    mythos_10b,
 )
 
 _VARIANTS = {
@@ -55,22 +59,24 @@ _DEFAULT_PROMPT = (
 # Data structures
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class LatencyResult:
     batch_size: int
     prompt_len: int
     max_new_tokens: int
-    ttft_ms: float          # time-to-first-token (ms)
-    tpot_ms: float          # time-per-output-token (ms)
-    total_ms: float         # total generation time (ms)
+    ttft_ms: float  # time-to-first-token (ms)
+    tpot_ms: float  # time-per-output-token (ms)
+    total_ms: float  # total generation time (ms)
     generated_tokens: int
-    throughput_tok_s: float # (prompt + generated) tokens / sec
-    peak_mem_mb: float      # peak GPU VRAM or CPU RSS (MB)
+    throughput_tok_s: float  # (prompt + generated) tokens / sec
+    peak_mem_mb: float  # peak GPU VRAM or CPU RSS (MB)
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _load_model(args) -> tuple[OpenMythos, str]:
     dev = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
@@ -91,6 +97,7 @@ def _load_model(args) -> tuple[OpenMythos, str]:
 def _tokenize(prompt: str, vocab_size: int) -> list[int]:
     try:
         from open_mythos.tokenizer import MythosTokenizer
+
         enc = MythosTokenizer()
         ids = enc.encode(prompt)
     except Exception:
@@ -104,6 +111,7 @@ def _peak_mem_mb(device: str) -> float:
     try:
         import psutil
         import os
+
         proc = psutil.Process(os.getpid())
         return proc.memory_info().rss / 1024 / 1024
     except ImportError:
@@ -118,6 +126,7 @@ def _reset_mem_stats(device: str) -> None:
 # ---------------------------------------------------------------------------
 # Core measurement
 # ---------------------------------------------------------------------------
+
 
 def measure_latency(
     model: OpenMythos,
@@ -208,7 +217,9 @@ def sweep_batch_sizes(
     for bs in batch_sizes:
         try:
             r = measure_latency(
-                model, prompt_ids, device,
+                model,
+                prompt_ids,
+                device,
                 max_new_tokens=max_new_tokens,
                 batch_size=bs,
                 n_loops=n_loops,
@@ -223,6 +234,7 @@ def sweep_batch_sizes(
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description="OpenMythos throughput & latency benchmark",
@@ -233,13 +245,14 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--device", default=None)
     p.add_argument("--prompt", default=_DEFAULT_PROMPT)
     p.add_argument("--max-new-tokens", type=int, default=32)
-    p.add_argument("--batch-sizes", default="1",
-                   help="Comma-separated list, e.g. 1,2,4")
+    p.add_argument(
+        "--batch-sizes", default="1", help="Comma-separated list, e.g. 1,2,4"
+    )
     p.add_argument("--n-loops", type=int, default=None)
-    p.add_argument("--warmup", type=int, default=1,
-                   help="Warmup forward passes before timing")
-    p.add_argument("--output-json", default=None,
-                   help="Write results to JSON file")
+    p.add_argument(
+        "--warmup", type=int, default=1, help="Warmup forward passes before timing"
+    )
+    p.add_argument("--output-json", default=None, help="Write results to JSON file")
     return p.parse_args()
 
 
@@ -274,7 +287,9 @@ def main() -> None:
     print("─" * 72)
 
     results = sweep_batch_sizes(
-        model, prompt_ids, device,
+        model,
+        prompt_ids,
+        device,
         batch_sizes=batch_sizes,
         max_new_tokens=args.max_new_tokens,
         n_loops=args.n_loops,

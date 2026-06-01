@@ -11,8 +11,6 @@ Sprint 15 テスト — Opus 4.8 対抗機能の検証
 
 from __future__ import annotations
 
-
-
 # ===========================================================================
 # 15.1  _tokenize_ja / _is_japanese
 # ===========================================================================
@@ -21,26 +19,31 @@ from __future__ import annotations
 class TestJaTokenizer:
     def test_is_japanese_true_for_kanji(self):
         from open_mythos.llmo import LLMOScorer
+
         assert LLMOScorer._is_japanese("デジタルマーケティング") is True
 
     def test_is_japanese_false_for_ascii(self):
         from open_mythos.llmo import LLMOScorer
+
         assert LLMOScorer._is_japanese("digital marketing SEO") is False
 
     def test_tokenize_ja_fallback_returns_list(self):
         from open_mythos.llmo import _tokenize_ja
+
         tokens = _tokenize_ja("デジタルマーケティングの手法")
         assert isinstance(tokens, list)
         assert len(tokens) >= 1
 
     def test_tokenize_ja_extracts_compound_word(self):
         from open_mythos.llmo import _tokenize_ja
+
         tokens = _tokenize_ja("デジタルマーケティング")
         # フォールバックでも2文字以上の連続文字が含まれる
         assert any(len(t) >= 2 for t in tokens)
 
     def test_tokenize_ja_empty_returns_empty(self):
         from open_mythos.llmo import _tokenize_ja
+
         assert _tokenize_ja("") == []
 
 
@@ -52,19 +55,24 @@ class TestJaTokenizer:
 class TestLLMOScoreJa:
     def test_ja_tokens_populated_for_japanese(self):
         from open_mythos.llmo import LLMOScorer
+
         scorer = LLMOScorer()
-        result = scorer.score("デジタルマーケティングとはGoogle・Metaなどのプラットフォームを活用する手法です。")
+        result = scorer.score(
+            "デジタルマーケティングとはGoogle・Metaなどのプラットフォームを活用する手法です。"
+        )
         assert isinstance(result.ja_tokens, list)
         assert len(result.ja_tokens) >= 1
 
     def test_ja_tokens_empty_for_english(self):
         from open_mythos.llmo import LLMOScorer
+
         scorer = LLMOScorer()
         result = scorer.score("Digital marketing uses Google and Meta platforms.")
         assert result.ja_tokens == []
 
     def test_word_count_uses_morpheme_for_ja(self):
         from open_mythos.llmo import LLMOScorer
+
         scorer = LLMOScorer()
         # 日本語はスペース区切りと形態素数が大きく異なる
         text = "デジタルマーケティングの戦略を立案する"
@@ -74,6 +82,7 @@ class TestLLMOScoreJa:
 
     def test_entity_rich_ja_scores_higher_than_vague(self):
         from open_mythos.llmo import LLMOScorer
+
         scorer = LLMOScorer()
         rich = (
             "デジタルマーケティングとは、Google・Meta・LINEなどのデジタルプラットフォームを活用して"
@@ -92,6 +101,7 @@ class TestLLMOScoreJa:
 class TestScoreWithKeywords:
     def test_title_hit_counts_triple(self):
         from open_mythos.llmo import LLMOScorer
+
         scorer = LLMOScorer()
         kw = "seo"
         # title に kw 1回、body はキーワードなし（英語のみ）
@@ -107,6 +117,7 @@ class TestScoreWithKeywords:
 
     def test_h1_hit_counts_double(self):
         from open_mythos.llmo import LLMOScorer
+
         scorer = LLMOScorer()
         kw = "seo"
         # h1 に kw 1回、body はキーワードなし
@@ -121,12 +132,14 @@ class TestScoreWithKeywords:
 
     def test_no_keyword_returns_zero_wkd(self):
         from open_mythos.llmo import LLMOScorer
+
         scorer = LLMOScorer()
         r = scorer.score_with_keywords("Some content", title="Title")
         assert r.weighted_keyword_density == 0.0
 
     def test_wkd_is_float_between_0_and_1(self):
         from open_mythos.llmo import LLMOScorer
+
         scorer = LLMOScorer()
         r = scorer.score_with_keywords(
             "SEO is important for digital marketing",
@@ -138,6 +151,7 @@ class TestScoreWithKeywords:
 
     def test_ja_keyword_density(self):
         from open_mythos.llmo import LLMOScorer
+
         scorer = LLMOScorer()
         r = scorer.score_with_keywords(
             "デジタルマーケティングの手法について解説します",
@@ -156,6 +170,7 @@ class TestScoreWithKeywords:
 class TestABTest:
     def test_winner_has_highest_score(self):
         from open_mythos.llmo import LLMOScorer
+
         scorer = LLMOScorer()
         variants = [
             "Short.",
@@ -167,6 +182,7 @@ class TestABTest:
 
     def test_scores_length_equals_variants(self):
         from open_mythos.llmo import LLMOScorer
+
         scorer = LLMOScorer()
         variants = ["A", "B", "C", "D"]
         result = scorer.ab_test(variants)
@@ -175,12 +191,14 @@ class TestABTest:
 
     def test_winner_delta_is_zero(self):
         from open_mythos.llmo import LLMOScorer
+
         scorer = LLMOScorer()
         result = scorer.ab_test(["hello world", "test content here"])
         assert result.deltas[result.winner_index] == 0.0
 
     def test_significant_when_large_gap(self):
         from open_mythos.llmo import LLMOScorer
+
         scorer = LLMOScorer()
         high = (
             "OpenMythos v0.17.0 achieves 32% CTR improvement over GPT-4. "
@@ -192,18 +210,21 @@ class TestABTest:
 
     def test_not_significant_when_similar(self):
         from open_mythos.llmo import LLMOScorer
+
         scorer = LLMOScorer()
         result = scorer.ab_test(["hello", "world"], threshold=0.5)
         assert result.significant is False
 
     def test_empty_variants_returns_empty(self):
         from open_mythos.llmo import LLMOScorer
+
         scorer = LLMOScorer()
         result = scorer.ab_test([])
         assert result.scores == []
 
     def test_abtestresult_exported(self):
         from open_mythos import ABTestResult
+
         assert ABTestResult is not None
 
 
@@ -215,11 +236,13 @@ class TestABTest:
 class TestDriftScore:
     def test_empty_memory_drift_is_zero(self):
         from open_mythos.conversation import ConversationMemory
+
         m = ConversationMemory(max_turns=10, max_chars=1000)
         assert m.drift_score == 0.0
 
     def test_drift_increases_with_turns(self):
         from open_mythos.conversation import ConversationMemory
+
         m = ConversationMemory(max_turns=4, max_chars=500)
         d0 = m.drift_score
         m.add_user("SEOとは何ですか？")
@@ -232,6 +255,7 @@ class TestDriftScore:
 
     def test_drift_score_between_0_and_1(self):
         from open_mythos.conversation import ConversationMemory
+
         m = ConversationMemory(max_turns=4, max_chars=200)
         for i in range(5):
             m.add_user(f"質問 {i}: デジタルマーケティングとSEOとLLMOの違いは？")
@@ -240,6 +264,7 @@ class TestDriftScore:
 
     def test_drift_score_in_stats(self):
         from open_mythos.conversation import ConversationMemory
+
         m = ConversationMemory()
         m.add_user("hello")
         stats = m.stats()
@@ -248,6 +273,7 @@ class TestDriftScore:
 
     def test_high_max_turns_lowers_drift(self):
         from open_mythos.conversation import ConversationMemory
+
         # 同じターン数でも max_turns が大きいほど drift_score は低い
         m_small = ConversationMemory(max_turns=4, max_chars=500)
         m_large = ConversationMemory(max_turns=40, max_chars=5000)
@@ -265,6 +291,7 @@ class TestDriftScore:
 class TestLLMOBench:
     def test_run_benchmark_returns_dict(self):
         from benchmark.llmo_bench import run_benchmark
+
         result = run_benchmark(use_claude_api=False)
         assert isinstance(result, dict)
         assert "results" in result
@@ -272,17 +299,20 @@ class TestLLMOBench:
 
     def test_n_documents_matches_input(self):
         from benchmark.llmo_bench import run_benchmark, SAMPLE_DOCUMENTS
+
         result = run_benchmark(use_claude_api=False)
         assert result["n_documents"] == len(SAMPLE_DOCUMENTS)
 
     def test_openmythos_score_between_0_and_1(self):
         from benchmark.llmo_bench import run_benchmark
+
         result = run_benchmark(use_claude_api=False)
         for r in result["results"]:
             assert 0.0 <= r["openmythos_llmo"] <= 1.0
 
     def test_openmythos_avg_above_baseline_avg(self):
         from benchmark.llmo_bench import run_benchmark
+
         result = run_benchmark(use_claude_api=False)
         # OpenMythos の多次元評価はシンプルな keyword density より高スコアになるはず
         # （高品質コンテンツが平均を引き上げる）
@@ -290,16 +320,21 @@ class TestLLMOBench:
 
     def test_claude_api_score_is_none_without_key(self):
         from benchmark.llmo_bench import run_benchmark
+
         result = run_benchmark(use_claude_api=False)
         for r in result["results"]:
             assert r["claude_api_score"] is None
 
     def test_custom_docs(self):
         from benchmark.llmo_bench import run_benchmark
+
         custom = [
             {
-                "id": "test_01", "lang": "en", "keyword": "AI",
-                "title": "AI Guide", "h1": "What is AI?",
+                "id": "test_01",
+                "lang": "en",
+                "keyword": "AI",
+                "title": "AI Guide",
+                "h1": "What is AI?",
                 "body": "AI (Artificial Intelligence) refers to machine learning systems.",
             }
         ]

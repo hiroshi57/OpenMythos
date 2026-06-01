@@ -23,7 +23,6 @@ from open_mythos import (
     SwarmOrchestrator as SwarmOrchestratorExported,
 )
 
-
 # ---------------------------------------------------------------------------
 # RNG isolation
 # ---------------------------------------------------------------------------
@@ -91,22 +90,28 @@ class TestSwarmConfig:
 class TestSwarmAgentResult:
     def test_ok_when_no_error(self):
         r = SwarmAgentResult(
-            task_id="t0", agent_id=0, agent_name="a0",
-            output="hello", latency_ms=10.0
+            task_id="t0", agent_id=0, agent_name="a0", output="hello", latency_ms=10.0
         )
         assert r.ok is True
 
     def test_not_ok_when_error(self):
         r = SwarmAgentResult(
-            task_id="t0", agent_id=0, agent_name="a0",
-            output="", latency_ms=5.0, error="timeout"
+            task_id="t0",
+            agent_id=0,
+            agent_name="a0",
+            output="",
+            latency_ms=5.0,
+            error="timeout",
         )
         assert r.ok is False
 
     def test_fields(self):
         r = SwarmAgentResult(
-            task_id="t1", agent_id=2, agent_name="agent_2",
-            output="result", latency_ms=20.5
+            task_id="t1",
+            agent_id=2,
+            agent_name="agent_2",
+            output="result",
+            latency_ms=20.5,
         )
         assert r.task_id == "t1"
         assert r.agent_id == 2
@@ -125,11 +130,16 @@ class TestSwarmResult:
         results = []
         for i in range(n):
             error = "err" if i < n_err else None
-            results.append(SwarmAgentResult(
-                task_id=f"t{i}", agent_id=i, agent_name=f"a{i}",
-                output="" if error else f"out_{i}", latency_ms=1.0,
-                error=error,
-            ))
+            results.append(
+                SwarmAgentResult(
+                    task_id=f"t{i}",
+                    agent_id=i,
+                    agent_name=f"a{i}",
+                    output="" if error else f"out_{i}",
+                    latency_ms=1.0,
+                    error=error,
+                )
+            )
         return results
 
     def test_n_agents(self):

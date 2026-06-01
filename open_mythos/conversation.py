@@ -34,7 +34,6 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Optional
 
-
 # ---------------------------------------------------------------------------
 # データクラス
 # ---------------------------------------------------------------------------
@@ -223,10 +222,12 @@ class ConversationMemory:
             messages.append({"role": "system", "content": self.system_msg})
 
         if self._summary:
-            messages.append({
-                "role": "system",
-                "content": f"[Earlier conversation]:\n{self._summary.text}",
-            })
+            messages.append(
+                {
+                    "role": "system",
+                    "content": f"[Earlier conversation]:\n{self._summary.text}",
+                }
+            )
 
         for turn in self._turns:
             messages.append(turn.to_dict())
@@ -321,8 +322,7 @@ class ConversationMemory:
     def _maybe_compress(self) -> None:
         """制限超過時に古いターンを要約して圧縮する。"""
         needs_compress = (
-            len(self._turns) > self.max_turns
-            or self.total_chars > self.max_chars
+            len(self._turns) > self.max_turns or self.total_chars > self.max_chars
         )
         if not needs_compress:
             return
@@ -339,7 +339,9 @@ class ConversationMemory:
         # テキストベースのサマリー生成 (ルールベース)
         summary_lines = []
         for turn in to_compress:
-            prefix = {"user": "U", "assistant": "A", "system": "S", "tool": "T"}.get(turn.role, "?")
+            prefix = {"user": "U", "assistant": "A", "system": "S", "tool": "T"}.get(
+                turn.role, "?"
+            )
             # 内容を最大80文字に要約
             short = turn.content[:80].replace("\n", " ")
             if len(turn.content) > 80:
@@ -387,7 +389,9 @@ class ConversationMemory:
 
         lines = []
         for turn in to_compress:
-            prefix = {"user": "U", "assistant": "A", "system": "S", "tool": "T"}.get(turn.role, "?")
+            prefix = {"user": "U", "assistant": "A", "system": "S", "tool": "T"}.get(
+                turn.role, "?"
+            )
             short = turn.content[:80].replace("\n", " ")
             if len(turn.content) > 80:
                 short += "..."
@@ -525,8 +529,7 @@ class SessionStore:
             return
         now = time.time()
         expired = [
-            sid for sid, t in self._created_at.items()
-            if now - t > self.ttl_seconds
+            sid for sid, t in self._created_at.items() if now - t > self.ttl_seconds
         ]
         for sid in expired:
             self._sessions.pop(sid, None)

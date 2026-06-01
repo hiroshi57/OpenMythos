@@ -11,14 +11,12 @@ Sprint 17 テスト — APIキー認証 / レート制限 / Docker / OpenAPI
 
 from __future__ import annotations
 
-import importlib
 import os
 import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # helpers
@@ -56,6 +54,7 @@ class TestAPIKeyAuth:
         """API_KEY / API_KEYS 未設定時は空の frozenset を返す。"""
         with patch.dict(os.environ, {}, clear=True):
             from serve import auth as auth_mod
+
             keys = auth_mod._load_api_keys()
         assert isinstance(keys, frozenset)
         assert len(keys) == 0
@@ -64,6 +63,7 @@ class TestAPIKeyAuth:
         """API_KEY 環境変数から単一キーを読み込む。"""
         with patch.dict(os.environ, {"API_KEY": "sk-test-123"}):
             from serve import auth as auth_mod
+
             keys = auth_mod._load_api_keys()
         assert "sk-test-123" in keys
 
@@ -71,6 +71,7 @@ class TestAPIKeyAuth:
         """API_KEYS 環境変数からカンマ区切り複数キーを読み込む。"""
         with patch.dict(os.environ, {"API_KEYS": "key-a, key-b, key-c"}):
             from serve import auth as auth_mod
+
             keys = auth_mod._load_api_keys()
         assert "key-a" in keys
         assert "key-b" in keys
@@ -80,6 +81,7 @@ class TestAPIKeyAuth:
         """キーの前後の空白をトリムする。"""
         with patch.dict(os.environ, {"API_KEYS": "  sk-a  ,  sk-b  "}):
             from serve import auth as auth_mod
+
             keys = auth_mod._load_api_keys()
         assert "sk-a" in keys
         assert "sk-b" in keys
@@ -90,6 +92,7 @@ class TestAPIKeyAuth:
 
         # credentials = None で呼び出し (認証無効時は 401 にならない)
         from serve.auth import _AUTH_DISABLED
+
         if _AUTH_DISABLED:
             result = verify_api_key(credentials=None)
             assert result == ""
@@ -100,8 +103,10 @@ class TestAPIKeyAuth:
         from serve.auth import verify_api_key
 
         # _VALID_KEYS をモックして認証有効状態にする
-        with patch("serve.auth._AUTH_DISABLED", False), \
-             patch("serve.auth._VALID_KEYS", frozenset({"real-key"})):
+        with (
+            patch("serve.auth._AUTH_DISABLED", False),
+            patch("serve.auth._VALID_KEYS", frozenset({"real-key"})),
+        ):
             with pytest.raises(HTTPException) as exc_info:
                 verify_api_key(credentials=None)
             assert exc_info.value.status_code == 401
@@ -116,8 +121,10 @@ class TestAPIKeyAuth:
         fake_credentials.scheme = "bearer"
         fake_credentials.credentials = "wrong-key"
 
-        with patch("serve.auth._AUTH_DISABLED", False), \
-             patch("serve.auth._VALID_KEYS", frozenset({"real-key"})):
+        with (
+            patch("serve.auth._AUTH_DISABLED", False),
+            patch("serve.auth._VALID_KEYS", frozenset({"real-key"})),
+        ):
             with pytest.raises(HTTPException) as exc_info:
                 verify_api_key(credentials=fake_credentials)
             assert exc_info.value.status_code == 401
@@ -131,8 +138,10 @@ class TestAPIKeyAuth:
         fake_credentials.scheme = "bearer"
         fake_credentials.credentials = "real-key"
 
-        with patch("serve.auth._AUTH_DISABLED", False), \
-             patch("serve.auth._VALID_KEYS", frozenset({"real-key"})):
+        with (
+            patch("serve.auth._AUTH_DISABLED", False),
+            patch("serve.auth._VALID_KEYS", frozenset({"real-key"})),
+        ):
             result = verify_api_key(credentials=fake_credentials)
         assert result == "real-key"
 
@@ -145,8 +154,10 @@ class TestAPIKeyAuth:
         fake_credentials.scheme = "Bearer"  # 大文字始まり
         fake_credentials.credentials = "real-key"
 
-        with patch("serve.auth._AUTH_DISABLED", False), \
-             patch("serve.auth._VALID_KEYS", frozenset({"real-key"})):
+        with (
+            patch("serve.auth._AUTH_DISABLED", False),
+            patch("serve.auth._VALID_KEYS", frozenset({"real-key"})),
+        ):
             result = verify_api_key(credentials=fake_credentials)
         assert result == "real-key"
 
@@ -162,6 +173,7 @@ class TestRateLimiter:
     def test_allows_requests_within_limit(self):
         """上限以内はすべて許可される。"""
         from serve.auth import _SlidingWindow
+
         limiter = _SlidingWindow(limit=3, window_sec=60.0)
 
         for _ in range(3):
@@ -171,6 +183,7 @@ class TestRateLimiter:
     def test_blocks_after_limit(self):
         """上限を超えたリクエストはブロックされる。"""
         from serve.auth import _SlidingWindow
+
         limiter = _SlidingWindow(limit=3, window_sec=60.0)
 
         for _ in range(3):
@@ -183,6 +196,7 @@ class TestRateLimiter:
     def test_remaining_decrements(self):
         """remaining が 1 ずつ減少する。"""
         from serve.auth import _SlidingWindow
+
         limiter = _SlidingWindow(limit=5, window_sec=60.0)
 
         _, remaining_1 = limiter.is_allowed("client-c")
@@ -193,6 +207,7 @@ class TestRateLimiter:
     def test_different_clients_independent(self):
         """異なるクライアントのカウントは独立している。"""
         from serve.auth import _SlidingWindow
+
         limiter = _SlidingWindow(limit=2, window_sec=60.0)
 
         limiter.is_allowed("client-x")
@@ -205,6 +220,7 @@ class TestRateLimiter:
     def test_reset_clears_count(self):
         """reset() でカウントがクリアされる。"""
         from serve.auth import _SlidingWindow
+
         limiter = _SlidingWindow(limit=2, window_sec=60.0)
 
         limiter.is_allowed("client-r")
@@ -221,6 +237,7 @@ class TestRateLimiter:
     def test_window_expiry_allows_again(self):
         """ウィンドウを過ぎたリクエストは期限切れとして除去される。"""
         from serve.auth import _SlidingWindow
+
         limiter = _SlidingWindow(limit=2, window_sec=0.1)  # 100ms ウィンドウ
 
         limiter.is_allowed("client-w")
@@ -239,6 +256,7 @@ class TestRateLimiter:
     def test_invalid_limit_raises(self):
         """limit <= 0 は ValueError を送出する。"""
         from serve.auth import _SlidingWindow
+
         with pytest.raises(ValueError, match="limit must be > 0"):
             _SlidingWindow(limit=0)
 
@@ -279,12 +297,14 @@ class TestRateLimitMiddleware:
     def test_rate_limit_middleware_imports(self):
         """RateLimitMiddleware がインポート可能。"""
         from serve.auth import RateLimitMiddleware
+
         assert RateLimitMiddleware is not None
 
     def test_rate_limit_middleware_is_base_http(self):
         """RateLimitMiddleware は BaseHTTPMiddleware のサブクラス。"""
         from starlette.middleware.base import BaseHTTPMiddleware
         from serve.auth import RateLimitMiddleware
+
         assert issubclass(RateLimitMiddleware, BaseHTTPMiddleware)
 
     def test_middleware_429_on_exceed(self):
@@ -297,7 +317,6 @@ class TestRateLimitMiddleware:
 
         # Response を直接テストするため dispatch をモック経由で確認
         # (FastAPI TestClient を使わず、ユニットテストで検証)
-        import asyncio
         from starlette.testclient import TestClient
         from starlette.applications import Starlette
         from starlette.responses import JSONResponse
@@ -332,10 +351,12 @@ class TestRateLimitMiddleware:
         def other(request):
             return JSONResponse({"other": True})
 
-        app = Starlette(routes=[
-            Route("/health", health),
-            Route("/other", other),
-        ])
+        app = Starlette(
+            routes=[
+                Route("/health", health),
+                Route("/other", other),
+            ]
+        )
         app.add_middleware(RateLimitMiddleware, limiter=tight_limiter)
 
         client = TestClient(app, raise_server_exceptions=False)
@@ -455,6 +476,7 @@ class TestOpenAPISpec:
     def test_auth_module_importable(self):
         """serve.auth がインポート可能。"""
         from serve.auth import verify_api_key, RateLimitMiddleware, _SlidingWindow
+
         assert verify_api_key is not None
         assert RateLimitMiddleware is not None
         assert _SlidingWindow is not None
@@ -462,14 +484,13 @@ class TestOpenAPISpec:
     def test_auth_module_has_global_limiter(self):
         """グローバルレートリミッターが存在する。"""
         from serve.auth import _rate_limiter, _SlidingWindow
+
         assert isinstance(_rate_limiter, _SlidingWindow)
         assert _rate_limiter.limit > 0
 
     def test_rate_limit_default_is_60(self):
         """デフォルトのレート制限が 60 rpm。"""
-        from serve.auth import _rate_limiter
         # 環境変数が未設定の場合のデフォルト値を確認
         with patch.dict(os.environ, {}, clear=True):
-            import serve.auth as auth_mod
             default_limit = int(os.getenv("RATE_LIMIT_RPM", "60"))
         assert default_limit == 60

@@ -49,7 +49,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from open_mythos.main import MythosConfig, OpenMythos
 
-
 # ---------------------------------------------------------------------------
 # データクラス
 # ---------------------------------------------------------------------------
@@ -132,7 +131,9 @@ def compute_dpo_loss(
             ids = [0]
         return torch.tensor(ids, dtype=torch.long, device=device)
 
-    def _log_prob(model: OpenMythos, input_ids: torch.Tensor, target_ids: torch.Tensor) -> torch.Tensor:
+    def _log_prob(
+        model: OpenMythos, input_ids: torch.Tensor, target_ids: torch.Tensor
+    ) -> torch.Tensor:
         """モデルの対数確率を計算する。"""
         # prompt + response を concat してフォワード
         all_ids = torch.cat([input_ids, target_ids]).unsqueeze(0)
@@ -145,9 +146,9 @@ def compute_dpo_loss(
         # log_probs shape: (T_response, vocab_size)
         log_probs = F.log_softmax(logits[0, T_prompt - 1 : T_total - 1, :], dim=-1)
         # gather: dim=1 (vocab 次元) で各 target トークンの log prob を取得
-        token_log_probs = log_probs.gather(
-            1, target_ids.unsqueeze(1)
-        ).squeeze(1)  # (T_response,)
+        token_log_probs = log_probs.gather(1, target_ids.unsqueeze(1)).squeeze(
+            1
+        )  # (T_response,)
         return token_log_probs.sum()
 
     policy_chosen_logps: list[torch.Tensor] = []
@@ -167,13 +168,15 @@ def compute_dpo_loss(
         # Reference model の対数確率 (勾配不要)
         with torch.no_grad():
             ref_chosen_logps.append(_log_prob(reference_model, prompt_ids, chosen_ids))
-            ref_rejected_logps.append(_log_prob(reference_model, prompt_ids, rejected_ids))
+            ref_rejected_logps.append(
+                _log_prob(reference_model, prompt_ids, rejected_ids)
+            )
 
     # スタック
-    policy_chosen = torch.stack(policy_chosen_logps)      # (B,)
+    policy_chosen = torch.stack(policy_chosen_logps)  # (B,)
     policy_rejected = torch.stack(policy_rejected_logps)  # (B,)
-    ref_chosen = torch.stack(ref_chosen_logps)            # (B,)
-    ref_rejected = torch.stack(ref_rejected_logps)        # (B,)
+    ref_chosen = torch.stack(ref_chosen_logps)  # (B,)
+    ref_rejected = torch.stack(ref_rejected_logps)  # (B,)
 
     # DPO 損失
     chosen_reward = beta * (policy_chosen - ref_chosen)
@@ -213,11 +216,13 @@ def load_preference_data(path: Path) -> list[PreferencePair]:
                 continue
             try:
                 record = json.loads(line)
-                pairs.append(PreferencePair(
-                    prompt=record["prompt"],
-                    chosen=record["chosen"],
-                    rejected=record["rejected"],
-                ))
+                pairs.append(
+                    PreferencePair(
+                        prompt=record["prompt"],
+                        chosen=record["chosen"],
+                        rejected=record["rejected"],
+                    )
+                )
             except (json.JSONDecodeError, KeyError) as e:
                 print(f"Warning: line {line_no} skipped ({e})")
     return pairs
@@ -296,7 +301,10 @@ def train_dpo(
     def _lr_lambda(step: int) -> float:
         if step < cfg.warmup_steps:
             return step / max(cfg.warmup_steps, 1)
-        return max(0.0, 1.0 - (step - cfg.warmup_steps) / max(total_steps - cfg.warmup_steps, 1))
+        return max(
+            0.0,
+            1.0 - (step - cfg.warmup_steps) / max(total_steps - cfg.warmup_steps, 1),
+        )
 
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, _lr_lambda)
 
@@ -314,6 +322,7 @@ def train_dpo(
     for epoch in range(cfg.epochs):
         # データをシャッフル
         import random
+
         random.shuffle(data)
 
         epoch_loss = 0.0
@@ -350,22 +359,27 @@ def train_dpo(
                     f"loss={metrics['loss']:.4f} | acc={metrics['accuracy']:.2%} | "
                     f"margin={metrics['reward_margin']:.4f} | lr={lr_now:.2e}"
                 )
-                history.append({
-                    "step": global_step,
-                    "epoch": epoch + 1,
-                    **metrics,
-                    "lr": lr_now,
-                })
+                history.append(
+                    {
+                        "step": global_step,
+                        "epoch": epoch + 1,
+                        **metrics,
+                        "lr": lr_now,
+                    }
+                )
 
                 if metrics["reward_margin"] > best_margin:
                     best_margin = metrics["reward_margin"]
                     ckpt_path = out_dir / "dpo_best.pt"
-                    torch.save({
-                        "model": policy_model.state_dict(),
-                        "cfg": policy_model.cfg,
-                        "step": global_step,
-                        "reward_margin": best_margin,
-                    }, ckpt_path)
+                    torch.save(
+                        {
+                            "model": policy_model.state_dict(),
+                            "cfg": policy_model.cfg,
+                            "step": global_step,
+                            "reward_margin": best_margin,
+                        },
+                        ckpt_path,
+                    )
 
         avg_loss = epoch_loss / max(n_batches, 1)
         avg_acc = epoch_accuracy / max(n_batches, 1)
@@ -373,12 +387,15 @@ def train_dpo(
 
     elapsed = time.perf_counter() - t_start
     final_ckpt = out_dir / "dpo_final.pt"
-    torch.save({
-        "model": policy_model.state_dict(),
-        "cfg": policy_model.cfg,
-        "step": global_step,
-        "history": history,
-    }, final_ckpt)
+    torch.save(
+        {
+            "model": policy_model.state_dict(),
+            "cfg": policy_model.cfg,
+            "step": global_step,
+            "history": history,
+        },
+        final_ckpt,
+    )
 
     summary = {
         "total_steps": global_step,
@@ -420,9 +437,7 @@ def _build_tiny_model(device: str) -> OpenMythos:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="OpenMythos DPO Fine-tuning"
-    )
+    parser = argparse.ArgumentParser(description="OpenMythos DPO Fine-tuning")
     parser.add_argument(
         "--data",
         default="",

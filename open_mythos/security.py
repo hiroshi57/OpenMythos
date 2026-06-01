@@ -29,7 +29,6 @@ import re
 from dataclasses import dataclass, field
 from typing import Optional
 
-
 # ---------------------------------------------------------------------------
 # インジェクションパターン定義
 # ---------------------------------------------------------------------------
@@ -40,15 +39,25 @@ _OVERRIDE_PATTERNS = [
     re.compile(r"forget\s+(everything|all)\s+(you\s+)?(know|were\s+told)", re.I),
     re.compile(r"(new|updated?|different)\s+instructions?\s*[:：]", re.I),
     re.compile(r"disregard\s+(your\s+)?(previous|prior|system)\s+", re.I),
-    re.compile(r"(前の|以前の|上記の).{0,10}(指示|命令|ルール).{0,5}(無視|忘れ|削除)", re.I),
+    re.compile(
+        r"(前の|以前の|上記の).{0,10}(指示|命令|ルール).{0,5}(無視|忘れ|削除)", re.I
+    ),
     re.compile(r"あなたは今から.{0,30}(振る舞|ふるまい|行動)", re.I),
 ]
 
 # ロール乗っ取り型
 _ROLEPLAY_PATTERNS = [
-    re.compile(r"you\s+are\s+now\s+(?:a\s+)?(?:new|different|evil|DAN|jailbreak)", re.I),
-    re.compile(r"act\s+as\s+(?:if\s+you\s+(?:are|were)\s+)?(?:a\s+)?(?:different|evil|unrestricted)", re.I),
-    re.compile(r"pretend\s+(you\s+)?(are|have\s+no)\s+(restriction|limit|filter|guideline)", re.I),
+    re.compile(
+        r"you\s+are\s+now\s+(?:a\s+)?(?:new|different|evil|DAN|jailbreak)", re.I
+    ),
+    re.compile(
+        r"act\s+as\s+(?:if\s+you\s+(?:are|were)\s+)?(?:a\s+)?(?:different|evil|unrestricted)",
+        re.I,
+    ),
+    re.compile(
+        r"pretend\s+(you\s+)?(are|have\s+no)\s+(restriction|limit|filter|guideline)",
+        re.I,
+    ),
     re.compile(r"DAN\s+mode", re.I),
     re.compile(r"jailbreak", re.I),
     re.compile(r"(制限|フィルター|ガイドライン)なし?で", re.I),
@@ -56,9 +65,14 @@ _ROLEPLAY_PATTERNS = [
 
 # プロンプト漏洩型
 _EXFIL_PATTERNS = [
-    re.compile(r"(print|show|reveal|display|output|repeat|tell me)\s+(your\s+)?(system\s+prompt|instructions?|prompt)", re.I),
+    re.compile(
+        r"(print|show|reveal|display|output|repeat|tell me)\s+(your\s+)?(system\s+prompt|instructions?|prompt)",
+        re.I,
+    ),
     re.compile(r"what\s+(are|is)\s+your\s+(system\s+)?instructions?", re.I),
-    re.compile(r"(システムプロンプト|指示文|プロンプト).{0,10}(教え|見せ|出力|表示)", re.I),
+    re.compile(
+        r"(システムプロンプト|指示文|プロンプト).{0,10}(教え|見せ|出力|表示)", re.I
+    ),
 ]
 
 # コード実行型
@@ -161,9 +175,7 @@ class InputGuard:
             SecurityCheckResult
         """
         if not text or not text.strip():
-            return SecurityCheckResult(
-                text=text, risk_score=0.0, blocked=False
-            )
+            return SecurityCheckResult(text=text, risk_score=0.0, blocked=False)
 
         detections: list[tuple[str, str]] = []
         max_risk = 0.0
@@ -179,7 +191,9 @@ class InputGuard:
         reason = ""
         if blocked:
             cats = list({d[0] for d in detections})
-            reason = f"Injection pattern detected: {', '.join(cats)} (risk={max_risk:.2f})"
+            reason = (
+                f"Injection pattern detected: {', '.join(cats)} (risk={max_risk:.2f})"
+            )
 
         return SecurityCheckResult(
             text=text,
@@ -250,7 +264,9 @@ class OutputGuard:
     # 出力側の危険サイン
     _OUTPUT_LEAK_PATTERNS = [
         re.compile(r"my\s+system\s+prompt\s+(is|says|states)", re.I),
-        re.compile(r"(here\s+is|i\s+will\s+show)\s+(you\s+)?my\s+(instructions?|prompt)", re.I),
+        re.compile(
+            r"(here\s+is|i\s+will\s+show)\s+(you\s+)?my\s+(instructions?|prompt)", re.I
+        ),
         re.compile(r"私の(システムプロンプト|指示文|命令)は", re.I),
     ]
 
@@ -264,7 +280,9 @@ class OutputGuard:
 
         risk = 0.8 if detections else 0.0
         blocked = bool(detections)
-        reason = f"Output leak detected: {[d[1] for d in detections]}" if blocked else ""
+        reason = (
+            f"Output leak detected: {[d[1] for d in detections]}" if blocked else ""
+        )
 
         return SecurityCheckResult(
             text=text,

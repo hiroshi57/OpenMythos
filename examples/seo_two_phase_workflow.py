@@ -32,13 +32,15 @@ DRIFT_WARNING_THRESHOLD = 0.7
 # Phase 1: 戦略フェーズ（キーワード調査 → 構成生成 → LLMOスコア評価）
 # ---------------------------------------------------------------------------
 
+
 def phase1_strategy(keyword: str) -> dict:
     """
     戦略フェーズ: キーワードトレンド調査 + コンテンツ構成をルールベースで生成。
     専用の ConversationMemory を使い、執筆フェーズと文脈を完全分離する。
     """
-    memory = ConversationMemory(max_turns=10, max_chars=2000,
-                                system_msg="あなたは SEO 戦略の専門家です。")
+    memory = ConversationMemory(
+        max_turns=10, max_chars=2000, system_msg="あなたは SEO 戦略の専門家です。"
+    )
 
     print("\n" + "=" * 60)
     print(f"  Phase 1: 戦略フェーズ — キーワード: 「{keyword}」")
@@ -59,10 +61,15 @@ def phase1_strategy(keyword: str) -> dict:
 
     # ドリフト監視
     ds = memory.drift_score
-    print(f"  drift_score: {ds:.3f}", "⚠️ 高リスク" if ds >= DRIFT_WARNING_THRESHOLD else "✅")
+    print(
+        f"  drift_score: {ds:.3f}",
+        "⚠️ 高リスク" if ds >= DRIFT_WARNING_THRESHOLD else "✅",
+    )
 
     # Step 1-2: コンテンツ構成案を生成
-    memory.add_user(f"「{keyword}」をターゲットにした SEO 記事の構成を提案してください。")
+    memory.add_user(
+        f"「{keyword}」をターゲットにした SEO 記事の構成を提案してください。"
+    )
     structure = (
         f"## 推奨構成: 「{keyword}完全ガイド」\n"
         f"1. {keyword}とは？（定義・概要）— H2、answer-first 形式\n"
@@ -76,10 +83,15 @@ def phase1_strategy(keyword: str) -> dict:
     print(f"\n[コンテンツ構成案]\n{structure}")
 
     ds = memory.drift_score
-    print(f"\n  drift_score: {ds:.3f}", "⚠️ 高リスク" if ds >= DRIFT_WARNING_THRESHOLD else "✅")
+    print(
+        f"\n  drift_score: {ds:.3f}",
+        "⚠️ 高リスク" if ds >= DRIFT_WARNING_THRESHOLD else "✅",
+    )
 
     # Step 1-3: ターゲットキーワードの LLMO評価基準を設定
-    memory.add_user("このキーワードで高 LLMO スコアを出すための重点ポイントを教えてください。")
+    memory.add_user(
+        "このキーワードで高 LLMO スコアを出すための重点ポイントを教えてください。"
+    )
     llmo_tips = (
         f"高 LLMO スコアのための重点ポイント:\n"
         f"• answer_directness: H1直後に「{keyword}とは〜です」形式で直接定義\n"
@@ -91,8 +103,14 @@ def phase1_strategy(keyword: str) -> dict:
     print(f"\n[LLMO 最適化ポイント]\n{llmo_tips}")
 
     final_drift = memory.drift_score
-    print(f"\n  最終 drift_score: {final_drift:.3f} "
-          + ("⚠️ Phase 2 を別インスタンスで開始してください" if final_drift >= DRIFT_WARNING_THRESHOLD else "✅"))
+    print(
+        f"\n  最終 drift_score: {final_drift:.3f} "
+        + (
+            "⚠️ Phase 2 を別インスタンスで開始してください"
+            if final_drift >= DRIFT_WARNING_THRESHOLD
+            else "✅"
+        )
+    )
 
     return {
         "keyword": keyword,
@@ -107,6 +125,7 @@ def phase1_strategy(keyword: str) -> dict:
 # ---------------------------------------------------------------------------
 # Phase 2: 執筆フェーズ（戦略フェーズと完全分離した新インスタンスで実行）
 # ---------------------------------------------------------------------------
+
 
 def phase2_write(strategy: dict) -> dict:
     """
@@ -168,8 +187,10 @@ def phase2_write(strategy: dict) -> dict:
         print(f"  ja_tokens (先頭10件): {llmo_result.ja_tokens[:10]}")
 
     final_drift = memory.drift_score
-    print(f"\n  Phase 2 drift_score: {final_drift:.3f} "
-          + ("⚠️ リセット推奨" if final_drift >= DRIFT_WARNING_THRESHOLD else "✅"))
+    print(
+        f"\n  Phase 2 drift_score: {final_drift:.3f} "
+        + ("⚠️ リセット推奨" if final_drift >= DRIFT_WARNING_THRESHOLD else "✅")
+    )
 
     print("\n[改善推奨]")
     for rec in seo_report["recommendations"]:
@@ -186,6 +207,7 @@ def phase2_write(strategy: dict) -> dict:
 # ---------------------------------------------------------------------------
 # A/B テスト: 複数バリアントを比較
 # ---------------------------------------------------------------------------
+
 
 def phase3_ab_test(keyword: str) -> None:
     """複数のコンテンツバリアントを ab_test() で比較する。"""
@@ -218,12 +240,16 @@ def phase3_ab_test(keyword: str) -> None:
     ab_result = scorer.ab_test(variants, threshold=0.05)
     labels = ["A: entity-rich", "B: answer-first", "C: 低品質"]
 
-    for i, (label, score, delta) in enumerate(zip(labels, ab_result.scores, ab_result.deltas)):
+    for i, (label, score, delta) in enumerate(
+        zip(labels, ab_result.scores, ab_result.deltas)
+    ):
         winner_mark = " 👑 WINNER" if i == ab_result.winner_index else ""
         print(f"  {label}: {score:.3f}  (Δ{delta:+.3f}){winner_mark}")
 
-    print(f"\n  有意差あり: {'✅ Yes' if ab_result.significant else '❌ No'} "
-          f"(閾値: {ab_result.threshold})")
+    print(
+        f"\n  有意差あり: {'✅ Yes' if ab_result.significant else '❌ No'} "
+        f"(閾値: {ab_result.threshold})"
+    )
 
 
 # ---------------------------------------------------------------------------

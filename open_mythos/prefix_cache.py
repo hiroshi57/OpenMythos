@@ -42,7 +42,6 @@ if TYPE_CHECKING:
 import torch
 import torch.nn.functional as F
 
-
 # ---------------------------------------------------------------------------
 # データクラス
 # ---------------------------------------------------------------------------
@@ -301,7 +300,9 @@ class PromptPrefixCache:
             cur_ids = suffix_tensor
         else:
             cur_logits = entry.cached_logits
-            cur_ids = torch.tensor([entry.prefix_ids], dtype=torch.long, device=self.device)
+            cur_ids = torch.tensor(
+                [entry.prefix_ids], dtype=torch.long, device=self.device
+            )
 
         # デコード
         generated: list[int] = []
@@ -310,7 +311,9 @@ class PromptPrefixCache:
             probs = F.softmax(next_logits, dim=-1)
             next_tok = int(torch.multinomial(probs, 1).item())
             generated.append(next_tok)
-            cur_ids = torch.cat([cur_ids, torch.tensor([[next_tok]], device=self.device)], dim=1)
+            cur_ids = torch.cat(
+                [cur_ids, torch.tensor([[next_tok]], device=self.device)], dim=1
+            )
             with torch.no_grad():
                 logits = self.model(cur_ids[:, -1:], n_loops=loops)
                 cur_logits = logits[0, -1, :]

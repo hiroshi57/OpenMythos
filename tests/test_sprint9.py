@@ -443,9 +443,11 @@ class TestVersionBump:
         m = re.search(r'^version = "(\d+)\.(\d+)\.(\d+)"', content, re.MULTILINE)
         assert m is not None, "pyproject.toml に version フィールドが見つからない"
         major, minor, patch = int(m.group(1)), int(m.group(2)), int(m.group(3))
-        assert (major, minor, patch) >= (0, 13, 0), (
-            f"version {major}.{minor}.{patch} は 0.13.0 以上であること"
-        )
+        assert (major, minor, patch) >= (
+            0,
+            13,
+            0,
+        ), f"version {major}.{minor}.{patch} は 0.13.0 以上であること"
 
     def test_changelog_has_013(self):
         from pathlib import Path

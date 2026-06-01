@@ -39,7 +39,6 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
-
 # ---------------------------------------------------------------------------
 # API Key 管理
 # ---------------------------------------------------------------------------
@@ -90,7 +89,7 @@ def verify_api_key(
         raise HTTPException(
             status_code=401,
             detail="Authorization header missing or invalid. "
-                   "Provide: Authorization: Bearer <api-key>",
+            "Provide: Authorization: Bearer <api-key>",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -208,10 +207,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if request.url.path == "/health":
             return await call_next(request)
 
-        client_ip = (
-            request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
-            or (request.client.host if request.client else "unknown")
-        )
+        client_ip = request.headers.get("X-Forwarded-For", "").split(",")[
+            0
+        ].strip() or (request.client.host if request.client else "unknown")
 
         allowed, remaining = self._limiter.is_allowed(client_ip)
 

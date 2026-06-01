@@ -41,7 +41,6 @@ if TYPE_CHECKING:
 import torch
 import torch.nn.functional as F
 
-
 # ---------------------------------------------------------------------------
 # データクラス
 # ---------------------------------------------------------------------------
@@ -168,6 +167,7 @@ class VectorStore:
         if use_faiss:
             try:
                 import faiss  # type: ignore
+
                 self._faiss_index = faiss.IndexFlatIP(embed_dim)  # Inner Product
                 self._use_faiss = True
             except ImportError:
@@ -181,7 +181,9 @@ class VectorStore:
         """ドキュメントを追加する。embedding が設定済みであること。"""
         for doc in docs:
             if doc.embedding is None:
-                raise ValueError(f"Document '{doc.doc_id}' has no embedding. Call encode() first.")
+                raise ValueError(
+                    f"Document '{doc.doc_id}' has no embedding. Call encode() first."
+                )
             if not doc.doc_id:
                 doc.doc_id = f"doc_{len(self._docs)}"
             self._docs.append(doc)
@@ -195,6 +197,7 @@ class VectorStore:
 
             if self._use_faiss and self._faiss_index is not None:
                 import faiss
+
                 emb_np = new_embs.float().numpy()
                 faiss.normalize_L2(emb_np)
                 self._faiss_index.add(emb_np)
