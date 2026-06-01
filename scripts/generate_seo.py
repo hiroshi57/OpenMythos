@@ -26,6 +26,7 @@ OpenMythosモデルを使ってコンテンツを生成し、LLMOスコアで品
 import argparse
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -249,9 +250,6 @@ def print_results(results: list[dict]) -> None:
 # ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
-
-import re  # noqa: E402 (moved import here to avoid circular at top)
-
 
 def _build_tiny_model(device: str) -> OpenMythos:
     """テスト用の最小モデルを構築する。"""

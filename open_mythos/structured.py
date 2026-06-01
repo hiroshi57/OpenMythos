@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import json
 import re
-import time
 from typing import Any, Optional
 
 import torch
@@ -73,6 +72,18 @@ AD_PERFORMANCE_SCHEMA: dict[str, Any] = {
         "recommendation": {
             "type": "string",
             "description": "推奨アクション (1文)",
+        },
+        "quality_score": {
+            "type": "integer",
+            "description": "Google広告 Quality Score (1–10)",
+            "minimum": 1,
+            "maximum": 10,
+        },
+        "impression_share": {
+            "type": "number",
+            "description": "インプレッションシェア (0–1)",
+            "minimum": 0.0,
+            "maximum": 1.0,
         },
     },
     "required": ["ctr", "tier", "confidence"],
@@ -143,6 +154,22 @@ SEO_CONTENT_SCHEMA: dict[str, Any] = {
             "minimum": 0.0,
             "maximum": 1.0,
         },
+        "keyword_density": {
+            "type": "number",
+            "description": "ターゲットキーワード密度 (0–1, SEO推奨: 0.01–0.02)",
+            "minimum": 0.0,
+            "maximum": 1.0,
+        },
+        "lcp_score": {
+            "type": "string",
+            "description": "Core Web Vitals LCP評価",
+            "enum": ["good", "needs_improvement", "poor"],
+        },
+        "cls_score": {
+            "type": "string",
+            "description": "Core Web Vitals CLS評価",
+            "enum": ["good", "needs_improvement", "poor"],
+        },
     },
     "required": ["headline", "style", "citability_score"],
 }
@@ -210,7 +237,8 @@ class SchemaValidator:
                 return False, f"{path}: value {data!r} not in enum {enum}"
 
         elif schema_type == "number":
-            if not isinstance(data, (int, float)):
+            # bool は Python では int のサブクラスだが number として扱わない
+            if isinstance(data, bool) or not isinstance(data, (int, float)):
                 return False, f"{path}: expected number, got {type(data).__name__}"
             minimum = schema.get("minimum")
             maximum = schema.get("maximum")
@@ -224,7 +252,8 @@ class SchemaValidator:
                 return False, f"{path}: expected boolean, got {type(data).__name__}"
 
         elif schema_type == "integer":
-            if not isinstance(data, int):
+            # bool は Python では int のサブクラスだが integer として扱わない
+            if isinstance(data, bool) or not isinstance(data, int):
                 return False, f"{path}: expected integer, got {type(data).__name__}"
 
         return True, ""
@@ -341,8 +370,6 @@ class StructuredGenerator:
         cur_ids = input_ids
         generated: list[int] = []
         brace_depth = 1  # 最初の { はプロンプトに含まれている
-
-        vsize = self.model.cfg.vocab_size
 
         with torch.no_grad():
             for _ in range(max_new_tokens):
