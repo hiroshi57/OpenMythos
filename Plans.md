@@ -183,6 +183,160 @@
 
 ---
 
+## Sprint 20〜25: 「育つAI」— Self-Improving Agent Framework & v0.23.0〜v0.28.0
+
+> 設計思想: AI が自律的に経験を蓄積し、KPI に近づき、外部要因に適応し、ミスから学習する。
+> 「育つパターン」を6つに体系化し、1 Sprint = 1パターン として実装する。
+
+---
+
+### パターン定義
+
+| # | パターン名 | 一言説明 | コアメカニズム |
+| --- | --------- | ------- | ------------ |
+| P1 | **討議型集合知** | エージェント間で討論し最善策を収束 | Debate → Critique → Consensus |
+| P2 | **KPI駆動自己改善** | KPIギャップを検出し行動を自動生成 | Gap Analysis → Action Plan → Execute → Measure |
+| P3 | **ボトルネック発見・解消** | 分析で詰まりを検出し自動改善 | Profiling → Root Cause → Patch → Verify |
+| P4 | **外部要因適応** | 季節・トレンド等の外部変化を内部行動に変換 | Signal Detect → Impact Estimate → Counter-Action |
+| P5 | **ミスから学習** | 失敗パターンをDBに蓄積し再発防止 | Error Capture → Classification → Rule Extraction → Guard |
+| P6 | **継続的自己蒸留** | 自分の良い出力を教師データ化し継続ファインチューン | Good Output Filter → JSONL → LoRA SFT → Eval Loop |
+
+---
+
+## Sprint 20: 討議型集合知 — DebateOrchestrator & v0.23.0
+
+> ブランチ: `feature/sprint20-debate`
+> パターン P1: 複数エージェントが Propose → Critique → Refine → Consensus の4フェーズで討議し
+> 単独エージェントより高品質な意思決定を行う。既存 `SwarmOrchestrator` を基盤に拡張。
+
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 20.1 | `open_mythos/debate.py` — `DebateConfig` / `DebateRound` / `DebateResult` dataclass | cc:完了 |
+| 20.2 | `open_mythos/debate.py` — `DebateOrchestrator.run()` — Propose→Critique→Refine→Consensus 4フェーズループ | cc:完了 |
+| 20.3 | `open_mythos/debate.py` — `ConsensusEngine` — Jaccard類似度合意収束 (agreement_score / confidence / 日本語bi-gram) | cc:完了 |
+| 20.4 | `serve/api.py` — `/v1/debate/run` エンドポイント (n_rounds / n_agents / topic / consensus_threshold) | cc:完了 |
+| 20.T | `tests/test_sprint20.py` — 40 tests (DebateRound / Consensus / API / multi-agent agreement) | cc:完了 |
+| 20.V | PyPI v0.23.0 + CHANGELOG | cc:完了 |
+
+**DoD**: 3エージェント討議で単独エージェント比 agreement_score +15% 以上
+
+---
+
+## Sprint 21: KPI駆動自己改善 — KPIAgent & v0.24.0
+
+> ブランチ: `feature/sprint21-kpi-agent`
+> パターン P2: KPI定義 → Gap検出 → ActionPlan生成 → 実行 → 再計測 のサイクルを自律実行。
+> LLMO スコア / ROAS / conversion_rate など任意の KPI に適用可能。
+
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 21.1 | `open_mythos/kpi_agent.py` — `KPIDefinition` / `KPISnapshot` / `GapReport` dataclass | 未着手 |
+| 21.2 | `open_mythos/kpi_agent.py` — `KPIAgent.measure()` — 現在KPI値を計測しスナップショット保存 | 未着手 |
+| 21.3 | `open_mythos/kpi_agent.py` — `KPIAgent.plan()` — GapAnalysis → ActionPlan生成 (priority / estimated_impact) | 未着手 |
+| 21.4 | `open_mythos/kpi_agent.py` — `KPIAgent.execute()` — ActionPlan を ReActAgent 経由で実行 | 未着手 |
+| 21.5 | `open_mythos/kpi_agent.py` — `KPIAgent.improve_loop()` — measure→plan→execute を n_cycles 自律実行 | 未着手 |
+| 21.6 | `serve/api.py` — `/v1/kpi/define` / `/v1/kpi/measure` / `/v1/kpi/improve` エンドポイント | 未着手 |
+| 21.T | `tests/test_sprint21.py` — 40 tests (KPIDefinition / GapReport / ActionPlan / improve_loop) | 未着手 |
+| 21.V | PyPI v0.24.0 + CHANGELOG | 未着手 |
+
+**DoD**: LLMO KPI を target に対して 2サイクル以内に +10% 改善できること
+
+---
+
+## Sprint 22: ボトルネック発見・解消 — ProfilerAgent & v0.25.0
+
+> ブランチ: `feature/sprint22-profiler`
+> パターン P3: パイプライン各ステージの実行時間・スコア・エラー率を計測し
+> ボトルネックを自動特定、改善パッチを生成して適用・検証するサイクル。
+
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 22.1 | `open_mythos/profiler.py` — `StageMetrics` / `BottleneckReport` dataclass | 未着手 |
+| 22.2 | `open_mythos/profiler.py` — `PipelineProfiler.profile()` — SEOPipeline / SwarmOrchestrator の各ステージ計測 | 未着手 |
+| 22.3 | `open_mythos/profiler.py` — `BottleneckDetector.detect()` — latency/error_rate/score の外れ値検出 (IQR法) | 未着手 |
+| 22.4 | `open_mythos/profiler.py` — `ProfilerAgent.auto_fix()` — ボトルネックステージのパラメータ自動調整 | 未着手 |
+| 22.5 | `serve/api.py` — `/v1/profile/run` / `/v1/profile/report` / `/v1/profile/fix` エンドポイント | 未着手 |
+| 22.T | `tests/test_sprint22.py` — 35 tests (StageMetrics / BottleneckDetector / auto_fix / API) | 未着手 |
+| 22.V | PyPI v0.25.0 + CHANGELOG | 未着手 |
+
+**DoD**: 意図的に遅くしたステージを正しく検出し latency -20% 改善できること
+
+---
+
+## Sprint 23: 外部要因適応 — ExternalSignalAgent & v0.26.0
+
+> ブランチ: `feature/sprint23-external-signal`
+> パターン P4: 季節変化・トレンド急上昇・競合動向などの外部シグナルを検出し
+> 内部コンテンツ戦略・広告パラメータを自動調整する。
+
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 23.1 | `open_mythos/external_signal.py` — `ExternalSignal` / `SignalType` / `ImpactEstimate` dataclass | 未着手 |
+| 23.2 | `open_mythos/external_signal.py` — `SignalDetector.detect()` — 季節スコア / トレンドスパイク / 競合変化を数値化 | 未着手 |
+| 23.3 | `open_mythos/external_signal.py` — `ImpactEstimator.estimate()` — シグナル強度 → KPI影響量マッピング | 未着手 |
+| 23.4 | `open_mythos/external_signal.py` — `ExternalSignalAgent.counter_action()` — 影響を打ち消す内部アクション生成 | 未着手 |
+| 23.5 | `serve/api.py` — `/v1/signal/detect` / `/v1/signal/counter` エンドポイント | 未着手 |
+| 23.T | `tests/test_sprint23.py` — 35 tests (SignalDetector / ImpactEstimator / counter_action / seasonal) | 未着手 |
+| 23.V | PyPI v0.26.0 + CHANGELOG | 未着手 |
+
+**DoD**: 季節シグナル強度 0.8 のとき counter_action を生成し LLMO score が維持されること
+
+---
+
+## Sprint 24: ミスから学習 — ErrorMemory & MistakeGuard & v0.27.0
+
+> ブランチ: `feature/sprint24-error-memory`
+> パターン P5: エラー・低品質出力を自動分類・蓄積し、同パターンのミスを事前にブロックする
+> ガードレールと、ルール抽出による継続的な品質向上ループ。
+
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 24.1 | `open_mythos/error_memory.py` — `MistakeRecord` / `MistakeCategory` dataclass | 未着手 |
+| 24.2 | `open_mythos/error_memory.py` — `ErrorMemoryStore` — append / query_similar (TF-IDF) / stats | 未着手 |
+| 24.3 | `open_mythos/error_memory.py` — `MistakeClassifier.classify()` — エラータイプ自動分類 (8カテゴリ) | 未着手 |
+| 24.4 | `open_mythos/error_memory.py` — `RuleExtractor.extract()` — 蓄積ミスから防止ルールを自動生成 | 未着手 |
+| 24.5 | `open_mythos/error_memory.py` — `MistakeGuard.check()` — 入力/出力をルールDB照合し事前ブロック | 未着手 |
+| 24.6 | `serve/api.py` — `/v1/mistakes/record` / `/v1/mistakes/rules` / `/v1/mistakes/check` エンドポイント | 未着手 |
+| 24.T | `tests/test_sprint24.py` — 40 tests (ErrorMemoryStore / RuleExtractor / MistakeGuard / API) | 未着手 |
+| 24.V | PyPI v0.27.0 + CHANGELOG | 未着手 |
+
+**DoD**: 同カテゴリのミスを10件蓄積後、MistakeGuard が類似入力を 80% 以上ブロックできること
+
+---
+
+## Sprint 25: 継続的自己蒸留 — SelfDistillLoop & v0.28.0
+
+> ブランチ: `feature/sprint25-self-distill`
+> パターン P6: 自分が生成した出力のうち高スコアのものを教師データとしてフィルタリングし
+> LoRA SFT で継続的にファインチューンするセルフプレイ型成長ループ。
+
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 25.1 | `open_mythos/self_distill.py` — `DistillSample` / `DistillDataset` dataclass | 未着手 |
+| 25.2 | `open_mythos/self_distill.py` — `OutputFilter.filter()` — LLMO スコア閾値フィルタ + 多様性保証 | 未着手 |
+| 25.3 | `open_mythos/self_distill.py` — `SelfDistillCollector` — 推論実行 → スコア → 保存 パイプライン | 未着手 |
+| 25.4 | `open_mythos/self_distill.py` — `SelfDistillLoop.run()` — Collect→Filter→SFT→Eval を n_rounds 自律実行 | 未着手 |
+| 25.5 | `serve/api.py` — `/v1/distill/collect` / `/v1/distill/train` / `/v1/distill/status` エンドポイント | 未着手 |
+| 25.T | `tests/test_sprint25.py` — 40 tests (OutputFilter / SelfDistillCollector / SelfDistillLoop / API) | 未着手 |
+| 25.V | PyPI v0.28.0 + CHANGELOG | 未着手 |
+
+**DoD**: 3ラウンド後に LLMO スコア平均 +5% 以上改善、訓練データ品質 (mean_score > 0.7) を維持
+
+---
+
+## 「育つAI」パターン依存関係
+
+```text
+P1 討議型集合知 (Sprint 20)
+    └─ P2 KPI駆動自己改善 (Sprint 21)  ← P1 の Consensus を KPI評価に活用
+        ├─ P3 ボトルネック発見 (Sprint 22)  ← P2 の measure() を流用
+        └─ P4 外部要因適応 (Sprint 23)  ← P2 の ActionPlan 生成を流用
+P5 ミスから学習 (Sprint 24)  ← P3/P4 の実行ログをエラーDBに投入
+    └─ P6 継続的自己蒸留 (Sprint 25)  ← P5 のフィルタ済みデータで SFT
+```
+
+---
+
 ## 進行中の作業メモ
 
 ### 現在のブランチ状態 (2026-06-01 更新)

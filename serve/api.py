@@ -1907,6 +1907,66 @@ def ab_infer(req: ABInferRequest):
     )
 
 
+# ---------------------------------------------------------------------------
+# Sprint 20: Debate Orchestrator endpoints
+# ---------------------------------------------------------------------------
+
+
+class DebateRunRequest(BaseModel):
+    topic: str = Field(..., description="討議トピック / 質問")
+    n_agents: int = Field(3, ge=2, le=8, description="討議エージェント数")
+    n_rounds: int = Field(2, ge=1, le=5, description="討議ラウンド数")
+    consensus_threshold: float = Field(0.75, ge=0.0, le=1.0, description="早期終了する合意スコア閾値")
+    max_new_tokens: int = Field(64, ge=1, le=256, description="1生成あたりの最大トークン数")
+
+
+@app.post(
+    "/v1/debate/run",
+    tags=["debate"],
+    summary="討議型集合知",
+    description=(
+        "複数エージェントが Propose → Critique → Refine → Consensus の4フェーズで討議し、"
+        "合意テキストと agreement_score を返す。"
+    ),
+)
+def debate_run(req: DebateRunRequest, _: str = Depends(verify_api_key)):
+    from open_mythos.debate import DebateConfig, DebateOrchestrator
+
+    cfg = DebateConfig(
+        n_agents=req.n_agents,
+        n_rounds=req.n_rounds,
+        consensus_threshold=req.consensus_threshold,
+    )
+    with DebateOrchestrator(
+        state.model,
+        cfg,
+        device=str(state.device),
+        max_new_tokens=req.max_new_tokens,
+    ) as debate:
+        result = debate.run(req.topic)
+
+    rounds_summary = [
+        {
+            "round": r.round_num,
+            "agreement_score": round(r.agreement_score, 4),
+            "latency_ms": r.latency_ms,
+            "n_proposals": len(r.proposals),
+        }
+        for r in result.rounds
+    ]
+    return {
+        "topic": result.topic,
+        "consensus": result.consensus,
+        "agreement_score": round(result.agreement_score, 4),
+        "confidence": round(result.confidence, 4),
+        "n_rounds_used": result.n_rounds_used,
+        "early_stopped": result.early_stopped,
+        "improved_over_solo": result.improved_over_solo,
+        "total_latency_ms": result.total_latency_ms,
+        "rounds": rounds_summary,
+    }
+
+
 @app.get(
     "/v1/ab/stats",
     tags=["infer"],

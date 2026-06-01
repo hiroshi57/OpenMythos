@@ -4,6 +4,32 @@ All notable changes to OpenMythos are documented here.
 
 ---
 
+## [0.23.0] — 2026-06-01
+
+### Sprint 20: 討議型集合知 — DebateOrchestrator (P1パターン)
+
+#### DebateOrchestrator (`open_mythos/debate.py`)
+
+- `DebateConfig` — n_agents / n_rounds / consensus_threshold / max_workers 設定
+- `DebateRound` — 1ラウンド (proposals / critiques / refinements / agreement_score)
+- `DebateResult` — 討議全体の結果 (consensus / agreement_score / confidence / early_stopped)
+- `ConsensusEngine.score()` — Jaccard類似度ベース合意スコア + 代表テキスト選出 (日本語bi-gram対応)
+- `ConsensusEngine.confidence()` — ラウンドスコア収束信頼度計算
+- `DebateOrchestrator.run()` — Propose → Critique → Refine → Consensus 4フェーズ討議
+- 早期終了: agreement_score が consensus_threshold を超えた時点でループ終了
+- スレッドプール並列実行 (各フェーズで全エージェントを同時実行)
+
+#### API (`serve/api.py`)
+
+- `POST /v1/debate/run` — topic / n_agents / n_rounds / consensus_threshold 指定で討議実行
+  - レスポンス: consensus / agreement_score / confidence / rounds / early_stopped / improved_over_solo
+
+#### テスト (`tests/test_sprint20.py`)
+
+- `tests/test_sprint20.py` — 40 tests (DebateConfig / ConsensusEngine / DebateRound / DebateResult / DebateOrchestrator / API)
+
+---
+
 ## [0.22.0] — 2026-06-01
 
 ### Sprint 19: LLMO 強化 — クエリ関連性 / 意図分類 / 自動最適化 (LLMOOptimizer)
