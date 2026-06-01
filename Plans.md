@@ -73,7 +73,7 @@
 
 ---
 
-## Sprint 13: Mixture-of-Depths (MoD) & SwarmOrchestrator (進行中)
+## Sprint 13: Mixture-of-Depths (MoD) & SwarmOrchestrator (完了)
 
 > ブランチ: `harness-work/13.1.2`
 > 戦略: A) MoD Transformer (routing_entropy / entropy tracking) B) SwarmOrchestrator 並列マルチエージェント
@@ -88,11 +88,56 @@
 
 ---
 
+## Sprint 14: GPU pretrain & Benchmark & GCP deploy & v0.17.0 (完了)
+
+> ブランチ: `harness-work/13.1.2`
+
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 14.1.1 | `scripts/pretrain.py` — StreamingTokenDataset / warmup_stable_decay / gradient_checkpointing | cc:完了 [8cc9c5f] |
+| 14.1.2 | `scripts/pretrain_gcp.sh` — GCP T4 tmux/nohup 実行スクリプト | cc:完了 [8cc9c5f] |
+| 14.2.1 | `benchmark/run_eval.py` — PPL / HellaSwag / ARC / WinoGrande 一括評価 + README 自動更新 | cc:完了 [8cc9c5f] |
+| 14.3.1 | `serve/deploy_cloudrun.sh` + `cloudrun.env.example` — Cloud Run デプロイ自動化 | cc:完了 [8cc9c5f] |
+| 14.4.1 | `examples/demo_seo_llmo.ipynb` — Colab ゼロから動くデモノートブック | cc:完了 [8cc9c5f] |
+| 14.5.1 | バグ修正 2件 (mod / prefix_cache / rag / react / rope_extension / thinking / api / monitor) | cc:完了 [8cc9c5f] |
+| 14.5.2 | テスト品質強化 9件 (test_sprint7_serve / 10 / 11 / 12 / 13) | cc:完了 [8cc9c5f] |
+| 14.6.1 | `tests/test_sprint8_pretrain.py` — 20 tests | cc:完了 [8cc9c5f] |
+| 14.7.1 | PyPI v0.17.0 — README 外販版 + CHANGELOG | cc:完了 [8cc9c5f] |
+
+---
+
+## Sprint 15: 日本語形態素解析 & A/Bテスト & ドリフト検出 & v0.18.0 (完了)
+
+> ブランチ: `harness-work/13.1.2`
+
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 15.1.1 | `open_mythos/llmo.py` — `_tokenize_ja()` / `_is_japanese()` / `score_with_keywords()` / `ab_test()` | cc:完了 [05d8526] |
+| 15.1.2 | `open_mythos/conversation.py` — `ConversationMemory.drift_score()` コンテキストドリフト検出 | cc:完了 [05d8526] |
+| 15.2.1 | `benchmark/llmo_bench.py` — ルールベース vs Claude API LLMO スコア比較 | cc:完了 [05d8526] |
+| 15.3.1 | `tests/test_sprint15.py` — 32 tests (JaTokenizer / A/B / drift / bench) | cc:完了 [05d8526] |
+
+---
+
+## Sprint 16: SEOパイプライン & QS予測 & 広告バリアント & インジェクション耐性 & v0.19.0 (完了)
+
+> ブランチ: `harness-work/13.1.2`
+
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 16.1.1 | `open_mythos/seo_pipeline.py` — SEOPipeline (4ステージ SwarmOrchestrator pipeline) | cc:完了 [0c98c3f] |
+| 16.2.1 | `open_mythos/security.py` — InputGuard / OutputGuard / SecurityCheckResult | cc:完了 [0c98c3f] |
+| 16.3.1 | `open_mythos/tools_marketing.py` — `quality_score()` / `generate_ad_variants()` | cc:完了 [0c98c3f] |
+| 16.4.1 | `tests/test_sprint16.py` — 70 tests (SEOPipeline / QS / AdVariants / Security) | cc:完了 [0c98c3f] |
+| 16.5.1 | PyPI v0.19.0 — requirements.txt (janome/fugashi/anthropic) + CHANGELOG | cc:完了 [c0fbfe8] |
+
+---
+
 ## 進行中の作業メモ
 
 ### 現在のブランチ状態 (2026-06-01 更新)
 - `master`: `3d6ffac` — Sprint 1〜12 全完了 (729 PASS / v0.16.0)
-- `harness-work/13.1.2`: Sprint 13 進行中 (107 tests PASS) — master merge 待ち
+- `harness-work/13.1.2`: Sprint 13〜16 全完了 (933 tests 収集 / v0.19.0) — master merge 待ち
 
 ### 重要な技術的知見
 - `freqs_cis` は必ず `[:T]` スライスして渡すこと (apply_rope ブロードキャストエラー防止)
