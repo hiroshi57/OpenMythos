@@ -35,19 +35,23 @@ from typing import Sequence
 _JANOME_TOKENIZER = None
 _FUGASHI_TAGGER = None
 
+
 def _init_ja_tokenizer() -> None:
     global _JANOME_TOKENIZER, _FUGASHI_TAGGER
     try:
         from janome.tokenizer import Tokenizer as JanomeTokenizer
+
         _JANOME_TOKENIZER = JanomeTokenizer()
         return
     except ImportError:
         pass
     try:
         import fugashi
+
         _FUGASHI_TAGGER = fugashi.Tagger()
     except (ImportError, RuntimeError):
         pass
+
 
 _init_ja_tokenizer()
 
@@ -59,7 +63,7 @@ def _tokenize_ja(text: str) -> list[str]:
     if _FUGASHI_TAGGER is not None:
         return [str(w) for w in _FUGASHI_TAGGER(text)]
     # フォールバック: 2文字以上の連続漢字・ひらがな・カタカナ・英数字を抽出
-    return re.findall(r'[一-龥ぁ-んァ-ヶa-zA-Z0-9_]{2,}', text)
+    return re.findall(r"[一-龥ぁ-んァ-ヶa-zA-Z0-9_]{2,}", text)
 
 
 # ---------------------------------------------------------------------------
@@ -161,9 +165,9 @@ _ANSWER_FIRST_PATTERNS = [
 
 # 引用誘発パターン
 _CITATION_TRIGGERS = [
-    re.compile(r"\d+(?:[,，]\d{3})*(?:\.\d+)?%"),      # パーセンテージ
+    re.compile(r"\d+(?:[,，]\d{3})*(?:\.\d+)?%"),  # パーセンテージ
     re.compile(r"(?:研究|調査|報告|study|report|survey|found|showed?|according)", re.I),
-    re.compile(r"(?:20\d{2}年?|in\s+20\d{2})"),        # 年号
+    re.compile(r"(?:20\d{2}年?|in\s+20\d{2})"),  # 年号
     re.compile(r"(?:出典|ソース|参考|source|ref\.?):", re.I),  # 引用元
 ]
 
@@ -292,7 +296,7 @@ class LLMOScorer:
             if is_ja:
                 # 日本語は部分文字列マッチ（形態素境界に依存しない）
                 return src.lower().count(kw)
-            return len(re.findall(r'\b' + re.escape(kw) + r'\b', src.lower()))
+            return len(re.findall(r"\b" + re.escape(kw) + r"\b", src.lower()))
 
         def _token_len(src: str) -> int:
             if not src:
@@ -346,7 +350,13 @@ class LLMOScorer:
             ABTestResult
         """
         if not variants:
-            return ABTestResult(winner_index=0, scores=[], deltas=[], significant=False, threshold=threshold)
+            return ABTestResult(
+                winner_index=0,
+                scores=[],
+                deltas=[],
+                significant=False,
+                threshold=threshold,
+            )
 
         scores = [self.score(v).llmo_total for v in variants]
         winner_idx = scores.index(max(scores))
@@ -395,7 +405,7 @@ class LLMOScorer:
     @staticmethod
     def _is_japanese(text: str) -> bool:
         """テキストに日本語文字（漢字・ひらがな・カタカナ）が含まれるか判定する。"""
-        return bool(re.search(r'[一-龥ぁ-んァ-ヶ]', text))
+        return bool(re.search(r"[一-龥ぁ-んァ-ヶ]", text))
 
     # ------------------------------------------------------------------
     # Entity extraction
@@ -498,9 +508,7 @@ class LLMOScorer:
         score = 0.0
 
         # 1. 引用誘発パターン
-        trigger_hits = sum(
-            1 for pat in _CITATION_TRIGGERS if pat.search(text)
-        )
+        trigger_hits = sum(1 for pat in _CITATION_TRIGGERS if pat.search(text))
         score += min(0.35, trigger_hits * 0.12)
 
         # 2. 構造マーカー (見出し・リスト)

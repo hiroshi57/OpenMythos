@@ -36,7 +36,6 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
-
 # ---------------------------------------------------------------------------
 # データクラス
 # ---------------------------------------------------------------------------
@@ -160,9 +159,11 @@ class ToolResult:
             "role": "tool",
             "tool_call_id": self.call_id,
             "name": self.tool_name,
-            "content": json.dumps(self.content, ensure_ascii=False)
-            if not isinstance(self.content, str)
-            else self.content,
+            "content": (
+                json.dumps(self.content, ensure_ascii=False)
+                if not isinstance(self.content, str)
+                else self.content
+            ),
         }
 
 
@@ -323,7 +324,7 @@ def execute_tool_call(
             content=None,
             call_id=tool_call.call_id,
             error=f"Tool '{tool_call.name}' not found in registry. "
-                  f"Available: {registry.names()}",
+            f"Available: {registry.names()}",
             latency_ms=0.0,
         )
 
@@ -431,7 +432,7 @@ def _infer_parameters(fn: Callable) -> dict[str, ParameterSchema]:
 import re as _re  # noqa: E402
 
 _TOOL_CALL_PATTERN = _re.compile(
-    r'<tool_call>\s*(\{.*?\})\s*</tool_call>',
+    r"<tool_call>\s*(\{.*?\})\s*</tool_call>",
     _re.DOTALL,
 )
 
@@ -485,14 +486,18 @@ def build_tool_prompt(tools: list[ToolDefinition]) -> str:
     lines = [
         "You have access to the following tools. "
         "To use a tool, output a JSON block wrapped in <tool_call> tags:\n"
-        "<tool_call>{\"name\": \"tool_name\", \"arguments\": {...}}</tool_call>\n",
+        '<tool_call>{"name": "tool_name", "arguments": {...}}</tool_call>\n',
         "Available tools:",
     ]
     for t in tools:
         param_strs = []
         for pname, pschema in t.parameters.items():
-            req = "" if pschema.required else f" (optional, default={pschema.default!r})"
-            param_strs.append(f"  - {pname} ({pschema.type}){req}: {pschema.description}")
+            req = (
+                "" if pschema.required else f" (optional, default={pschema.default!r})"
+            )
+            param_strs.append(
+                f"  - {pname} ({pschema.type}){req}: {pschema.description}"
+            )
         param_block = "\n".join(param_strs) if param_strs else "  (no parameters)"
         lines.append(f"\n[{t.name}]\n{t.description}\nParameters:\n{param_block}")
 

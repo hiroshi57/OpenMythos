@@ -40,7 +40,11 @@ import torch.nn.functional as F
 
 from open_mythos.main import MythosConfig, OpenMythos
 from open_mythos.variants import (
-    mythos_nano, mythos_1b, mythos_3b, mythos_7b, mythos_10b,
+    mythos_nano,
+    mythos_1b,
+    mythos_3b,
+    mythos_7b,
+    mythos_10b,
 )
 
 _VARIANTS = {
@@ -55,6 +59,7 @@ _VARIANTS = {
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _load_model(args) -> tuple[OpenMythos, str]:
     dev = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
@@ -87,6 +92,7 @@ def _tokenize_corpus(text: str, vocab_size: int) -> list[int]:
     """Tokenize corpus; use MythosTokenizer with byte-level fallback."""
     try:
         from open_mythos.tokenizer import MythosTokenizer
+
         enc = MythosTokenizer()
         ids = enc.encode(text)
     except Exception:
@@ -97,6 +103,7 @@ def _tokenize_corpus(text: str, vocab_size: int) -> list[int]:
 # ---------------------------------------------------------------------------
 # Core evaluation
 # ---------------------------------------------------------------------------
+
 
 def evaluate_perplexity(
     model: OpenMythos,
@@ -132,7 +139,7 @@ def evaluate_perplexity(
     for begin in range(0, n_total - 1, stride):
         end = min(begin + seq_len, n_total - 1)
         input_chunk = ids_tensor[begin:end].unsqueeze(0).to(device)
-        target_chunk = ids_tensor[begin + 1:end + 1].unsqueeze(0).to(device)
+        target_chunk = ids_tensor[begin + 1 : end + 1].unsqueeze(0).to(device)
 
         # Tokens that benefit from full left context (exclude first overlap)
         context_len = end - begin
@@ -174,6 +181,7 @@ def evaluate_perplexity(
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description="OpenMythos perplexity evaluation on WikiText",
@@ -182,14 +190,21 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--variant", default="nano", choices=list(_VARIANTS))
     p.add_argument("--checkpoint", default=None, help="Path to .pt checkpoint")
     p.add_argument("--device", default=None, help="cpu / cuda / cuda:0")
-    p.add_argument("--dataset", default="wikitext-2-raw-v1",
-                   choices=["wikitext-2-raw-v1", "wikitext-103-raw-v1"])
+    p.add_argument(
+        "--dataset",
+        default="wikitext-2-raw-v1",
+        choices=["wikitext-2-raw-v1", "wikitext-103-raw-v1"],
+    )
     p.add_argument("--split", default="test", choices=["train", "validation", "test"])
     p.add_argument("--seq-len", type=int, default=512)
     p.add_argument("--stride", type=int, default=256)
     p.add_argument("--n-loops", type=int, default=None, help="Override recurrent depth")
-    p.add_argument("--max-tokens", type=int, default=None,
-                   help="Truncate corpus to first N tokens (faster for smoke-test)")
+    p.add_argument(
+        "--max-tokens",
+        type=int,
+        default=None,
+        help="Truncate corpus to first N tokens (faster for smoke-test)",
+    )
     return p.parse_args()
 
 
@@ -206,12 +221,14 @@ def main() -> None:
     text = _load_corpus(args.dataset, args.split)
     ids = _tokenize_corpus(text, model.cfg.vocab_size)
     if args.max_tokens:
-        ids = ids[:args.max_tokens]
+        ids = ids[: args.max_tokens]
     print(f"Corpus     : {len(ids):,} tokens")
 
     print("Evaluating...", flush=True)
     result = evaluate_perplexity(
-        model, ids, device,
+        model,
+        ids,
+        device,
         seq_len=args.seq_len,
         stride=args.stride,
         n_loops=args.n_loops,

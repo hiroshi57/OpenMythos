@@ -26,10 +26,10 @@ from scripts.pretrain import (
     _parse_args,
 )
 
-
 # ---------------------------------------------------------------------------
 # TestWarmupStableDecaySchedule (5 tests)
 # ---------------------------------------------------------------------------
+
 
 class TestWarmupStableDecaySchedule:
 
@@ -100,11 +100,14 @@ class TestWarmupStableDecaySchedule:
 # TestStreamingTokenDataset (4 tests)
 # ---------------------------------------------------------------------------
 
+
 class TestStreamingTokenDataset:
     """Mock the HuggingFace streaming dataset to avoid network calls."""
 
     def _make_fake_dataset(self, n_examples: int = 10, text_len: int = 200):
-        examples = [{"text": "hello world " * (text_len // 12)} for _ in range(n_examples)]
+        examples = [
+            {"text": "hello world " * (text_len // 12)} for _ in range(n_examples)
+        ]
         return iter(examples)
 
     def test_chunk_size_matches_seq_len(self):
@@ -118,7 +121,9 @@ class TestStreamingTokenDataset:
     def test_max_tokens_cuts_off_stream(self):
         seq_len = 16
         max_tokens = 64  # only 4 chunks should be yielded
-        ds = StreamingTokenDataset(seq_len=seq_len, max_tokens=max_tokens, vocab_size=256)
+        ds = StreamingTokenDataset(
+            seq_len=seq_len, max_tokens=max_tokens, vocab_size=256
+        )
         fake = self._make_fake_dataset(n_examples=100, text_len=500)
         with patch("datasets.load_dataset", return_value=fake):
             chunks = list(ds)
@@ -144,6 +149,7 @@ class TestStreamingTokenDataset:
 # ---------------------------------------------------------------------------
 # TestPretrainCheckpoint (4 tests)
 # ---------------------------------------------------------------------------
+
 
 class TestPretrainCheckpoint:
 
@@ -188,6 +194,7 @@ class TestPretrainCheckpoint:
 # TestPretrainBf16 (2 tests)
 # ---------------------------------------------------------------------------
 
+
 class TestPretrainBf16:
 
     def test_cpu_uses_float32(self):
@@ -209,6 +216,7 @@ class TestPretrainBf16:
 # ---------------------------------------------------------------------------
 # TestPretrainGradCheckpoint (2 tests)
 # ---------------------------------------------------------------------------
+
 
 class TestPretrainGradCheckpoint:
 
@@ -233,6 +241,7 @@ class TestPretrainGradCheckpoint:
 # ---------------------------------------------------------------------------
 # TestPretrainLossStep (2 tests)
 # ---------------------------------------------------------------------------
+
 
 class TestPretrainLossStep:
 
@@ -265,12 +274,16 @@ class TestPretrainLossStep:
 # TestPretrainCLI (1 test)
 # ---------------------------------------------------------------------------
 
+
 class TestPretrainCLI:
 
     def test_parse_args_defaults(self):
-        args = _parse_args.__wrapped__() if hasattr(_parse_args, "__wrapped__") else None
+        args = (
+            _parse_args.__wrapped__() if hasattr(_parse_args, "__wrapped__") else None
+        )
         # Call with empty argv
         import sys
+
         orig = sys.argv
         sys.argv = ["pretrain.py"]
         try:

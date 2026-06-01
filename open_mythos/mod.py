@@ -50,7 +50,6 @@ import torch.nn.functional as F
 # Reuse RMSNorm from core module (DRY — no duplicate definition)
 from open_mythos.main import RMSNorm
 
-
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -92,7 +91,7 @@ class MoDConfig:
     vocab_size: int = 32000
     dim: int = 512
     n_heads: int = 8
-    n_kv_heads: int = 2        # GQA: fewer KV heads than Q heads
+    n_kv_heads: int = 2  # GQA: fewer KV heads than Q heads
     max_seq_len: int = 2048
     n_layers: int = 6
     # MoD routing
@@ -195,7 +194,7 @@ def routing_entropy(scores: torch.Tensor) -> torch.Tensor:
         assert (h - math.log(2)).abs().max() < 1e-5   # maximum entropy
     """
     eps = 1e-8
-    p = torch.sigmoid(scores)                    # (B, T)
+    p = torch.sigmoid(scores)  # (B, T)
     h = -(p * (p + eps).log() + (1.0 - p) * (1.0 - p + eps).log())
     return h
 
@@ -334,7 +333,7 @@ class MoDGQAttention(nn.Module):
         k = k.transpose(1, 2)
         v = v.transpose(1, 2)
 
-        scale = self.head_dim ** -0.5
+        scale = self.head_dim**-0.5
         attn = (q @ k.transpose(-2, -1)) * scale  # (B, n_heads, T, T)
         if mask is not None:
             attn = attn + mask
@@ -452,14 +451,13 @@ class MoDAnalytics:
                 continue
             avg_routed = sum(self._routed[i]) / len(self._routed[i])
             avg_cap = sum(
-                r / max(t, 1)
-                for r, t in zip(self._routed[i], self._total[i])
+                r / max(t, 1) for r, t in zip(self._routed[i], self._total[i])
             ) / len(self._routed[i])
             result[f"layer_{i}_avg_routed"] = avg_routed
             result[f"layer_{i}_avg_capacity"] = avg_cap
             if self._entropy[i]:
-                result[f"layer_{i}_avg_entropy"] = (
-                    sum(self._entropy[i]) / len(self._entropy[i])
+                result[f"layer_{i}_avg_entropy"] = sum(self._entropy[i]) / len(
+                    self._entropy[i]
                 )
         return result
 
@@ -558,9 +556,7 @@ class MixtureOfDepthsBlock(nn.Module):
         )
 
         # ── 6. Apply pre-norm transformer to selected tokens ──────────────
-        h = x_sel + self.resid_drop(
-            self.attn(self.attn_norm(x_sel), freqs_sel, mask)
-        )
+        h = x_sel + self.resid_drop(self.attn(self.attn_norm(x_sel), freqs_sel, mask))
         h = h + self.resid_drop(self.ffn(self.ffn_norm(h)))
 
         # ── 7. Scatter transformed tokens back; non-selected are unchanged ─
@@ -632,9 +628,7 @@ class MoDTransformer(nn.Module):
             elif isinstance(m, nn.Embedding):
                 nn.init.normal_(m.weight, std=0.02)
 
-    def compute_aux_loss(
-        self, all_router_scores: List[torch.Tensor]
-    ) -> torch.Tensor:
+    def compute_aux_loss(self, all_router_scores: List[torch.Tensor]) -> torch.Tensor:
         """
         Load-balancing auxiliary loss to prevent routing collapse.
 
@@ -652,8 +646,8 @@ class MoDTransformer(nn.Module):
         total = torch.tensor(0.0, device=next(self.parameters()).device)
         target = self.cfg.capacity_factor
         for scores in all_router_scores:
-            probs = torch.sigmoid(scores)          # soft routing probability (B, T)
-            mean_prob = probs.mean()               # scalar
+            probs = torch.sigmoid(scores)  # soft routing probability (B, T)
+            mean_prob = probs.mean()  # scalar
             total = total + (mean_prob - target).pow(2)
         return total * self.cfg.router_aux_loss_coef
 
@@ -767,7 +761,9 @@ class MoDTransformer(nn.Module):
             if top_k is not None:
                 topk_vals, _ = next_logits.topk(top_k, dim=-1)
                 threshold = topk_vals[:, -1].unsqueeze(-1)
-                next_logits = next_logits.masked_fill(next_logits < threshold, float("-inf"))
+                next_logits = next_logits.masked_fill(
+                    next_logits < threshold, float("-inf")
+                )
 
             probs = F.softmax(next_logits, dim=-1)
             next_id = torch.multinomial(probs, num_samples=1)  # (B, 1)

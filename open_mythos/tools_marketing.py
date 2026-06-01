@@ -18,7 +18,6 @@ from typing import Optional
 
 from open_mythos.tools import ToolRegistry, ParameterSchema, ToolDefinition
 
-
 # ---------------------------------------------------------------------------
 # Tool 実装
 # ---------------------------------------------------------------------------
@@ -152,9 +151,9 @@ def fetch_trend(
         "keyword": keyword,
         "region": region,
         "category": category,
-        "trend_score": trend_score,           # 0–100 (Google Trends 類似)
-        "llmo_popularity": llmo_popularity,   # AIサーチでの出現頻度推定 0–1
-        "search_volume_est": search_vol,      # 月間検索数推定
+        "trend_score": trend_score,  # 0–100 (Google Trends 類似)
+        "llmo_popularity": llmo_popularity,  # AIサーチでの出現頻度推定 0–1
+        "search_volume_est": search_vol,  # 月間検索数推定
         "is_rising": trend_score > 60,
         "yoy_change_pct": round(rng.uniform(-30, 150), 1),
         "related_keywords": related[:3],
@@ -188,19 +187,27 @@ def score_content(
     if target_keyword and text:
         kw_lower = re.escape(target_keyword.lower())
         words = text.lower().split()
-        matches = re.findall(r'\b' + kw_lower + r'\b', text.lower())
+        matches = re.findall(r"\b" + kw_lower + r"\b", text.lower())
         keyword_density = len(matches) / len(words) if words else 0.0
 
     # 改善推奨を生成
     recommendations: list[str] = []
     if llmo.entity_density < 0.4:
-        recommendations.append("エンティティ密度を上げる: 数値・固有名詞・専門語を追加してください")
+        recommendations.append(
+            "エンティティ密度を上げる: 数値・固有名詞・専門語を追加してください"
+        )
     if llmo.answer_directness < 0.4:
-        recommendations.append("冒頭1文で直接答える answer-first 形式に変更してください")
+        recommendations.append(
+            "冒頭1文で直接答える answer-first 形式に変更してください"
+        )
     if llmo.citability < 0.4:
-        recommendations.append("統計データや出典を追加して引用されやすさを向上させてください")
+        recommendations.append(
+            "統計データや出典を追加して引用されやすさを向上させてください"
+        )
     if keyword_density > 0.02:
-        recommendations.append(f"キーワード'{target_keyword}'の出現が多すぎます (密度: {keyword_density:.1%}, SEO推奨: 1-2%)")
+        recommendations.append(
+            f"キーワード'{target_keyword}'の出現が多すぎます (密度: {keyword_density:.1%}, SEO推奨: 1-2%)"
+        )
     if not recommendations:
         recommendations.append("コンテンツ品質は良好です")
 
@@ -224,7 +231,8 @@ def _detect_style(text: str) -> str:
     if "Q:" in text or "A:" in text or "？" in text[:50]:
         return "faq"
     import re
-    if len(re.findall(r'\d+', text)) > 3:
+
+    if len(re.findall(r"\d+", text)) > 3:
         return "entity_rich"
     return "general"
 
@@ -288,7 +296,9 @@ def quality_score(
     if 25 <= ad_len <= 90:
         rel_score += 1
     rel_score = min(3, rel_score)
-    rel_label = {3: "above_average", 2: "average", 1: "average", 0: "below_average"}[rel_score]
+    rel_label = {3: "above_average", 2: "average", 1: "average", 0: "below_average"}[
+        rel_score
+    ]
 
     # --- landing_page_exp ---
     # LP のキーワード出現 + テキスト量
@@ -302,7 +312,9 @@ def quality_score(
     if lp_len >= 200:
         lp_score += 1
     lp_score = min(3, lp_score)
-    lp_label = {3: "above_average", 2: "average", 1: "average", 0: "below_average"}[lp_score]
+    lp_label = {3: "above_average", 2: "average", 1: "average", 0: "below_average"}[
+        lp_score
+    ]
 
     # --- 総合 QS (1–10) ---
     # expected_ctr: 40%, ad_relevance: 35%, landing_page: 25%
@@ -327,7 +339,9 @@ def quality_score(
             f"明確な価値提案を追加し、本文を 200語以上にしてください"
         )
     if not recommendations:
-        recommendations.append(f"Quality Score {qs} — 高品質。入札戦略の最適化を検討してください")
+        recommendations.append(
+            f"Quality Score {qs} — 高品質。入札戦略の最適化を検討してください"
+        )
 
     return {
         "quality_score": qs,
@@ -370,6 +384,7 @@ def generate_ad_variants(
         }
     """
     from open_mythos.llmo import LLMOScorer
+
     scorer = LLMOScorer()
 
     templates = [
@@ -418,18 +433,27 @@ def generate_ad_variants(
             keyword=keyword,
         )
 
-        variants.append({
-            "headline": headline,
-            "description": description,
-            "llmo_score": llmo.llmo_total,
-            "qs_estimate": qs_data["quality_score"],
-            "style": ["benefit", "urgency", "social_proof", "question", "data_driven"][i],
-        })
+        variants.append(
+            {
+                "headline": headline,
+                "description": description,
+                "llmo_score": llmo.llmo_total,
+                "qs_estimate": qs_data["quality_score"],
+                "style": [
+                    "benefit",
+                    "urgency",
+                    "social_proof",
+                    "question",
+                    "data_driven",
+                ][i],
+            }
+        )
 
     # LLMO スコア × QS の複合スコアで最良バリアントを選定
     best_idx = max(
         range(len(variants)),
-        key=lambda i: variants[i]["llmo_score"] * 0.6 + variants[i]["qs_estimate"] / 10 * 0.4,
+        key=lambda i: variants[i]["llmo_score"] * 0.6
+        + variants[i]["qs_estimate"] / 10 * 0.4,
     )
 
     return {
@@ -449,7 +473,9 @@ _MARKETING_TOOLS = [
         name="search_competitor",
         description="競合他社の広告費・CTR・SEOスコア・市場シェアを検索する。マーケティング戦略立案に使用。",
         parameters={
-            "company": ParameterSchema(type="string", description="競合企業名 (例: 'Jasper AI')", required=True),
+            "company": ParameterSchema(
+                type="string", description="競合企業名 (例: 'Jasper AI')", required=True
+            ),
             "metric": ParameterSchema(
                 type="string",
                 description="取得する指標",
@@ -471,11 +497,27 @@ _MARKETING_TOOLS = [
         name="calculate_roi",
         description="広告ROI・ROAS・CPA・CTRを計算する。予算計画とキャンペーン評価に使用。",
         parameters={
-            "ad_spend": ParameterSchema(type="number", description="広告費 (USD)", required=True),
-            "revenue": ParameterSchema(type="number", description="売上 (USD)", required=True),
-            "cogs": ParameterSchema(type="number", description="売上原価 (USD)", required=False, default=0.0),
-            "clicks": ParameterSchema(type="integer", description="クリック数 (オプション)", required=False, default=None),
-            "impressions": ParameterSchema(type="integer", description="インプレッション数 (オプション)", required=False, default=None),
+            "ad_spend": ParameterSchema(
+                type="number", description="広告費 (USD)", required=True
+            ),
+            "revenue": ParameterSchema(
+                type="number", description="売上 (USD)", required=True
+            ),
+            "cogs": ParameterSchema(
+                type="number", description="売上原価 (USD)", required=False, default=0.0
+            ),
+            "clicks": ParameterSchema(
+                type="integer",
+                description="クリック数 (オプション)",
+                required=False,
+                default=None,
+            ),
+            "impressions": ParameterSchema(
+                type="integer",
+                description="インプレッション数 (オプション)",
+                required=False,
+                default=None,
+            ),
         },
         fn=calculate_roi,
     ),
@@ -483,7 +525,9 @@ _MARKETING_TOOLS = [
         name="fetch_trend",
         description="キーワードのトレンドスコアとLLMO人気度を取得する。コンテンツ戦略立案に使用。",
         parameters={
-            "keyword": ParameterSchema(type="string", description="検索キーワード", required=True),
+            "keyword": ParameterSchema(
+                type="string", description="検索キーワード", required=True
+            ),
             "region": ParameterSchema(
                 type="string",
                 description="地域コード",
@@ -505,8 +549,15 @@ _MARKETING_TOOLS = [
         name="score_content",
         description="テキストコンテンツのSEO・LLMOスコアを算出し改善推奨を返す。コンテンツ品質改善に使用。",
         parameters={
-            "text": ParameterSchema(type="string", description="スコアリング対象テキスト", required=True),
-            "target_keyword": ParameterSchema(type="string", description="ターゲットキーワード", required=False, default=""),
+            "text": ParameterSchema(
+                type="string", description="スコアリング対象テキスト", required=True
+            ),
+            "target_keyword": ParameterSchema(
+                type="string",
+                description="ターゲットキーワード",
+                required=False,
+                default="",
+            ),
             "style": ParameterSchema(
                 type="string",
                 description="コンテンツスタイル",
@@ -525,12 +576,20 @@ _MARKETING_TOOLS += [
         name="quality_score",
         description="Google Ads Quality Score (1-10) を推定する。広告最適化・入札戦略に使用。",
         parameters={
-            "ad_text": ParameterSchema(type="string", description="広告コピーテキスト", required=True),
-            "landing_page_text": ParameterSchema(type="string", description="LP本文テキスト", required=True),
-            "keyword": ParameterSchema(type="string", description="ターゲットキーワード", required=True),
+            "ad_text": ParameterSchema(
+                type="string", description="広告コピーテキスト", required=True
+            ),
+            "landing_page_text": ParameterSchema(
+                type="string", description="LP本文テキスト", required=True
+            ),
+            "keyword": ParameterSchema(
+                type="string", description="ターゲットキーワード", required=True
+            ),
             "historical_ctr": ParameterSchema(
-                type="number", description="過去の実績CTR (0.0-1.0, オプション)",
-                required=False, default=None,
+                type="number",
+                description="過去の実績CTR (0.0-1.0, オプション)",
+                required=False,
+                default=None,
             ),
         },
         fn=quality_score,
@@ -539,16 +598,24 @@ _MARKETING_TOOLS += [
         name="generate_ad_variants",
         description="広告コピーのバリアントを複数生成しLLMOスコア・QS付きで返す。A/Bテスト素材生成に使用。",
         parameters={
-            "product": ParameterSchema(type="string", description="商品・サービス名", required=True),
-            "keyword": ParameterSchema(type="string", description="ターゲットキーワード", required=True),
+            "product": ParameterSchema(
+                type="string", description="商品・サービス名", required=True
+            ),
+            "keyword": ParameterSchema(
+                type="string", description="ターゲットキーワード", required=True
+            ),
             "n_variants": ParameterSchema(
-                type="integer", description="生成するバリアント数 (デフォルト5)",
-                required=False, default=5,
+                type="integer",
+                description="生成するバリアント数 (デフォルト5)",
+                required=False,
+                default=5,
             ),
             "style": ParameterSchema(
-                type="string", description="広告スタイル",
+                type="string",
+                description="広告スタイル",
                 enum=["benefit", "urgency", "social_proof", "question", "mixed"],
-                required=False, default="mixed",
+                required=False,
+                default="mixed",
             ),
         },
         fn=generate_ad_variants,

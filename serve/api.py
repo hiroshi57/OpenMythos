@@ -31,7 +31,7 @@ from contextlib import asynccontextmanager
 from typing import Iterator, Literal, Optional
 
 import torch
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -39,6 +39,7 @@ from transformers import AutoTokenizer
 
 from open_mythos.main import MythosConfig, OpenMythos
 from open_mythos.agents import MythosAgent, OpenMythosLLM
+from serve.auth import RateLimitMiddleware, verify_api_key
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -136,12 +137,31 @@ async def lifespan(app: FastAPI):
 # ---------------------------------------------------------------------------
 
 app = FastAPI(
-    title="OpenMythos Inference API",
-    description="Recurrent-Depth Transformer inference with variable loop depth.",
-    version="0.1.0",
+    title="OpenMythos API",
+    description=(
+        "OpenMythos — Recurrent-Depth Transformer による SEO / LLMO / 広告最適化 API。\n\n"
+        "**認証**: `Authorization: Bearer <api-key>` ヘッダ必須 (環境変数 `API_KEY` 設定時)。\n\n"
+        "**レート制限**: デフォルト 60 rpm (環境変数 `RATE_LIMIT_RPM` で変更可)。"
+    ),
+    version="0.20.0",
     lifespan=lifespan,
+    dependencies=[Depends(verify_api_key)],
+    openapi_tags=[
+        {"name": "health", "description": "ヘルスチェック・サーバ情報"},
+        {"name": "infer", "description": "スコアリング・分類推論"},
+        {"name": "generate", "description": "テキスト生成 (SEO / LLMO / 広告コピー)"},
+        {"name": "agent", "description": "多ターン対話エージェント"},
+        {"name": "chat", "description": "OpenAI 互換 /v1/chat/completions"},
+        {"name": "seo", "description": "SEO スコアリング・コンテンツ生成"},
+        {"name": "thinking", "description": "Extended Thinking (内部思考トレース)"},
+        {"name": "tools", "description": "Tool Use / Function Calling"},
+        {"name": "rag", "description": "RAG (Retrieval-Augmented Generation)"},
+        {"name": "sessions", "description": "会話セッション管理"},
+        {"name": "batch", "description": "バッチ推論"},
+    ],
 )
 
+app.add_middleware(RateLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -160,13 +180,13 @@ TaskType = Literal[
     "persona_segment",  # ユーザーペルソナ分類
     "market_research",  # 市場調査レポート要約
     "identity_verify",  # 本人確認（リアルタイム）
-    "fraud_detect",     # 詐欺検知（高精度）
-    "seo_content",      # SEO記事・メタタグ生成
-    "llmo_optimize",    # LLM検索最適化（LLMO）コンテンツ生成
-    "ad_copy",          # 広告コピー生成（マーケティング）
+    "fraud_detect",  # 詐欺検知（高精度）
+    "seo_content",  # SEO記事・メタタグ生成
+    "llmo_optimize",  # LLM検索最適化（LLMO）コンテンツ生成
+    "ad_copy",  # 広告コピー生成（マーケティング）
     "persona_message",  # ペルソナ別メッセージ生成
-    "market_summary",   # 市場調査サマリー生成
-    "general",          # 汎用
+    "market_summary",  # 市場調査サマリー生成
+    "general",  # 汎用
 ]
 
 
@@ -242,13 +262,17 @@ _TASK_SYSTEM_PROMPTS: dict[str, str] = {
 
 class GenerateRequest(BaseModel):
     prompt: str = Field(..., description="生成プロンプト")
-    task: TaskType = Field("general", description="タスク種別（システムプロンプトを自動設定）")
+    task: TaskType = Field(
+        "general", description="タスク種別（システムプロンプトを自動設定）"
+    )
     max_new_tokens: int = Field(256, ge=1, le=1024, description="最大生成トークン数")
     temperature: float = Field(1.0, ge=0.01, le=2.0)
     top_p: float = Field(0.95, ge=0.0, le=1.0)
     top_k: int = Field(50, ge=0, le=500)
     n_loops: Optional[int] = Field(None, description="ループ深度オーバーライド")
-    system_prompt: Optional[str] = Field(None, description="カスタムシステムプロンプト（指定時はtaskより優先）")
+    system_prompt: Optional[str] = Field(
+        None, description="カスタムシステムプロンプト（指定時はtaskより優先）"
+    )
 
 
 class GenerateResponse(BaseModel):
@@ -261,7 +285,9 @@ class GenerateResponse(BaseModel):
 
 class AgentRequest(BaseModel):
     task_input: str = Field(..., description="エージェントへの入力テキスト")
-    session_id: Optional[str] = Field(None, description="会話セッションID（省略時は新規作成）")
+    session_id: Optional[str] = Field(
+        None, description="会話セッションID（省略時は新規作成）"
+    )
     task: TaskType = Field("general", description="タスク種別")
     system_prompt: Optional[str] = Field(None, description="カスタムシステムプロンプト")
     max_new_tokens: int = Field(256, ge=1, le=1024)
@@ -299,18 +325,18 @@ class RawInferResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 TASK_LOOPS: dict[str, int] = {
-    "ad_performance":  2,   # リアルタイム入稿審査: 速度優先
-    "content_quality": 6,   # SEO品質スコア: 精度と速度のバランス
-    "persona_segment": 4,   # ペルソナ分類: 中程度
-    "market_research": 4,   # 市場調査要約: 中程度
-    "identity_verify": 4,   # 本人確認: リアルタイム
-    "fraud_detect":    12,  # 詐欺検知: 精度最優先
-    "seo_content":     6,   # SEO記事生成: 品質重視
-    "llmo_optimize":   8,   # LLMO最適化: 深い推論で構造化
-    "ad_copy":         2,   # 広告コピー: 速度優先
-    "persona_message": 4,   # ペルソナ別メッセージ: 中程度
-    "market_summary":  6,   # 市場調査サマリー: 品質重視
-    "general":         4,   # DEFAULT_LOOPS
+    "ad_performance": 2,  # リアルタイム入稿審査: 速度優先
+    "content_quality": 6,  # SEO品質スコア: 精度と速度のバランス
+    "persona_segment": 4,  # ペルソナ分類: 中程度
+    "market_research": 4,  # 市場調査要約: 中程度
+    "identity_verify": 4,  # 本人確認: リアルタイム
+    "fraud_detect": 12,  # 詐欺検知: 精度最優先
+    "seo_content": 6,  # SEO記事生成: 品質重視
+    "llmo_optimize": 8,  # LLMO最適化: 深い推論で構造化
+    "ad_copy": 2,  # 広告コピー: 速度優先
+    "persona_message": 4,  # ペルソナ別メッセージ: 中程度
+    "market_summary": 6,  # 市場調査サマリー: 品質重視
+    "general": 4,  # DEFAULT_LOOPS
 }
 
 
@@ -319,7 +345,12 @@ TASK_LOOPS: dict[str, int] = {
 # ---------------------------------------------------------------------------
 
 
-@app.get("/health")
+@app.get(
+    "/health",
+    tags=["health"],
+    summary="サーバヘルスチェック",
+    description="モデルパラメータ数・デバイス・対応タスク一覧を返す。認証・レート制限スキップ。",
+)
 def health():
     return {
         "status": "ok",
@@ -330,17 +361,23 @@ def health():
         "task_default_loops": TASK_LOOPS,
         "active_sessions": len(state.agents),
         "endpoints": {
-            "POST /infer":           "スコアリング・分類",
-            "POST /infer/raw":       "rawロジット取得",
-            "POST /generate":        "テキスト生成（SEO/LLMO/広告コピー等）",
+            "POST /infer": "スコアリング・分類",
+            "POST /infer/raw": "rawロジット取得",
+            "POST /generate": "テキスト生成（SEO/LLMO/広告コピー等）",
             "GET  /generate/stream": "ストリーミング生成（SSE）",
-            "POST /agent":           "多ターン対話エージェント",
-            "DELETE /agent/{id}":    "セッションリセット",
+            "POST /agent": "多ターン対話エージェント",
+            "DELETE /agent/{id}": "セッションリセット",
         },
     }
 
 
-@app.post("/infer", response_model=InferResponse)
+@app.post(
+    "/infer",
+    response_model=InferResponse,
+    tags=["infer"],
+    summary="スコアリング・タスク分類",
+    description="テキストをモデルに通してスコアを返す。`task` パラメータで推奨ループ数が自動選択される。",
+)
 def infer(req: InferRequest):
     # For task-specific requests, use recommended loops if caller didn't override
     loops = req.loops
@@ -378,14 +415,24 @@ def infer(req: InferRequest):
     )
 
 
-@app.post("/generate", response_model=GenerateResponse)
+@app.post(
+    "/generate",
+    response_model=GenerateResponse,
+    tags=["generate"],
+    summary="テキスト生成",
+    description="SEO記事・広告コピー・LLMOコンテンツ等を生成する。`task` でシステムプロンプトが自動選択される。",
+)
 def generate(req: GenerateRequest):
     """テキスト生成エンドポイント。SEO記事・広告コピー・LLMOコンテンツ等を生成。"""
-    sys_prompt = req.system_prompt or _TASK_SYSTEM_PROMPTS.get(req.task, _TASK_SYSTEM_PROMPTS["general"])
+    sys_prompt = req.system_prompt or _TASK_SYSTEM_PROMPTS.get(
+        req.task, _TASK_SYSTEM_PROMPTS["general"]
+    )
     full_prompt = f"{sys_prompt}\n\n{req.prompt}" if sys_prompt else req.prompt
 
     # 入力トークン数を計測
-    enc = state.tokenizer(full_prompt, return_tensors="pt", truncation=True, max_length=512)
+    enc = state.tokenizer(
+        full_prompt, return_tensors="pt", truncation=True, max_length=512
+    )
     prompt_len = enc["input_ids"].shape[1]
 
     t0 = time.perf_counter()
@@ -398,7 +445,9 @@ def generate(req: GenerateRequest):
     latency_ms = (time.perf_counter() - t0) * 1000
 
     # 生成テキストのトークン数を簡易計測
-    gen_enc = state.tokenizer(text, return_tensors="pt", truncation=True, max_length=1024)
+    gen_enc = state.tokenizer(
+        text, return_tensors="pt", truncation=True, max_length=1024
+    )
     generated_tokens = gen_enc["input_ids"].shape[1]
 
     return GenerateResponse(
@@ -410,7 +459,12 @@ def generate(req: GenerateRequest):
     )
 
 
-@app.get("/generate/stream")
+@app.get(
+    "/generate/stream",
+    tags=["generate"],
+    summary="ストリーミングテキスト生成 (SSE)",
+    description="Server-Sent Events でトークンを逐次返す。リアルタイム表示用。",
+)
 def generate_stream(
     prompt: str,
     task: TaskType = "general",
@@ -430,7 +484,13 @@ def generate_stream(
     return StreamingResponse(_event_stream(), media_type="text/event-stream")
 
 
-@app.post("/agent", response_model=AgentResponse)
+@app.post(
+    "/agent",
+    response_model=AgentResponse,
+    tags=["agent"],
+    summary="多ターン対話エージェント",
+    description="`session_id` で会話履歴を維持。SEO相談・広告コピー反復改善等に使用。",
+)
 def agent_run(req: AgentRequest):
     """MythosAgent エンドポイント。session_id で会話履歴を維持した多ターン対話。
 
@@ -442,7 +502,9 @@ def agent_run(req: AgentRequest):
     session_id = req.session_id or str(uuid.uuid4())
 
     if session_id not in state.agents:
-        sys_prompt = req.system_prompt or _TASK_SYSTEM_PROMPTS.get(req.task, _TASK_SYSTEM_PROMPTS["general"])
+        sys_prompt = req.system_prompt or _TASK_SYSTEM_PROMPTS.get(
+            req.task, _TASK_SYSTEM_PROMPTS["general"]
+        )
         agent = MythosAgent(
             model=state.model,
             device=str(state.device),
@@ -476,10 +538,20 @@ def agent_reset(session_id: str):
     if session_id not in state.agents:
         raise HTTPException(404, f"session '{session_id}' not found")
     state.agents[session_id].reset()
-    return {"ok": True, "session_id": session_id, "message": "会話履歴をリセットしました"}
+    return {
+        "ok": True,
+        "session_id": session_id,
+        "message": "会話履歴をリセットしました",
+    }
 
 
-@app.post("/infer/raw", response_model=RawInferResponse)
+@app.post(
+    "/infer/raw",
+    response_model=RawInferResponse,
+    tags=["infer"],
+    summary="Raw ロジット取得",
+    description="全トークン位置のロジットを返す。ファインチューニング・蒸留用。",
+)
 def infer_raw(req: InferRequest):
     """Return raw logits for all positions — useful for downstream fine-tuning."""
     loops = min(req.loops, MAX_LOOPS)
@@ -562,7 +634,12 @@ def _build_chat_prompt(messages: list[ChatMessage]) -> str:
     return "\n".join(parts)
 
 
-@app.post("/v1/chat/completions")
+@app.post(
+    "/v1/chat/completions",
+    tags=["chat"],
+    summary="OpenAI 互換チャット推論",
+    description="OpenAI `/v1/chat/completions` 互換。`stream=true` で SSE ストリーミング対応。",
+)
 def chat_completions(req: ChatRequest):
     """OpenAI 互換チャット推論エンドポイント。
 
@@ -603,7 +680,9 @@ def chat_completions(req: ChatRequest):
                     )
                     mask = cum_probs - torch.softmax(sorted_logits, dim=-1) > req.top_p
                     sorted_logits[mask] = float("-inf")
-                    next_logits = torch.full_like(next_logits, float("-inf")).scatter(0, sorted_idx, sorted_logits)
+                    next_logits = torch.full_like(next_logits, float("-inf")).scatter(
+                        0, sorted_idx, sorted_logits
+                    )
                 probs = torch.softmax(next_logits, dim=-1)
                 next_token = int(torch.multinomial(probs, 1).item())
                 generated.append(next_token)
@@ -709,7 +788,13 @@ class BatchResponse(BaseModel):
     n_items: int
 
 
-@app.post("/v1/batch", response_model=BatchResponse)
+@app.post(
+    "/v1/batch",
+    response_model=BatchResponse,
+    tags=["batch"],
+    summary="バッチ推論",
+    description="複数テキストを一括で推論する。各アイテム独立・ループ数個別指定可。",
+)
 def batch_infer(req: BatchRequest):
     """複数テキストを一括推論する。
 
@@ -809,7 +894,13 @@ class SEOGenerateResponse(BaseModel):
     latency_ms: float
 
 
-@app.post("/v1/seo/score", response_model=SEOScoreResponse)
+@app.post(
+    "/v1/seo/score",
+    response_model=SEOScoreResponse,
+    tags=["seo"],
+    summary="SEO / LLMO スコアリング",
+    description="entity_density / answer_directness / citability の 3 軸で SEO品質を評価する。",
+)
 def seo_score(req: SEOScoreRequest):
     """テキストの LLMO / SEO スコアを計算する。
 
@@ -846,7 +937,13 @@ def _seo_style_prefix(style: str) -> str:
     return prefixes.get(style, prefixes["answer_first"])
 
 
-@app.post("/v1/seo/generate", response_model=SEOGenerateResponse)
+@app.post(
+    "/v1/seo/generate",
+    response_model=SEOGenerateResponse,
+    tags=["seo"],
+    summary="SEO / LLMO コンテンツ生成",
+    description="style (qa / listicle / entity_rich) を指定してコンテンツを生成し LLMO スコアを付与して返す。",
+)
 def seo_generate(req: SEOGenerateRequest):
     """SEO / LLMO 最適化コンテンツを生成し、スコアを付与して返す。
 
@@ -875,12 +972,12 @@ def seo_generate(req: SEOGenerateRequest):
             next_logits = logits[0, -1, :] / max(req.temperature, 1e-6)
             if req.top_p < 1.0:
                 sorted_logits, sorted_idx = torch.sort(next_logits, descending=True)
-                cum_probs = torch.cumsum(
-                    torch.softmax(sorted_logits, dim=-1), dim=-1
-                )
+                cum_probs = torch.cumsum(torch.softmax(sorted_logits, dim=-1), dim=-1)
                 mask = cum_probs - torch.softmax(sorted_logits, dim=-1) > req.top_p
                 sorted_logits[mask] = float("-inf")
-                next_logits = torch.full_like(next_logits, float("-inf")).scatter(0, sorted_idx, sorted_logits)
+                next_logits = torch.full_like(next_logits, float("-inf")).scatter(
+                    0, sorted_idx, sorted_logits
+                )
             probs = torch.softmax(next_logits, dim=-1)
             next_token = int(torch.multinomial(probs, 1).item())
             generated_ids.append(next_token)
@@ -937,7 +1034,13 @@ class ThinkingResponse(BaseModel):
     latency_ms: float
 
 
-@app.post("/v1/thinking", response_model=ThinkingResponse)
+@app.post(
+    "/v1/thinking",
+    response_model=ThinkingResponse,
+    tags=["thinking"],
+    summary="Extended Thinking (思考トレース付き生成)",
+    description="内部ループの状態変化を `<thinking>` ブロックとして外部公開する。Opus 4.8 対抗機能。",
+)
 def extended_thinking(req: ThinkingRequest):
     """Extended Thinking — 思考トレース付きで回答を生成する。
 
@@ -975,7 +1078,11 @@ def extended_thinking(req: ThinkingRequest):
 # Tool Use / Function Calling エンドポイント
 # ---------------------------------------------------------------------------
 
-from open_mythos.tools import ToolRegistry as _ToolRegistry, ToolCall, execute_tool_calls  # noqa: E402
+from open_mythos.tools import (  # noqa: E402
+    ToolRegistry as _ToolRegistry,
+    ToolCall,
+    execute_tool_calls,
+)
 
 # デフォルトのマーケ特化ツールレジストリ (起動時1回構築)
 _default_tool_registry = _ToolRegistry.default()
@@ -1009,7 +1116,13 @@ class ToolsListResponse(BaseModel):
     n_tools: int
 
 
-@app.get("/v1/tools", response_model=ToolsListResponse)
+@app.get(
+    "/v1/tools",
+    response_model=ToolsListResponse,
+    tags=["tools"],
+    summary="利用可能なツール一覧",
+    description="登録済みツールを OpenAI 互換 function schema 形式で返す。",
+)
 def list_tools():
     """利用可能なツール一覧を OpenAI 互換 schema で返す。"""
     return ToolsListResponse(
@@ -1018,7 +1131,13 @@ def list_tools():
     )
 
 
-@app.post("/v1/tools/call", response_model=ToolCallResponse)
+@app.post(
+    "/v1/tools/call",
+    response_model=ToolCallResponse,
+    tags=["tools"],
+    summary="ツール呼び出し",
+    description="search_competitor / calculate_roi / fetch_trend / score_content 等を実行する。",
+)
 def call_tool(req: ToolCallRequest):
     """単一のツールを呼び出す。
 
@@ -1043,7 +1162,13 @@ def call_tool(req: ToolCallRequest):
     )
 
 
-@app.post("/v1/tools/batch", response_model=ToolsBatchResponse)
+@app.post(
+    "/v1/tools/batch",
+    response_model=ToolsBatchResponse,
+    tags=["tools"],
+    summary="ツール一括呼び出し",
+    description="最大16件のツール呼び出しを一括実行する。",
+)
 def call_tools_batch(req: ToolsBatchRequest):
     """複数ツールを一括呼び出しする (最大16件)。"""
     t_start = time.perf_counter()
@@ -1058,14 +1183,18 @@ def call_tools_batch(req: ToolsBatchRequest):
     for r in results:
         content = {}
         if r.content is not None:
-            content = r.content if isinstance(r.content, dict) else {"result": r.content}
-        responses.append(ToolCallResponse(
-            tool_name=r.tool_name,
-            content=content,
-            success=r.success,
-            error=r.error,
-            latency_ms=r.latency_ms,
-        ))
+            content = (
+                r.content if isinstance(r.content, dict) else {"result": r.content}
+            )
+        responses.append(
+            ToolCallResponse(
+                tool_name=r.tool_name,
+                content=content,
+                success=r.success,
+                error=r.error,
+                latency_ms=r.latency_ms,
+            )
+        )
 
     return ToolsBatchResponse(
         results=responses,
@@ -1091,9 +1220,15 @@ def _get_rag() -> _RAGPipeline:
 
 
 class RAGIndexRequest(BaseModel):
-    texts: list[str] = Field(..., min_length=1, max_length=256, description="インデックスするテキスト群")
-    doc_ids: list[str] = Field(default_factory=list, description="ドキュメントID (省略可)")
-    metadatas: list[dict] = Field(default_factory=list, description="メタデータ (省略可)")
+    texts: list[str] = Field(
+        ..., min_length=1, max_length=256, description="インデックスするテキスト群"
+    )
+    doc_ids: list[str] = Field(
+        default_factory=list, description="ドキュメントID (省略可)"
+    )
+    metadatas: list[dict] = Field(
+        default_factory=list, description="メタデータ (省略可)"
+    )
 
 
 class RAGIndexResponse(BaseModel):
@@ -1125,7 +1260,13 @@ class RAGQueryResponse(BaseModel):
     latency_ms: float
 
 
-@app.post("/v1/rag/index", response_model=RAGIndexResponse)
+@app.post(
+    "/v1/rag/index",
+    response_model=RAGIndexResponse,
+    tags=["rag"],
+    summary="RAG インデックス追加",
+    description="ドキュメントをベクトルストアに追加する。numpy ベース (FAISS オプション対応)。",
+)
 def rag_index(req: RAGIndexRequest):
     """ドキュメントをRAGインデックスに追加する。"""
     rag = _get_rag()
@@ -1137,7 +1278,13 @@ def rag_index(req: RAGIndexRequest):
     return RAGIndexResponse(added=n, total_docs=rag.n_docs())
 
 
-@app.post("/v1/rag", response_model=RAGQueryResponse)
+@app.post(
+    "/v1/rag",
+    response_model=RAGQueryResponse,
+    tags=["rag"],
+    summary="RAG 検索 + 生成",
+    description="クエリに関連するドキュメントを検索し、コンテキストとして生成を行う。",
+)
 def rag_query(req: RAGQueryRequest):
     """RAG検索 + 生成を実行する。
 
@@ -1217,7 +1364,9 @@ class AgentRunRequest(BaseModel):
     task: str = Field(..., description="エージェントに解決させるタスク")
     system_prompt: str = Field("", description="カスタムシステムプロンプト (省略可)")
     max_iterations: int = Field(6, ge=1, le=12, description="最大イテレーション数")
-    max_new_tokens: int = Field(128, ge=1, le=512, description="各ステップの最大生成トークン数")
+    max_new_tokens: int = Field(
+        128, ge=1, le=512, description="各ステップの最大生成トークン数"
+    )
     temperature: float = Field(0.7, ge=0.0, le=2.0)
     loops: int = Field(DEFAULT_LOOPS, ge=1, le=16)
 
@@ -1241,7 +1390,13 @@ class AgentRunResponse(BaseModel):
     total_latency_ms: float
 
 
-@app.post("/v1/agent/run", response_model=AgentRunResponse)
+@app.post(
+    "/v1/agent/run",
+    response_model=AgentRunResponse,
+    tags=["agent"],
+    summary="ReAct エージェントループ実行",
+    description="Think→Act→Observe サイクルで複数ステップのタスクを自律実行する。Tool Use 連携対応。",
+)
 def react_agent_run(req: AgentRunRequest):
     """ReAct エージェントループでタスクを解決する。
 
@@ -1259,14 +1414,16 @@ def react_agent_run(req: AgentRunRequest):
     for step in result.steps:
         tool_name = step.tool_call.name if step.tool_call else ""
         tool_success = step.tool_result.success if step.tool_result else True
-        step_responses.append(AgentStepResponse(
-            step_type=step.step_type,
-            content=step.content[:500],  # 最大500文字
-            iteration=step.iteration,
-            latency_ms=step.latency_ms,
-            tool_name=tool_name,
-            tool_success=tool_success,
-        ))
+        step_responses.append(
+            AgentStepResponse(
+                step_type=step.step_type,
+                content=step.content[:500],  # 最大500文字
+                iteration=step.iteration,
+                latency_ms=step.latency_ms,
+                tool_name=tool_name,
+                tool_success=tool_success,
+            )
+        )
 
     return AgentRunResponse(
         task=result.task,
@@ -1317,7 +1474,13 @@ class SessionContextResponse(BaseModel):
     n_turns: int
 
 
-@app.post("/v1/sessions", response_model=SessionCreateResponse)
+@app.post(
+    "/v1/sessions",
+    response_model=SessionCreateResponse,
+    tags=["sessions"],
+    summary="会話セッション作成",
+    description="新しい ConversationMemory セッションを作成する。`session_id` 省略で UUID 自動生成。",
+)
 def create_session(req: SessionCreateRequest):
     """新しい会話セッションを作成する。"""
     sid = req.session_id if req.session_id else None
@@ -1326,12 +1489,18 @@ def create_session(req: SessionCreateRequest):
     return SessionCreateResponse(session_id=new_sid, created=not already_exists)
 
 
-@app.get("/v1/sessions/{session_id}", response_model=SessionStatsResponse)
+@app.get(
+    "/v1/sessions/{session_id}",
+    response_model=SessionStatsResponse,
+    tags=["sessions"],
+    summary="セッション情報取得",
+)
 def get_session(session_id: str):
     """セッションの統計情報を取得する。"""
     mem = _session_store.get(session_id)
     if mem is None:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
     s = mem.stats()
     return SessionStatsResponse(
@@ -1343,19 +1512,30 @@ def get_session(session_id: str):
     )
 
 
-@app.delete("/v1/sessions/{session_id}")
+@app.delete(
+    "/v1/sessions/{session_id}",
+    tags=["sessions"],
+    summary="セッション削除",
+)
 def delete_session(session_id: str):
     """セッションを削除する。"""
     deleted = _session_store.delete(session_id)
     return {"deleted": deleted, "session_id": session_id}
 
 
-@app.post("/v1/sessions/{session_id}/turns", response_model=SessionStatsResponse)
+@app.post(
+    "/v1/sessions/{session_id}/turns",
+    response_model=SessionStatsResponse,
+    tags=["sessions"],
+    summary="ターン追加",
+    description="セッションに user / assistant ターンを追加する。自動圧縮対応。",
+)
 def add_turn(session_id: str, req: TurnAddRequest):
     """セッションにターンを追加する。"""
     mem = _session_store.get(session_id)
     if mem is None:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
     mem.add_turn(req.role, req.content)
     s = mem.stats()
@@ -1368,12 +1548,19 @@ def add_turn(session_id: str, req: TurnAddRequest):
     )
 
 
-@app.get("/v1/sessions/{session_id}/context", response_model=SessionContextResponse)
+@app.get(
+    "/v1/sessions/{session_id}/context",
+    response_model=SessionContextResponse,
+    tags=["sessions"],
+    summary="セッションコンテキスト取得",
+    description="モデルへの入力文字列形式でセッション履歴を返す。",
+)
 def get_session_context(session_id: str):
     """セッションのコンテキスト文字列を取得する。"""
     mem = _session_store.get(session_id)
     if mem is None:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
     return SessionContextResponse(
         session_id=session_id,

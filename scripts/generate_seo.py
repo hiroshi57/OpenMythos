@@ -159,7 +159,7 @@ def generate_seo_content(
 
     latency_ms = (time.perf_counter() - t0) * 1000
 
-    generated_ids = output[0, input_ids.shape[1]:].tolist()
+    generated_ids = output[0, input_ids.shape[1] :].tolist()
     generated_text = _detokenize(generated_ids)
 
     llmo_score = scorer.score(generated_text)
@@ -250,6 +250,7 @@ def print_results(results: list[dict]) -> None:
 # ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
+
 
 def _build_tiny_model(device: str) -> OpenMythos:
     """テスト用の最小モデルを構築する。"""

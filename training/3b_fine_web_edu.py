@@ -452,45 +452,78 @@ def _parse_args() -> argparse.Namespace:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     # Run identity
-    p.add_argument("--run-name", default=None,
-                   help="Human-readable run name (default: timestamp)")
-    p.add_argument("--project", default="open-mythos",
-                   help="WandB / MLflow project / experiment name")
+    p.add_argument(
+        "--run-name", default=None, help="Human-readable run name (default: timestamp)"
+    )
+    p.add_argument(
+        "--project",
+        default="open-mythos",
+        help="WandB / MLflow project / experiment name",
+    )
 
     # Checkpointing & resume
-    p.add_argument("--ckpt-dir", default="checkpoints",
-                   help="Directory to write/read checkpoints")
-    p.add_argument("--resume", default=None, metavar="PATH",
-                   help="Path to a specific checkpoint file to resume from. "
-                        "If omitted, resumes from the latest in --ckpt-dir automatically.")
-    p.add_argument("--ckpt-every", type=int, default=1000,
-                   help="Save a checkpoint every N steps")
-    p.add_argument("--keep-last", type=int, default=3,
-                   help="Number of recent checkpoints to keep on disk")
+    p.add_argument(
+        "--ckpt-dir", default="checkpoints", help="Directory to write/read checkpoints"
+    )
+    p.add_argument(
+        "--resume",
+        default=None,
+        metavar="PATH",
+        help="Path to a specific checkpoint file to resume from. "
+        "If omitted, resumes from the latest in --ckpt-dir automatically.",
+    )
+    p.add_argument(
+        "--ckpt-every", type=int, default=1000, help="Save a checkpoint every N steps"
+    )
+    p.add_argument(
+        "--keep-last",
+        type=int,
+        default=3,
+        help="Number of recent checkpoints to keep on disk",
+    )
 
     # Logging
-    p.add_argument("--logger", default="none",
-                   choices=["none", "wandb", "mlflow", "tensorboard"],
-                   help="Experiment logging backend")
-    p.add_argument("--log-every", type=int, default=10,
-                   help="Print a training log line every N steps")
-    p.add_argument("--log-dir", default="runs",
-                   help="TensorBoard log directory (ignored for other backends)")
+    p.add_argument(
+        "--logger",
+        default="none",
+        choices=["none", "wandb", "mlflow", "tensorboard"],
+        help="Experiment logging backend",
+    )
+    p.add_argument(
+        "--log-every",
+        type=int,
+        default=10,
+        help="Print a training log line every N steps",
+    )
+    p.add_argument(
+        "--log-dir",
+        default="runs",
+        help="TensorBoard log directory (ignored for other backends)",
+    )
 
     # Training hypers (override script defaults)
     p.add_argument("--seq-len", type=int, default=2048)
     p.add_argument("--micro-batch", type=int, default=4)
     p.add_argument("--lr", type=float, default=3e-4)
     p.add_argument("--wd", type=float, default=0.1)
-    p.add_argument("--total-tokens", type=float, default=30e9,
-                   help="Total training tokens (e.g. 30e9)")
+    p.add_argument(
+        "--total-tokens",
+        type=float,
+        default=30e9,
+        help="Total training tokens (e.g. 30e9)",
+    )
     p.add_argument("--warmup-steps", type=int, default=2000)
-    p.add_argument("--eval-every", type=int, default=500,
-                   help="Eval every N steps; 0 to disable")
-    p.add_argument("--dataset-subset", default="sample-10BT",
-                   help="FineWeb-Edu config name")
-    p.add_argument("--no-grad-ckpt", action="store_true",
-                   help="Disable gradient checkpointing (uses more VRAM, faster)")
+    p.add_argument(
+        "--eval-every", type=int, default=500, help="Eval every N steps; 0 to disable"
+    )
+    p.add_argument(
+        "--dataset-subset", default="sample-10BT", help="FineWeb-Edu config name"
+    )
+    p.add_argument(
+        "--no-grad-ckpt",
+        action="store_true",
+        help="Disable gradient checkpointing (uses more VRAM, faster)",
+    )
 
     return p.parse_args()
 
@@ -657,9 +690,14 @@ def main():
     train_logger: TrainLogger | None = None
     if master:
         cfg_dict = {
-            "seq_len": seq_len, "micro_batch": micro_batch, "lr": lr, "wd": wd,
-            "warmup_steps": warmup_steps, "total_steps": total_steps,
-            "grad_accum": grad_accum, "dataset_subset": dataset_subset,
+            "seq_len": seq_len,
+            "micro_batch": micro_batch,
+            "lr": lr,
+            "wd": wd,
+            "warmup_steps": warmup_steps,
+            "total_steps": total_steps,
+            "grad_accum": grad_accum,
+            "dataset_subset": dataset_subset,
         }
         train_logger = TrainLogger(
             backend=args.logger,
@@ -716,13 +754,15 @@ def main():
     # --- Early stopping ---
     # Halt training if eval loss hasn't improved by `es_min_delta` for
     # `es_patience` consecutive eval steps.
-    es_patience = 5        # eval steps without improvement before stopping
-    es_min_delta = 1e-3    # minimum improvement to count as progress
+    es_patience = 5  # eval steps without improvement before stopping
+    es_min_delta = 1e-3  # minimum improvement to count as progress
     _es_best_loss = float("inf")
     _es_counter = 0
 
     while step < total_steps:
-        cur_lr = warmup_stable_decay(step, warmup_steps, stable_end_steps, total_steps, lr, lr * 0.1)
+        cur_lr = warmup_stable_decay(
+            step, warmup_steps, stable_end_steps, total_steps, lr, lr * 0.1
+        )
         for g in optimizer.param_groups:
             g["lr"] = cur_lr
 

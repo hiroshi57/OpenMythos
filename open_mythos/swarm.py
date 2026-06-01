@@ -41,7 +41,6 @@ from typing import Dict, List, Optional, Union
 from open_mythos.agents import MythosAgent
 from open_mythos.main import OpenMythos
 
-
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -314,9 +313,7 @@ class SwarmOrchestrator:
         future_to_id: Dict[Future, int] = {}
 
         for i in range(len(self._agents)):
-            f = self._pool.submit(
-                self._run_agent, i, f"broadcast_{i}", task, True
-            )
+            f = self._pool.submit(self._run_agent, i, f"broadcast_{i}", task, True)
             future_to_id[f] = i
 
         ordered: List[Optional[SwarmAgentResult]] = [None] * len(self._agents)
@@ -362,9 +359,7 @@ class SwarmOrchestrator:
             stage_input = current_input
             if stages and i < len(stages):
                 stage_input = f"{stages[i]}\n\n{current_input}"
-            result = self._run_agent(
-                i, f"stage_{i}", stage_input, reset_after=False
-            )
+            result = self._run_agent(i, f"stage_{i}", stage_input, reset_after=False)
             results.append(result)
             if result.ok and result.output:
                 current_input = result.output

@@ -15,10 +15,10 @@ from unittest.mock import MagicMock
 import pytest
 import torch
 
-
 # ---------------------------------------------------------------------------
 # transformers モック（AutoTokenizer のみ）
 # ---------------------------------------------------------------------------
+
 
 def _make_tokenizer_mock():
     """tokenizer(text, ...) → {"input_ids": tensor}、decode → str を返す。"""
@@ -37,7 +37,9 @@ def mock_transformers():
     fake_transformers = types.ModuleType("transformers")
     tok_instance = _make_tokenizer_mock()
     fake_transformers.AutoTokenizer = MagicMock()
-    fake_transformers.AutoTokenizer.from_pretrained = MagicMock(return_value=tok_instance)
+    fake_transformers.AutoTokenizer.from_pretrained = MagicMock(
+        return_value=tok_instance
+    )
     # 既に import されていれば上書き
     orig = sys.modules.get("transformers")
     sys.modules["transformers"] = fake_transformers
@@ -53,11 +55,13 @@ def mock_transformers():
 # （serve/api.py を直接 import して定数を取得）
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(scope="module")
 def api_constants():
     """serve/api.py から TASK_LOOPS と _TASK_SYSTEM_PROMPTS を取得。"""
     import ast
     import pathlib
+
     src = pathlib.Path("serve/api.py").read_text(encoding="utf-8")
     tree = ast.parse(src)
 
@@ -137,7 +141,14 @@ class TestTaskTables:
         assert any(w in p for w in ["クリック", "コンバージョン", "コピー"])
 
     def test_all_gen_tasks_have_prompts(self, api_constants):
-        gen_tasks = {"seo_content", "llmo_optimize", "ad_copy", "persona_message", "market_summary", "general"}
+        gen_tasks = {
+            "seo_content",
+            "llmo_optimize",
+            "ad_copy",
+            "persona_message",
+            "market_summary",
+            "general",
+        }
         for t in gen_tasks:
             assert t in api_constants["_TASK_SYSTEM_PROMPTS"], f"{t} missing"
 
@@ -145,6 +156,7 @@ class TestTaskTables:
 # ---------------------------------------------------------------------------
 # TestClient fixture
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(scope="module")
 def client():
@@ -164,8 +176,12 @@ def client():
     api_module.state.device = torch.device("cpu")
     api_module.state.n_params = sum(p.numel() for p in model.parameters())
     api_module.state.llm = OpenMythosLLM(
-        model=model, device="cpu", max_new_tokens=4,
-        temperature=1.0, top_k=10, top_p=0.9,
+        model=model,
+        device="cpu",
+        max_new_tokens=4,
+        temperature=1.0,
+        top_k=10,
+        top_p=0.9,
     )
     api_module.state.agents = {}
 
@@ -176,6 +192,7 @@ def client():
 # ---------------------------------------------------------------------------
 # /health
 # ---------------------------------------------------------------------------
+
 
 class TestHealthEndpoint:
 
@@ -212,14 +229,19 @@ class TestHealthEndpoint:
 # /generate
 # ---------------------------------------------------------------------------
 
+
 class TestGenerateEndpoint:
 
     def test_generate_returns_200(self, client):
-        r = client.post("/generate", json={"prompt": "SEO article", "task": "seo_content"})
+        r = client.post(
+            "/generate", json={"prompt": "SEO article", "task": "seo_content"}
+        )
         assert r.status_code == 200
 
     def test_generate_response_has_text(self, client):
-        r = client.post("/generate", json={"prompt": "LLMO content", "task": "llmo_optimize"})
+        r = client.post(
+            "/generate", json={"prompt": "LLMO content", "task": "llmo_optimize"}
+        )
         assert "text" in r.json()
         assert isinstance(r.json()["text"], str)
 
@@ -232,19 +254,26 @@ class TestGenerateEndpoint:
         assert r.json()["latency_ms"] >= 0
 
     def test_generate_persona_message(self, client):
-        r = client.post("/generate", json={"prompt": "persona message", "task": "persona_message"})
+        r = client.post(
+            "/generate", json={"prompt": "persona message", "task": "persona_message"}
+        )
         assert r.status_code == 200
 
     def test_generate_market_summary(self, client):
-        r = client.post("/generate", json={"prompt": "market summary", "task": "market_summary"})
+        r = client.post(
+            "/generate", json={"prompt": "market summary", "task": "market_summary"}
+        )
         assert r.status_code == 200
 
     def test_generate_custom_system_prompt(self, client):
-        r = client.post("/generate", json={
-            "prompt": "test",
-            "task": "general",
-            "system_prompt": "You are a test assistant.",
-        })
+        r = client.post(
+            "/generate",
+            json={
+                "prompt": "test",
+                "task": "general",
+                "system_prompt": "You are a test assistant.",
+            },
+        )
         assert r.status_code == 200
 
     def test_generate_prompt_len_positive(self, client):
@@ -256,6 +285,7 @@ class TestGenerateEndpoint:
 # /agent
 # ---------------------------------------------------------------------------
 
+
 class TestAgentEndpoint:
 
     def test_agent_creates_session(self, client):
@@ -264,21 +294,32 @@ class TestAgentEndpoint:
         assert "session_id" in r.json()
 
     def test_agent_returns_response(self, client):
-        r = client.post("/agent", json={"task_input": "SEO article structure", "task": "seo_content"})
+        r = client.post(
+            "/agent",
+            json={"task_input": "SEO article structure", "task": "seo_content"},
+        )
         assert "response" in r.json()
         assert isinstance(r.json()["response"], str)
 
     def test_agent_reuses_session(self, client):
-        r1 = client.post("/agent", json={"task_input": "first question", "task": "general"})
+        r1 = client.post(
+            "/agent", json={"task_input": "first question", "task": "general"}
+        )
         sid = r1.json()["session_id"]
-        r2 = client.post("/agent", json={"task_input": "follow up", "session_id": sid, "task": "general"})
+        r2 = client.post(
+            "/agent",
+            json={"task_input": "follow up", "session_id": sid, "task": "general"},
+        )
         assert r2.json()["session_id"] == sid
         assert r2.json()["turn"] == 2
 
     def test_agent_turn_increments(self, client):
         r1 = client.post("/agent", json={"task_input": "q1", "task": "llmo_optimize"})
         sid = r1.json()["session_id"]
-        r2 = client.post("/agent", json={"task_input": "q2", "session_id": sid, "task": "llmo_optimize"})
+        r2 = client.post(
+            "/agent",
+            json={"task_input": "q2", "session_id": sid, "task": "llmo_optimize"},
+        )
         assert r2.json()["turn"] > r1.json()["turn"]
 
     def test_agent_reset_session(self, client):
@@ -293,13 +334,20 @@ class TestAgentEndpoint:
         assert r.status_code == 404
 
     def test_agent_has_latency(self, client):
-        r = client.post("/agent", json={"task_input": "latency test", "task": "general"})
+        r = client.post(
+            "/agent", json={"task_input": "latency test", "task": "general"}
+        )
         assert r.json()["latency_ms"] >= 0
 
     def test_agent_seo_task(self, client):
-        r = client.post("/agent", json={"task_input": "keyword selection", "task": "seo_content"})
+        r = client.post(
+            "/agent", json={"task_input": "keyword selection", "task": "seo_content"}
+        )
         assert r.status_code == 200
 
     def test_agent_market_summary_task(self, client):
-        r = client.post("/agent", json={"task_input": "AI market overview", "task": "market_summary"})
+        r = client.post(
+            "/agent",
+            json={"task_input": "AI market overview", "task": "market_summary"},
+        )
         assert r.status_code == 200

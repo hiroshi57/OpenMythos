@@ -60,7 +60,10 @@ class MythosTokenizer:
         Args:
             model_id (str): HuggingFace model identifier or path to tokenizer files.
         """
-        from transformers import AutoTokenizer  # lazy import to avoid mock contamination
+        from transformers import (
+            AutoTokenizer,
+        )  # lazy import to avoid mock contamination
+
         self.tokenizer = AutoTokenizer.from_pretrained(model_id)
 
     @property

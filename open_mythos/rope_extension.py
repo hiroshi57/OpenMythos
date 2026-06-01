@@ -30,7 +30,6 @@ if TYPE_CHECKING:
 
 import torch
 
-
 # ---------------------------------------------------------------------------
 # 設定
 # ---------------------------------------------------------------------------
@@ -172,8 +171,12 @@ def yarn_rope_freqs(
     wavelengths = 2.0 * math.pi / inv_freqs  # shape: (dim//2,)
 
     # original_max_len における波長との比較
-    low_freq_wavelen = original_max_len / beta_slow   # この波長より長い → 低周波 → 完全補間
-    high_freq_wavelen = original_max_len / beta_fast  # この波長より短い → 高周波 → 補間なし
+    low_freq_wavelen = (
+        original_max_len / beta_slow
+    )  # この波長より長い → 低周波 → 完全補間
+    high_freq_wavelen = (
+        original_max_len / beta_fast
+    )  # この波長より短い → 高周波 → 補間なし
 
     # interpolation ratio r: 0=高周波(補間なし) / 1=低周波(完全補間)
     r = torch.zeros_like(inv_freqs)
@@ -186,7 +189,9 @@ def yarn_rope_freqs(
     mid_mask = ~low_mask & (wavelengths > high_freq_wavelen)
     if mid_mask.any():
         # YaRN 論文式: r = (original_max_len / wavelength - beta_fast) / (beta_slow - beta_fast)
-        r_mid = (original_max_len / wavelengths[mid_mask] - beta_fast) / (beta_slow - beta_fast)
+        r_mid = (original_max_len / wavelengths[mid_mask] - beta_fast) / (
+            beta_slow - beta_fast
+        )
         r[mid_mask] = r_mid.clamp(0.0, 1.0)
 
     # 高周波領域 (wavelength <= high_freq_wavelen): r=0 (補間なし、既設定)
@@ -228,6 +233,7 @@ def get_rope_freqs(
     if scaling is None or scaling.type == "none" or scaling.factor <= 1.0:
         # 標準 RoPE (open_mythos.main.precompute_rope_freqs と同等)
         from open_mythos.main import precompute_rope_freqs
+
         return precompute_rope_freqs(dim, max_len, theta)
 
     if scaling.type == "linear":
@@ -283,14 +289,18 @@ def extend_model_context(
         type=scaling_type,
         factor=factor,
         original_max_len=original_max_len,
-        yarn_attn_factor=0.1 * math.log(max(factor, 1.0)) + 1.0 if scaling_type == "yarn" else 1.0,
+        yarn_attn_factor=(
+            0.1 * math.log(max(factor, 1.0)) + 1.0 if scaling_type == "yarn" else 1.0
+        ),
     )
 
     device = next(model.parameters()).device
 
     # GQA 用 freqs_cis 更新
     head_dim = model.cfg.dim // model.cfg.n_heads
-    new_freqs_gqa = get_rope_freqs(head_dim, new_max_len, model.cfg.rope_theta, scaling).to(device)
+    new_freqs_gqa = get_rope_freqs(
+        head_dim, new_max_len, model.cfg.rope_theta, scaling
+    ).to(device)
     model.register_buffer("freqs_cis", new_freqs_gqa, persistent=False)
 
     # MLA 用 freqs_cis 更新
