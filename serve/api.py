@@ -1908,6 +1908,114 @@ def ab_infer(req: ABInferRequest):
 
 
 # ---------------------------------------------------------------------------
+# Sprint 21: KPI Agent endpoints
+# ---------------------------------------------------------------------------
+
+
+class KPIDefineRequest(BaseModel):
+    name: str = Field(..., description="KPI識別名 (例: llmo_score, roas)")
+    target: float = Field(..., description="達成目標値")
+    context: str = Field("", description="計測対象コンテキスト文字列")
+    higher_is_better: bool = Field(True, description="大きいほど良いKPIか")
+    unit: str = Field("", description="単位ラベル")
+    action_budget: int = Field(3, ge=1, le=6, description="1サイクルのアクション上限")
+
+
+class KPIMeasureRequest(BaseModel):
+    name: str = Field(..., description="KPI識別名")
+    target: float = Field(..., description="目標値")
+    context: str = Field("", description="計測対象コンテキスト")
+    higher_is_better: bool = Field(True)
+
+
+class KPIImproveRequest(BaseModel):
+    name: str = Field(..., description="KPI識別名")
+    target: float = Field(..., description="目標値")
+    context: str = Field("", description="改善対象コンテキスト")
+    n_cycles: int = Field(3, ge=1, le=10, description="改善サイクル数")
+    higher_is_better: bool = Field(True)
+    action_budget: int = Field(3, ge=1, le=6)
+    early_stop: bool = Field(True, description="目標達成時に早期終了するか")
+
+
+def _llmo_measure_fn(text: str) -> float:
+    """LLMO スコアを KPI 計測関数として使用。"""
+    from open_mythos.llmo import LLMOScorer
+    return LLMOScorer().score(text).llmo_total
+
+
+@app.post(
+    "/v1/kpi/measure",
+    tags=["kpi"],
+    summary="KPI 計測",
+    description="コンテキストに対して KPI 値を計測し KPISnapshot を返す。",
+)
+def kpi_measure(req: KPIMeasureRequest, _: str = Depends(verify_api_key)):
+    from open_mythos.kpi_agent import KPIDefinition, KPIAgent
+
+    kpi = KPIDefinition(
+        name=req.name,
+        target=req.target,
+        measure_fn=_llmo_measure_fn,
+        context=req.context,
+        higher_is_better=req.higher_is_better,
+    )
+    agent = KPIAgent(kpi)
+    snapshot = agent.measure(req.context, cycle=0)
+    gap_report = agent.analyze(snapshot)
+    return {
+        "kpi_name": snapshot.kpi_name,
+        "value": round(snapshot.value, 4),
+        "target": req.target,
+        "gap": round(gap_report.gap, 4),
+        "gap_pct": gap_report.gap_pct,
+        "priority": gap_report.priority,
+        "diagnosis": gap_report.diagnosis,
+        "achieved": gap_report.achieved,
+    }
+
+
+@app.post(
+    "/v1/kpi/improve",
+    tags=["kpi"],
+    summary="KPI 自律改善",
+    description=(
+        "measure → analyze → plan → execute サイクルを n_cycles 回自律実行し、"
+        "KPI を目標値に近づける。"
+    ),
+)
+def kpi_improve(req: KPIImproveRequest, _: str = Depends(verify_api_key)):
+    from open_mythos.kpi_agent import KPIDefinition, KPIAgent
+
+    kpi = KPIDefinition(
+        name=req.name,
+        target=req.target,
+        measure_fn=_llmo_measure_fn,
+        context=req.context,
+        higher_is_better=req.higher_is_better,
+        action_budget=req.action_budget,
+    )
+    agent = KPIAgent(kpi)
+    result = agent.improve_loop(n_cycles=req.n_cycles, early_stop=req.early_stop)
+
+    return {
+        "kpi_name": result.kpi_name,
+        "initial_value": round(result.initial_snapshot.value, 4),
+        "final_value": round(result.final_snapshot.value, 4),
+        "target": req.target,
+        "achieved_target": result.achieved_target,
+        "improvement": round(result.improvement, 4),
+        "improvement_pct": round(result.improvement_pct, 2),
+        "n_cycles_used": result.n_cycles_used,
+        "total_latency_ms": result.total_latency_ms,
+        "snapshots": [
+            {"cycle": s.cycle, "value": round(s.value, 4)}
+            for s in result.snapshots
+        ],
+    }
+
+
+# ---------------------------------------------------------------------------
 # Sprint 20: Debate Orchestrator endpoints
 # ---------------------------------------------------------------------------
 

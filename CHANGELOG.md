@@ -4,6 +4,36 @@ All notable changes to OpenMythos are documented here.
 
 ---
 
+## [0.24.0] — 2026-06-01
+
+### Sprint 21: KPI駆動自己改善 — KPIAgent (P2パターン)
+
+#### KPIAgent (`open_mythos/kpi_agent.py`)
+
+- `KPIDefinition` — KPI名・目標値・計測関数・higher_is_better・action_budget
+- `KPISnapshot` — 計測値・サイクル番号・gap_to() / achieved() メソッド
+- `GapReport` — 目標差分・優先度 (high/medium/low)・診断コメント
+- `Action` — 変換関数・estimated_impact・priority を持つ改善アクション
+- `ActionPlan.top_actions(n)` — estimated_impact 降順で上位 n 件を返す
+- `KPIImproveResult` — 初期/最終スナップショット・improvement / improvement_pct
+- `KPIAgent.measure()` — 計測関数を呼び出し KPISnapshot を生成
+- `KPIAgent.analyze()` — GapReport 生成 (gap_pct > 30 → high / > 10 → medium)
+- `KPIAgent.plan()` — estimated_impact 降順でアクションを action_budget 件選択
+- `KPIAgent.execute()` — ActionPlan の変換関数を context に順次適用
+- `KPIAgent.improve_loop()` — measure→analyze→plan→execute を n_cycles 自律実行・早期終了対応
+- 組み込みアクション 6種: add_structure / boost_entities / answer_first / add_citations / expand_content / inject_keywords
+
+#### API (`serve/api.py`)
+
+- `POST /v1/kpi/measure` — コンテキストを計測して gap / priority / diagnosis を返す
+- `POST /v1/kpi/improve` — n_cycles サイクルの自律改善を実行し improvement_pct を返す
+
+#### テスト (`tests/test_sprint21.py`)
+
+- `tests/test_sprint21.py` — 40 tests ALL PASS
+
+---
+
 ## [0.23.0] — 2026-06-01
 
 ### Sprint 20: 討議型集合知 — DebateOrchestrator (P1パターン)

@@ -80,6 +80,15 @@ from open_mythos.debate import (
     ConsensusEngine,
     DebateOrchestrator,
 )
+from open_mythos.kpi_agent import (
+    KPIDefinition,
+    KPISnapshot,
+    GapReport,
+    Action,
+    ActionPlan,
+    KPIImproveResult,
+    KPIAgent,
+)
 from open_mythos.security import InputGuard, OutputGuard, SecurityCheckResult
 from open_mythos.swarm import (
     SwarmConfig,
@@ -146,6 +155,14 @@ __all__ = [
     "HyperloopBlock",
     "HyperloopMythos",
     "cli_main",
+    # Sprint 21: KPI Agent
+    "KPIDefinition",
+    "KPISnapshot",
+    "GapReport",
+    "Action",
+    "ActionPlan",
+    "KPIImproveResult",
+    "KPIAgent",
     # Sprint 20: Debate Orchestrator
     "DebateConfig",
     "DebateRound",

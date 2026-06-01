@@ -230,14 +230,14 @@
 
 | task-id | 説明 | 状態 |
 |---------|------|------|
-| 21.1 | `open_mythos/kpi_agent.py` — `KPIDefinition` / `KPISnapshot` / `GapReport` dataclass | 未着手 |
-| 21.2 | `open_mythos/kpi_agent.py` — `KPIAgent.measure()` — 現在KPI値を計測しスナップショット保存 | 未着手 |
-| 21.3 | `open_mythos/kpi_agent.py` — `KPIAgent.plan()` — GapAnalysis → ActionPlan生成 (priority / estimated_impact) | 未着手 |
-| 21.4 | `open_mythos/kpi_agent.py` — `KPIAgent.execute()` — ActionPlan を ReActAgent 経由で実行 | 未着手 |
-| 21.5 | `open_mythos/kpi_agent.py` — `KPIAgent.improve_loop()` — measure→plan→execute を n_cycles 自律実行 | 未着手 |
-| 21.6 | `serve/api.py` — `/v1/kpi/define` / `/v1/kpi/measure` / `/v1/kpi/improve` エンドポイント | 未着手 |
-| 21.T | `tests/test_sprint21.py` — 40 tests (KPIDefinition / GapReport / ActionPlan / improve_loop) | 未着手 |
-| 21.V | PyPI v0.24.0 + CHANGELOG | 未着手 |
+| 21.1 | `open_mythos/kpi_agent.py` — `KPIDefinition` / `KPISnapshot` / `GapReport` / `Action` / `ActionPlan` / `KPIImproveResult` | cc:完了 |
+| 21.2 | `open_mythos/kpi_agent.py` — `KPIAgent.measure()` — KPI値計測・スナップショット保存 | cc:完了 |
+| 21.3 | `open_mythos/kpi_agent.py` — `KPIAgent.analyze()` / `plan()` — Gap分析 → ActionPlan生成 (estimated_impact順) | cc:完了 |
+| 21.4 | `open_mythos/kpi_agent.py` — `KPIAgent.execute()` — アクション変換関数を順次適用 | cc:完了 |
+| 21.5 | `open_mythos/kpi_agent.py` — `KPIAgent.improve_loop()` — measure→analyze→plan→execute を n_cycles 自律実行 | cc:完了 |
+| 21.6 | `serve/api.py` — `/v1/kpi/measure` / `/v1/kpi/improve` エンドポイント | cc:完了 |
+| 21.T | `tests/test_sprint21.py` — 40 tests (KPIDefinition / GapReport / ActionPlan / improve_loop / API) | cc:完了 |
+| 21.V | PyPI v0.24.0 + CHANGELOG | cc:完了 |
 
 **DoD**: LLMO KPI を target に対して 2サイクル以内に +10% 改善できること
 
