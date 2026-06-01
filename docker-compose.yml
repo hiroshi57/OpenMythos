@@ -1,12 +1,16 @@
 version: "3.9"
 
-# OpenMythos 本番 Serving スタック
+# OpenMythos 本番 Serving スタック (Sprint 17 更新: Gunicorn + 認証 + レート制限)
+#
 # サービス構成:
-#   api     — FastAPI 推論サーバ (PORT 8000)
+#   api     — Gunicorn + Uvicorn workers 推論サーバ (PORT 8000)
 #   monitor — 精度監視 & ドリフト検知 (PORT 8002)
 #
 # 起動:
-#   docker compose up --build
+#   docker compose up --build -d
+#
+# 認証を有効化:
+#   API_KEY=your-secret-key docker compose up -d
 #
 # GPU 対応 (NVIDIA Container Toolkit 必須):
 #   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up
@@ -17,32 +21,51 @@ services:
       context: .
       dockerfile: serve/Dockerfile
     image: openmythos-serve:latest
+    container_name: openmythos-api
     ports:
       - "8000:8000"
     environment:
+      # ---- モデル設定 ----
       DEVICE: "cpu"
       DEFAULT_LOOPS: "4"
       MAX_LOOPS: "16"
       MODEL_DIM: "256"
       MODEL_ATTN: "gqa"
       TOKENIZER_NAME: "gpt2"
+      WORKERS: "2"                         # Gunicorn ワーカー数
       # MODEL_CHECKPOINT: "/checkpoints/model.pt"
+
+      # ---- セキュリティ (Sprint 17) ----
+      # API_KEY: "your-secret-key-here"    # コメントを外して認証を有効化
+      RATE_LIMIT_RPM: "60"                 # 1分あたりのリクエスト上限
+
+      # ---- 生成パラメータ ----
+      MAX_NEW_TOKENS: "256"
+      TEMPERATURE: "1.0"
+      TOP_K: "50"
+      TOP_P: "0.95"
     volumes:
       - ./data:/app/data:ro          # 推論用データ (read-only)
-      # - ./checkpoints:/checkpoints # 学習済みモデル (必要時)
+      - ./checkpoints:/checkpoints:ro
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 60s
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   monitor:
     build:
       context: .
       dockerfile: serve/Dockerfile
     image: openmythos-serve:latest
+    container_name: openmythos-monitor
     ports:
       - "8002:8002"
     environment:
