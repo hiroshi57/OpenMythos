@@ -80,6 +80,26 @@ from open_mythos.debate import (
     ConsensusEngine,
     DebateOrchestrator,
 )
+from open_mythos.self_distill import (
+    DistillSample,
+    DistillDataset,
+    OutputFilter,
+    SFTResult,
+    SelfDistillConfig,
+    SelfDistillRoundResult,
+    SelfDistillResult,
+    SelfDistillCollector,
+    SelfDistillLoop,
+)
+from open_mythos.error_memory import (
+    MistakeRecord,
+    ErrorMemoryStore,
+    MistakeClassifier,
+    PreventionRule,
+    RuleExtractor,
+    GuardResult,
+    MistakeGuard,
+)
 from open_mythos.external_signal import (
     ExternalSignal,
     ImpactEstimate,
@@ -173,6 +193,24 @@ __all__ = [
     "HyperloopBlock",
     "HyperloopMythos",
     "cli_main",
+    # Sprint 25: Self Distill Loop
+    "DistillSample",
+    "DistillDataset",
+    "OutputFilter",
+    "SFTResult",
+    "SelfDistillConfig",
+    "SelfDistillRoundResult",
+    "SelfDistillResult",
+    "SelfDistillCollector",
+    "SelfDistillLoop",
+    # Sprint 24: Error Memory / Mistake Guard
+    "MistakeRecord",
+    "ErrorMemoryStore",
+    "MistakeClassifier",
+    "PreventionRule",
+    "RuleExtractor",
+    "GuardResult",
+    "MistakeGuard",
     # Sprint 23: External Signal Agent
     "ExternalSignal",
     "ImpactEstimate",

@@ -1908,6 +1908,173 @@ def ab_infer(req: ABInferRequest):
 
 
 # ---------------------------------------------------------------------------
+# Sprint 25: Self Distill Loop endpoints
+# ---------------------------------------------------------------------------
+
+
+class DistillRunRequest(BaseModel):
+    prompts: list = Field(..., description="蒸留に使うプロンプトリスト")
+    n_rounds: int = Field(3, ge=1, le=10, description="蒸留ラウンド数")
+    score_threshold: float = Field(0.6, ge=0.0, le=1.0, description="フィルタスコア閾値")
+    early_stop_score: float = Field(0.85, ge=0.0, le=1.0, description="早期終了スコア閾値")
+
+
+@app.post(
+    "/v1/distill/run",
+    tags=["distill"],
+    summary="自己蒸留ループ実行",
+    description="Collect→Filter→SFT→Eval サイクルを n_rounds 実行し蒸留結果を返す。",
+)
+def distill_run(req: DistillRunRequest, _: str = Depends(verify_api_key)):
+    from open_mythos.self_distill import SelfDistillConfig, SelfDistillLoop
+
+    cfg = SelfDistillConfig(
+        n_rounds=req.n_rounds,
+        score_threshold=req.score_threshold,
+        early_stop_score=req.early_stop_score,
+    )
+    loop = SelfDistillLoop(cfg)
+    result = loop.run(prompts=[str(p) for p in req.prompts])
+
+    return {
+        "rounds_completed": result.rounds_completed,
+        "total_samples": result.total_samples,
+        "initial_mean_score": result.initial_mean_score,
+        "final_mean_score": result.final_mean_score,
+        "mean_score_improvement": result.mean_score_improvement,
+        "early_stopped": result.early_stopped,
+        "total_latency_ms": result.total_latency_ms,
+        "rounds": [
+            {
+                "round": r.round_num,
+                "collected": r.collected,
+                "filtered": r.filtered,
+                "mean_score": r.mean_score,
+            }
+            for r in result.round_results
+        ],
+    }
+
+
+@app.get(
+    "/v1/distill/status",
+    tags=["distill"],
+    summary="蒸留ステータス",
+    description="蒸留ループのステータスを返す (スタブ)。",
+)
+def distill_status(_: str = Depends(verify_api_key)):
+    return {"status": "idle", "message": "蒸留ループは現在待機中です。"}
+
+
+# ---------------------------------------------------------------------------
+# Sprint 24: Error Memory / Mistake Guard endpoints
+# ---------------------------------------------------------------------------
+
+
+class MistakeRecordRequest(BaseModel):
+    text: str = Field(..., description="ミステキスト")
+    category: Optional[str] = Field(None, description="カテゴリ (省略時は自動分類)")
+    severity: str = Field("medium", description="重要度 high/medium/low")
+    context: str = Field("", description="発生コンテキスト")
+
+
+class MistakeCheckRequest(BaseModel):
+    text: str = Field(..., description="チェック対象テキスト")
+
+
+_mistake_store: Optional[object] = None
+
+
+def _get_mistake_store():
+    global _mistake_store
+    if _mistake_store is None:
+        from open_mythos.error_memory import ErrorMemoryStore
+        _mistake_store = ErrorMemoryStore()
+    return _mistake_store
+
+
+@app.post(
+    "/v1/mistakes/record",
+    tags=["mistakes"],
+    summary="ミス記録",
+    description="ミスをストアに記録する。category 省略時は自動分類。",
+)
+def mistakes_record(req: MistakeRecordRequest, _: str = Depends(verify_api_key)):
+    from open_mythos.error_memory import MistakeClassifier
+
+    store = _get_mistake_store()
+    category = req.category
+    if not category:
+        category = MistakeClassifier().classify(req.text)
+    record = store.append(req.text, category=category, severity=req.severity, context=req.context)
+    return {
+        "record_id": record.record_id,
+        "category": record.category,
+        "severity": record.severity,
+        "total_records": store.total,
+    }
+
+
+@app.get(
+    "/v1/mistakes/rules",
+    tags=["mistakes"],
+    summary="防止ルール取得",
+    description="蓄積ミスから自動生成した防止ルール一覧を返す。",
+)
+def mistakes_rules(_: str = Depends(verify_api_key)):
+    from open_mythos.error_memory import RuleExtractor
+
+    store = _get_mistake_store()
+    rules = RuleExtractor(store).extract()
+    return {
+        "n_rules": len(rules),
+        "rules": [
+            {
+                "rule_id": r.rule_id,
+                "category": r.category,
+                "pattern": r.pattern,
+                "description": r.description,
+                "severity": r.severity,
+                "source_count": r.source_count,
+            }
+            for r in rules
+        ],
+    }
+
+
+@app.post(
+    "/v1/mistakes/check",
+    tags=["mistakes"],
+    summary="ミスガード チェック",
+    description="テキストをルールDB照合し、ブロック判定を返す。",
+)
+def mistakes_check(req: MistakeCheckRequest, _: str = Depends(verify_api_key)):
+    from open_mythos.error_memory import RuleExtractor, MistakeGuard
+
+    store = _get_mistake_store()
+    rules = RuleExtractor(store).extract()
+    guard = MistakeGuard(rules=rules, store=store)
+    result = guard.check(req.text)
+
+    return {
+        "text": req.text,
+        "blocked": result.blocked,
+        "block_reason": result.block_reason,
+        "matched_rule": (
+            {
+                "rule_id": result.matched_rule.rule_id,
+                "category": result.matched_rule.category,
+                "pattern": result.matched_rule.pattern,
+            }
+            if result.matched_rule
+            else None
+        ),
+        "n_similar_records": len(result.similar_records),
+        "check_latency_ms": result.check_latency_ms,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Sprint 23: External Signal Agent endpoints
 # ---------------------------------------------------------------------------
 

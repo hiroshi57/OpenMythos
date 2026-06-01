@@ -291,14 +291,14 @@
 
 | task-id | 説明 | 状態 |
 |---------|------|------|
-| 24.1 | `open_mythos/error_memory.py` — `MistakeRecord` / `MistakeCategory` dataclass | 未着手 |
-| 24.2 | `open_mythos/error_memory.py` — `ErrorMemoryStore` — append / query_similar (TF-IDF) / stats | 未着手 |
-| 24.3 | `open_mythos/error_memory.py` — `MistakeClassifier.classify()` — エラータイプ自動分類 (8カテゴリ) | 未着手 |
-| 24.4 | `open_mythos/error_memory.py` — `RuleExtractor.extract()` — 蓄積ミスから防止ルールを自動生成 | 未着手 |
-| 24.5 | `open_mythos/error_memory.py` — `MistakeGuard.check()` — 入力/出力をルールDB照合し事前ブロック | 未着手 |
-| 24.6 | `serve/api.py` — `/v1/mistakes/record` / `/v1/mistakes/rules` / `/v1/mistakes/check` エンドポイント | 未着手 |
-| 24.T | `tests/test_sprint24.py` — 40 tests (ErrorMemoryStore / RuleExtractor / MistakeGuard / API) | 未着手 |
-| 24.V | PyPI v0.27.0 + CHANGELOG | 未着手 |
+| 24.1 | `open_mythos/error_memory.py` — `MistakeRecord` / `ErrorMemoryStore` / `MistakeClassifier` / `PreventionRule` / `RuleExtractor` / `GuardResult` / `MistakeGuard` | cc:完了 |
+| 24.2 | `open_mythos/error_memory.py` — `ErrorMemoryStore.append/query_similar(Jaccard)/stats/records_by_category` | cc:完了 |
+| 24.3 | `open_mythos/error_memory.py` — `MistakeClassifier.classify()` — 8カテゴリ自動分類 | cc:完了 |
+| 24.4 | `open_mythos/error_memory.py` — `RuleExtractor.extract()` — 最頻シグナルからルール自動生成 | cc:完了 |
+| 24.5 | `open_mythos/error_memory.py` — `MistakeGuard.check()` — ルールDB照合・事前ブロック | cc:完了 |
+| 24.6 | `serve/api.py` — `/v1/mistakes/record` / `/v1/mistakes/rules` / `/v1/mistakes/check` | cc:完了 |
+| 24.T | `tests/test_sprint24.py` — 40 tests ALL PASS | cc:完了 |
+| 24.V | PyPI v0.27.0 + CHANGELOG | cc:完了 |
 
 **DoD**: 同カテゴリのミスを10件蓄積後、MistakeGuard が類似入力を 80% 以上ブロックできること
 
@@ -312,13 +312,13 @@
 
 | task-id | 説明 | 状態 |
 |---------|------|------|
-| 25.1 | `open_mythos/self_distill.py` — `DistillSample` / `DistillDataset` dataclass | 未着手 |
-| 25.2 | `open_mythos/self_distill.py` — `OutputFilter.filter()` — LLMO スコア閾値フィルタ + 多様性保証 | 未着手 |
-| 25.3 | `open_mythos/self_distill.py` — `SelfDistillCollector` — 推論実行 → スコア → 保存 パイプライン | 未着手 |
-| 25.4 | `open_mythos/self_distill.py` — `SelfDistillLoop.run()` — Collect→Filter→SFT→Eval を n_rounds 自律実行 | 未着手 |
-| 25.5 | `serve/api.py` — `/v1/distill/collect` / `/v1/distill/train` / `/v1/distill/status` エンドポイント | 未着手 |
-| 25.T | `tests/test_sprint25.py` — 40 tests (OutputFilter / SelfDistillCollector / SelfDistillLoop / API) | 未着手 |
-| 25.V | PyPI v0.28.0 + CHANGELOG | 未着手 |
+| 25.1 | `open_mythos/self_distill.py` — `DistillSample` / `DistillDataset` / `OutputFilter` / `SFTResult` / `SelfDistillConfig` / `SelfDistillRoundResult` / `SelfDistillResult` | cc:完了 |
+| 25.2 | `open_mythos/self_distill.py` — `OutputFilter.filter()` — スコア閾値 + 最短長 + Jaccard重複除去 | cc:完了 |
+| 25.3 | `open_mythos/self_distill.py` — `SelfDistillCollector.collect()` — 推論→スコア→DistillSample | cc:完了 |
+| 25.4 | `open_mythos/self_distill.py` — `SelfDistillLoop.run()` — Collect→Filter→SFT→Eval を n_rounds 自律実行・早期終了 | cc:完了 |
+| 25.5 | `serve/api.py` — `/v1/distill/run` / `/v1/distill/status` エンドポイント | cc:完了 |
+| 25.T | `tests/test_sprint25.py` — 40 tests ALL PASS | cc:完了 |
+| 25.V | PyPI v0.28.0 + CHANGELOG | cc:完了 |
 
 **DoD**: 3ラウンド後に LLMO スコア平均 +5% 以上改善、訓練データ品質 (mean_score > 0.7) を維持
 

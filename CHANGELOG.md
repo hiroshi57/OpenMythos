@@ -4,6 +4,60 @@ All notable changes to OpenMythos are documented here.
 
 ---
 
+## [0.28.0] — 2026-06-01
+
+### Sprint 25: 継続的自己蒸留 — SelfDistillLoop (P6パターン)
+
+#### SelfDistillLoop (`open_mythos/self_distill.py`)
+
+- `DistillSample` — prompt / output / score / round_num / to_jsonl_dict()
+- `DistillDataset` — add / add_batch / mean_score / samples_above() / to_jsonl()
+- `OutputFilter.filter()` — スコア閾値 + 最短長 + Jaccard重複除去 (多様性保証)
+- `SelfDistillCollector.collect()` — 推論→スコア→DistillSample リスト化
+- `SelfDistillLoop.run()` — Collect→Filter→SFT(シミュレート)→Eval を n_rounds 自律実行
+- 早期終了: mean_score >= early_stop_score で残りラウンドをスキップ
+- デフォルト生成/スコア関数: エコー生成 + LLMO スコア
+
+#### API (`serve/api.py`)
+
+- `POST /v1/distill/run` — n_rounds 蒸留を実行し rounds / mean_score_improvement を返す
+- `GET  /v1/distill/status` — 蒸留ステータス
+
+#### テスト (`tests/test_sprint25.py`)
+
+- `tests/test_sprint25.py` — 40 tests ALL PASS
+
+---
+
+### Sprint 24: ミスから学習 — ErrorMemory & MistakeGuard (P5パターン)
+
+#### ErrorMemory (`open_mythos/error_memory.py`)
+
+- `MistakeRecord` — text / category / severity / word_set() (Jaccard用)
+- `ErrorMemoryStore` — append / query_similar(Jaccard) / stats / records_by_category / max_records
+- `MistakeClassifier.classify()` — 8カテゴリ (security/privacy/hallucination/format/toxicity/loop/quality/other)
+- `PreventionRule.matches()` — 大小文字無視のパターンマッチ
+- `RuleExtractor.extract()` — 最頻シグナルキーワードから防止ルールを自動生成
+- `MistakeGuard.check()` — ルールDB照合・ブロック判定・類似ミス参照
+
+#### API (`serve/api.py`)
+
+- `POST /v1/mistakes/record` — ミス記録 (category 省略時は自動分類)
+- `GET  /v1/mistakes/rules` — 蓄積ミスから自動生成したルール一覧
+- `POST /v1/mistakes/check` — テキストをルールDB照合しブロック判定
+
+#### テスト (`tests/test_sprint24.py`)
+
+- `tests/test_sprint24.py` — 40 tests ALL PASS
+
+---
+
+### Sprint 23: 外部要因適応 — ExternalSignalAgent (P4パターン) [v0.26.0]
+
+(詳細は上記 Sprint 23 エントリを参照)
+
+---
+
 ## [0.25.0] — 2026-06-01
 
 ### Sprint 22: ボトルネック発見・解消 — ProfilerAgent (P3パターン)
