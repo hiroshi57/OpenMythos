@@ -1908,6 +1908,104 @@ def ab_infer(req: ABInferRequest):
 
 
 # ---------------------------------------------------------------------------
+# Sprint 23: External Signal Agent endpoints
+# ---------------------------------------------------------------------------
+
+
+class SignalDetectRequest(BaseModel):
+    context: str = Field("", description="分析対象コンテキスト")
+    keyword: str = Field("", description="対象キーワード")
+    month: Optional[int] = Field(None, ge=1, le=12, description="現在月 (1〜12)")
+    kpi_name: str = Field("llmo_score", description="影響推定するKPI名")
+
+
+class SignalCounterRequest(BaseModel):
+    context: str = Field(..., description="最適化対象コンテキスト")
+    keyword: str = Field("", description="対象キーワード")
+    month: Optional[int] = Field(None, ge=1, le=12, description="現在月")
+    kpi_name: str = Field("llmo_score")
+
+
+@app.post(
+    "/v1/signal/detect",
+    tags=["signal"],
+    summary="外部シグナル検出",
+    description="季節・トレンド・競合・市場シグナルを検出し KPI への推定影響を返す。",
+)
+def signal_detect(req: SignalDetectRequest, _: str = Depends(verify_api_key)):
+    from open_mythos.external_signal import SignalDetector, ImpactEstimator
+
+    detector = SignalDetector()
+    estimator = ImpactEstimator()
+    signals = detector.detect(req.context, keyword=req.keyword, month=req.month)
+    impacts = [estimator.estimate(s, req.kpi_name) for s in signals]
+    net = sum(i.impact_delta for i in impacts)
+
+    return {
+        "keyword": req.keyword,
+        "signals": [
+            {
+                "type": s.signal_type,
+                "name": s.name,
+                "strength": round(s.strength, 4),
+                "direction": s.direction,
+                "is_threat": s.is_threat,
+            }
+            for s in signals
+        ],
+        "impacts": [
+            {
+                "kpi_name": i.kpi_name,
+                "impact_delta": i.impact_delta,
+                "severity": i.severity,
+                "confidence": i.confidence,
+                "explanation": i.explanation,
+            }
+            for i in impacts
+        ],
+        "net_kpi_impact": round(net, 4),
+        "n_threats": sum(1 for s in signals if s.is_threat),
+        "n_opportunities": sum(1 for s in signals if s.is_opportunity),
+    }
+
+
+@app.post(
+    "/v1/signal/counter",
+    tags=["signal"],
+    summary="外部シグナル対抗アクション",
+    description="シグナルを検出し、対応するカウンターアクションを適用した最適化コンテキストを返す。",
+)
+def signal_counter(req: SignalCounterRequest, _: str = Depends(verify_api_key)):
+    from open_mythos.external_signal import ExternalSignalAgent
+
+    agent = ExternalSignalAgent()
+    result = agent.run(
+        context=req.context,
+        keyword=req.keyword,
+        month=req.month,
+        kpi_name=req.kpi_name,
+    )
+
+    return {
+        "keyword": result.keyword,
+        "n_signals": len(result.signals),
+        "threat_count": result.threat_count,
+        "opportunity_count": result.opportunity_count,
+        "net_kpi_impact": result.net_kpi_impact,
+        "counter_actions": [
+            {
+                "action_id": a.action_id,
+                "description": a.description,
+                "estimated_kpi_recovery": a.estimated_kpi_recovery,
+            }
+            for a in result.counter_actions
+        ],
+        "optimized_context": result.optimized_context,
+        "total_latency_ms": result.total_latency_ms,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Sprint 22: Profiler Agent endpoints
 # ---------------------------------------------------------------------------
 

@@ -80,6 +80,15 @@ from open_mythos.debate import (
     ConsensusEngine,
     DebateOrchestrator,
 )
+from open_mythos.external_signal import (
+    ExternalSignal,
+    ImpactEstimate,
+    CounterAction,
+    ExternalSignalResult,
+    SignalDetector,
+    ImpactEstimator,
+    ExternalSignalAgent,
+)
 from open_mythos.profiler import (
     StageMetrics,
     ProfileResult,
@@ -164,6 +173,14 @@ __all__ = [
     "HyperloopBlock",
     "HyperloopMythos",
     "cli_main",
+    # Sprint 23: External Signal Agent
+    "ExternalSignal",
+    "ImpactEstimate",
+    "CounterAction",
+    "ExternalSignalResult",
+    "SignalDetector",
+    "ImpactEstimator",
+    "ExternalSignalAgent",
     # Sprint 22: Profiler Agent
     "StageMetrics",
     "ProfileResult",

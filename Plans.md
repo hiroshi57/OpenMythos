@@ -271,13 +271,13 @@
 
 | task-id | 説明 | 状態 |
 |---------|------|------|
-| 23.1 | `open_mythos/external_signal.py` — `ExternalSignal` / `SignalType` / `ImpactEstimate` dataclass | 未着手 |
-| 23.2 | `open_mythos/external_signal.py` — `SignalDetector.detect()` — 季節スコア / トレンドスパイク / 競合変化を数値化 | 未着手 |
-| 23.3 | `open_mythos/external_signal.py` — `ImpactEstimator.estimate()` — シグナル強度 → KPI影響量マッピング | 未着手 |
-| 23.4 | `open_mythos/external_signal.py` — `ExternalSignalAgent.counter_action()` — 影響を打ち消す内部アクション生成 | 未着手 |
-| 23.5 | `serve/api.py` — `/v1/signal/detect` / `/v1/signal/counter` エンドポイント | 未着手 |
-| 23.T | `tests/test_sprint23.py` — 35 tests (SignalDetector / ImpactEstimator / counter_action / seasonal) | 未着手 |
-| 23.V | PyPI v0.26.0 + CHANGELOG | 未着手 |
+| 23.1 | `open_mythos/external_signal.py` — `ExternalSignal` / `ImpactEstimate` / `CounterAction` / `ExternalSignalResult` | cc:完了 |
+| 23.2 | `open_mythos/external_signal.py` — `SignalDetector.detect()` — 季節/トレンド/競合/市場シグナルを数値化 | cc:完了 |
+| 23.3 | `open_mythos/external_signal.py` — `ImpactEstimator.estimate()` — 種別係数×強度 → KPI 影響量マッピング | cc:完了 |
+| 23.4 | `open_mythos/external_signal.py` — `ExternalSignalAgent.run()` — detect→estimate→counter_action 一括実行 | cc:完了 |
+| 23.5 | `serve/api.py` — `/v1/signal/detect` / `/v1/signal/counter` エンドポイント | cc:完了 |
+| 23.T | `tests/test_sprint23.py` — 35 tests (SignalDetector / ImpactEstimator / CounterAction / ExternalSignalAgent / API) | cc:完了 |
+| 23.V | PyPI v0.26.0 + CHANGELOG | cc:完了 |
 
 **DoD**: 季節シグナル強度 0.8 のとき counter_action を生成し LLMO score が維持されること
 
