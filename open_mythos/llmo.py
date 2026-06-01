@@ -31,6 +31,36 @@ import re
 from dataclasses import dataclass, field
 from typing import Sequence
 
+# 日本語形態素解析: janome → fugashi → フォールバック の順で試みる
+_JANOME_TOKENIZER = None
+_FUGASHI_TAGGER = None
+
+def _init_ja_tokenizer() -> None:
+    global _JANOME_TOKENIZER, _FUGASHI_TAGGER
+    try:
+        from janome.tokenizer import Tokenizer as JanomeTokenizer
+        _JANOME_TOKENIZER = JanomeTokenizer()
+        return
+    except ImportError:
+        pass
+    try:
+        import fugashi
+        _FUGASHI_TAGGER = fugashi.Tagger()
+    except (ImportError, RuntimeError):
+        pass
+
+_init_ja_tokenizer()
+
+
+def _tokenize_ja(text: str) -> list[str]:
+    """日本語テキストを単語リストに分割する。形態素解析器がない場合は文字 N-gram で近似。"""
+    if _JANOME_TOKENIZER is not None:
+        return [t.surface for t in _JANOME_TOKENIZER.tokenize(text)]
+    if _FUGASHI_TAGGER is not None:
+        return [str(w) for w in _FUGASHI_TAGGER(text)]
+    # フォールバック: 2文字以上の連続漢字・ひらがな・カタカナ・英数字を抽出
+    return re.findall(r'[一-龥ぁ-んァ-ヶa-zA-Z0-9_]{2,}', text)
+
 
 # ---------------------------------------------------------------------------
 # データクラス
@@ -62,6 +92,12 @@ class LLMOScore:
     sentence_count: int = 0
     """文の数。"""
 
+    weighted_keyword_density: float = 0.0
+    """重み付きキーワード密度 (title:×3, h1:×2, body:×1)。0はキーワード未指定。"""
+
+    ja_tokens: list[str] = field(default_factory=list)
+    """日本語形態素解析で抽出したトークンリスト（日本語テキストのみ）。"""
+
     @classmethod
     def weights(cls) -> dict[str, float]:
         return {
@@ -69,6 +105,26 @@ class LLMOScore:
             "answer_directness": 0.40,
             "citability": 0.30,
         }
+
+
+@dataclass
+class ABTestResult:
+    """SEO A/B テスト結果。"""
+
+    winner_index: int
+    """最高スコアのバリアントのインデックス。"""
+
+    scores: list[float]
+    """各バリアントの llmo_total スコア。"""
+
+    deltas: list[float]
+    """各バリアントの winner からの差分。"""
+
+    significant: bool
+    """統計的有意差あり（最高と最低の差が threshold 以上）。"""
+
+    threshold: float = 0.05
+    """有意差判定閾値。"""
 
 
 # ---------------------------------------------------------------------------
@@ -88,7 +144,7 @@ _NUM_PATTERN = re.compile(
 
 # 固有名詞パターン (英数字大文字で始まる語 / カタカナ連続 / ブランド名)
 _PROPER_NOUN_EN = re.compile(r"\b[A-Z][a-zA-Z]{2,}(?:\s+[A-Z][a-zA-Z]{2,}){0,3}\b")
-_KATAKANA = re.compile(r"[ァ-ヶー]{3,}")  # 3文字以上カタカナ
+_KATAKANA = re.compile(r"[ァ-ヶー]{2,}")  # 3文字以上カタカナ
 
 # 専門語パターン (英数字混在の略語・技術語)
 _TECH_TERM = re.compile(r"\b[A-Z]{2,}(?:\d+)?(?:\.[0-9]+)?\b")
@@ -167,8 +223,14 @@ class LLMOScorer:
                 llmo_total=0.0,
             )
 
-        words = text.split()
-        word_count = len(words)
+        # 日本語テキストかどうかを判定して適切なトークナイズ
+        ja_tokens: list[str] = []
+        if self._is_japanese(text):
+            ja_tokens = _tokenize_ja(text)
+            word_count = len(ja_tokens)
+        else:
+            word_count = len(text.split())
+
         sentences = [s for s in _SENT_SPLIT.split(text.strip()) if s.strip()]
         sentence_count = max(len(sentences), 1)
 
@@ -189,10 +251,69 @@ class LLMOScorer:
             answer_directness=round(answer_directness, 4),
             citability=round(citability, 4),
             llmo_total=round(llmo_total, 4),
-            entities=entities[:20],  # 上位20件
+            entities=entities[:20],
             word_count=word_count,
             sentence_count=sentence_count,
+            ja_tokens=ja_tokens[:50],
         )
+
+    def score_with_keywords(
+        self,
+        text: str,
+        *,
+        title: str = "",
+        h1: str = "",
+        target_keyword: str = "",
+    ) -> LLMOScore:
+        """
+        タイトル・H1・本文の重み付きキーワード密度を含む詳細スコアを計算する。
+
+        重み: title ×3, h1 ×2, body ×1
+
+        Args:
+            text           -- 本文テキスト
+            title          -- ページタイトル（オプション）
+            h1             -- H1 見出し（オプション）
+            target_keyword -- ターゲットキーワード
+
+        Returns:
+            LLMOScore（weighted_keyword_density フィールドに値が入る）
+        """
+        result = self.score(text)
+        if not target_keyword:
+            return result
+
+        kw = target_keyword.lower()
+        is_ja = self._is_japanese(target_keyword)
+
+        def _count(src: str) -> int:
+            if not src:
+                return 0
+            if is_ja:
+                # 日本語は部分文字列マッチ（形態素境界に依存しない）
+                return src.lower().count(kw)
+            return len(re.findall(r'\b' + re.escape(kw) + r'\b', src.lower()))
+
+        def _token_len(src: str) -> int:
+            if not src:
+                return 0
+            tokens = _tokenize_ja(src) if is_ja else src.split()
+            return max(len(tokens), 1)
+
+        title_hits = _count(title) * 3
+        h1_hits = _count(h1) * 2
+        body_hits = _count(text)
+
+        # 分母: 重み付きトークン総数
+        title_len = _token_len(title) if title else 0
+        h1_len = _token_len(h1) if h1 else 0
+        body_len = max(result.word_count, 1)
+
+        denom = title_len * 3 + h1_len * 2 + body_len
+        wkd = (title_hits + h1_hits + body_hits) / denom if denom > 0 else 0.0
+
+        result.weighted_keyword_density = round(wkd, 5)
+        return result
 
     def batch_score(self, texts: Sequence[str]) -> list[LLMOScore]:
         """複数テキストを一括スコアリングする。"""
@@ -208,6 +329,38 @@ class LLMOScorer:
         scored = [(i, self.score(t)) for i, t in enumerate(texts)]
         scored.sort(key=lambda x: x[1].llmo_total, reverse=True)
         return [(pos + 1, s.llmo_total, s) for pos, (_, s) in enumerate(scored)]
+
+    def ab_test(
+        self,
+        variants: Sequence[str],
+        threshold: float = 0.05,
+    ) -> ABTestResult:
+        """
+        複数バリアントを一括評価して A/B テスト結果を返す。
+
+        Args:
+            variants  -- テキストバリアントのリスト (2件以上)
+            threshold -- 統計的有意差とみなすスコア差の閾値 (デフォルト 0.05)
+
+        Returns:
+            ABTestResult
+        """
+        if not variants:
+            return ABTestResult(winner_index=0, scores=[], deltas=[], significant=False, threshold=threshold)
+
+        scores = [self.score(v).llmo_total for v in variants]
+        winner_idx = scores.index(max(scores))
+        winner_score = scores[winner_idx]
+        deltas = [round(s - winner_score, 4) for s in scores]
+        significant = (max(scores) - min(scores)) >= threshold
+
+        return ABTestResult(
+            winner_index=winner_idx,
+            scores=[round(s, 4) for s in scores],
+            deltas=deltas,
+            significant=significant,
+            threshold=threshold,
+        )
 
     def compare(self, baseline: str, candidate: str) -> dict[str, float]:
         """
@@ -234,6 +387,15 @@ class LLMOScorer:
             "directness_delta": round(cs.answer_directness - bs.answer_directness, 4),
             "citability_delta": round(cs.citability - bs.citability, 4),
         }
+
+    # ------------------------------------------------------------------
+    # 日本語判定
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _is_japanese(text: str) -> bool:
+        """テキストに日本語文字（漢字・ひらがな・カタカナ）が含まれるか判定する。"""
+        return bool(re.search(r'[一-龥ぁ-んァ-ヶ]', text))
 
     # ------------------------------------------------------------------
     # Entity extraction
@@ -358,7 +520,7 @@ class LLMOScorer:
             avg_sent_len = word_count / len(sentences)
             if 10 <= avg_sent_len <= 30:
                 score += 0.15
-            elif avg_sent_len < 10 or avg_sent_len <= 40:
+            elif avg_sent_len < 10 or (30 < avg_sent_len <= 40):
                 score += 0.08
 
         return min(1.0, score)
