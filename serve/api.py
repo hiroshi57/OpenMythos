@@ -143,7 +143,7 @@ app = FastAPI(
         "**認証**: `Authorization: Bearer <api-key>` ヘッダ必須 (環境変数 `API_KEY` 設定時)。\n\n"
         "**レート制限**: デフォルト 60 rpm (環境変数 `RATE_LIMIT_RPM` で変更可)。"
     ),
-    version="0.21.0",
+    version="0.22.0",
     lifespan=lifespan,
     dependencies=[Depends(verify_api_key)],
     openapi_tags=[
@@ -152,7 +152,7 @@ app = FastAPI(
         {"name": "generate", "description": "テキスト生成 (SEO / LLMO / 広告コピー)"},
         {"name": "agent", "description": "多ターン対話エージェント"},
         {"name": "chat", "description": "OpenAI 互換 /v1/chat/completions"},
-        {"name": "seo", "description": "SEO スコアリング・コンテンツ生成"},
+        {"name": "seo", "description": "SEO/LLMO スコアリング・最適化・改善提案"},
         {"name": "thinking", "description": "Extended Thinking (内部思考トレース)"},
         {"name": "tools", "description": "Tool Use / Function Calling"},
         {"name": "rag", "description": "RAG (Retrieval-Augmented Generation)"},
@@ -850,9 +850,10 @@ def batch_infer(req: BatchRequest):
 # SEO / LLMO エンドポイント
 # ---------------------------------------------------------------------------
 
-from open_mythos.llmo import LLMOScorer  # noqa: E402
+from open_mythos.llmo import LLMOOptimizer, LLMOScorer  # noqa: E402
 
 _llmo_scorer = LLMOScorer()
+_llmo_optimizer = LLMOOptimizer(scorer=_llmo_scorer)
 
 
 class SEOScoreRequest(BaseModel):
@@ -1003,6 +1004,193 @@ def seo_generate(req: SEOGenerateRequest):
         entities=llmo.entities,
         word_count=llmo.word_count,
         loops_used=loops,
+        latency_ms=round(latency_ms, 2),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Sprint 19: LLMO 強化エンドポイント
+# ---------------------------------------------------------------------------
+
+
+class LLMOSuggestRequest(BaseModel):
+    text: str = Field(..., description="改善提案対象テキスト")
+    query: str = Field("", description="検索クエリ (指定時は query_relevance も分析)")
+    max_suggestions: int = Field(5, ge=1, le=10, description="最大提案数")
+
+
+class ImprovementOut(BaseModel):
+    category: str
+    priority: str
+    description: str
+    example: str = ""
+    expected_delta: float
+
+
+class LLMOSuggestResponse(BaseModel):
+    text_preview: str
+    llmo_total: float
+    entity_density: float
+    answer_directness: float
+    citability: float
+    query_relevance: float
+    intent_type: str
+    suggestions: list[ImprovementOut]
+    latency_ms: float
+
+
+@app.post(
+    "/v1/llmo/suggest",
+    response_model=LLMOSuggestResponse,
+    tags=["seo"],
+    summary="LLMO 改善提案",
+    description=(
+        "テキストを分析し、LLMO スコアを向上させる具体的な改善提案を返す。"
+        "`query` を指定すると query_relevance とクエリ意図型も分析する。"
+    ),
+)
+def llmo_suggest(req: LLMOSuggestRequest):
+    """LLMO 改善提案エンドポイント。
+
+    entity / directness / citability / structure / length / query の各軸で
+    priority 順に具体的な改善提案を返す。
+    """
+    t0 = time.perf_counter()
+    score = (
+        _llmo_scorer.score_with_query(req.text, req.query)
+        if req.query
+        else _llmo_scorer.score(req.text)
+    )
+    suggestions = _llmo_scorer.suggest_improvements(
+        req.text, query=req.query, max_suggestions=req.max_suggestions
+    )
+    latency_ms = (time.perf_counter() - t0) * 1000
+
+    return LLMOSuggestResponse(
+        text_preview=req.text[:100] + ("..." if len(req.text) > 100 else ""),
+        llmo_total=score.llmo_total,
+        entity_density=score.entity_density,
+        answer_directness=score.answer_directness,
+        citability=score.citability,
+        query_relevance=score.query_relevance,
+        intent_type=score.intent_type,
+        suggestions=[
+            ImprovementOut(
+                category=s.category,
+                priority=s.priority,
+                description=s.description,
+                example=s.example,
+                expected_delta=s.expected_delta,
+            )
+            for s in suggestions
+        ],
+        latency_ms=round(latency_ms, 2),
+    )
+
+
+class LLMOOptimizeRequest(BaseModel):
+    text: str = Field(..., description="最適化対象テキスト")
+    query: str = Field("", description="検索クエリ (指定時は query 関連最適化も実行)")
+    target_score: float = Field(
+        0.75, ge=0.1, le=1.0, description="目標 llmo_total スコア"
+    )
+    max_iterations: int = Field(3, ge=1, le=5, description="最大最適化イテレーション数")
+
+
+class LLMOOptimizeResponse(BaseModel):
+    original_text: str
+    optimized_text: str
+    original_llmo_total: float
+    optimized_llmo_total: float
+    improvement_pct: float
+    changes_applied: list[str]
+    iterations: int
+    target_achieved: bool
+    latency_ms: float
+
+
+@app.post(
+    "/v1/llmo/optimize",
+    response_model=LLMOOptimizeResponse,
+    tags=["seo"],
+    summary="LLMO テキスト自動最適化",
+    description=(
+        "テキストをルールベースで自動最適化し LLMO スコアを向上させる。"
+        "`target_score` 到達まで最大 `max_iterations` 回変換を繰り返す。"
+        "外部モデル不要 (pure Python)。"
+    ),
+)
+def llmo_optimize(req: LLMOOptimizeRequest):
+    """LLMO テキスト自動最適化エンドポイント。
+
+    entity_density / answer_directness / citability / query_relevance の各軸を
+    ルールベース変換で改善し、最適化前後のテキストとスコアを返す。
+    """
+    t0 = time.perf_counter()
+    result = _llmo_optimizer.optimize(
+        req.text,
+        query=req.query,
+        target_score=req.target_score,
+        max_iterations=req.max_iterations,
+    )
+    latency_ms = (time.perf_counter() - t0) * 1000
+
+    return LLMOOptimizeResponse(
+        original_text=result.original_text,
+        optimized_text=result.optimized_text,
+        original_llmo_total=result.original_score.llmo_total,
+        optimized_llmo_total=result.optimized_score.llmo_total,
+        improvement_pct=result.improvement_pct,
+        changes_applied=result.changes_applied,
+        iterations=result.iterations,
+        target_achieved=result.optimized_score.llmo_total >= req.target_score,
+        latency_ms=round(latency_ms, 2),
+    )
+
+
+class LLMOQueryScoreRequest(BaseModel):
+    text: str = Field(..., description="スコアリング対象テキスト")
+    query: str = Field(..., description="検索クエリ")
+
+
+class LLMOQueryScoreResponse(BaseModel):
+    entity_density: float
+    answer_directness: float
+    citability: float
+    llmo_total: float
+    query_relevance: float
+    intent_type: str
+    entities: list[str]
+    word_count: int
+    latency_ms: float
+
+
+@app.post(
+    "/v1/llmo/score",
+    response_model=LLMOQueryScoreResponse,
+    tags=["seo"],
+    summary="クエリ対応 LLMO スコアリング",
+    description=(
+        "クエリを考慮した LLMO スコアを計算する。"
+        "3 軸スコアに加え `query_relevance` (TF-IDF コサイン類似度) と "
+        "`intent_type` (informational / navigational / transactional / commercial) を返す。"
+    ),
+)
+def llmo_query_score(req: LLMOQueryScoreRequest):
+    """クエリ対応 LLMO スコアリングエンドポイント。"""
+    t0 = time.perf_counter()
+    score = _llmo_scorer.score_with_query(req.text, req.query)
+    latency_ms = (time.perf_counter() - t0) * 1000
+
+    return LLMOQueryScoreResponse(
+        entity_density=score.entity_density,
+        answer_directness=score.answer_directness,
+        citability=score.citability,
+        llmo_total=score.llmo_total,
+        query_relevance=score.query_relevance,
+        intent_type=score.intent_type,
+        entities=score.entities[:10],
+        word_count=score.word_count,
         latency_ms=round(latency_ms, 2),
     )
 

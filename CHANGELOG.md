@@ -4,6 +4,43 @@ All notable changes to OpenMythos are documented here.
 
 ---
 
+## [0.22.0] — 2026-06-01
+
+### Sprint 19: LLMO 強化 — クエリ関連性 / 意図分類 / 自動最適化 (LLMOOptimizer)
+
+#### クエリ関連性スコアリング (`open_mythos/llmo.py`)
+
+- `LLMOScore.query_relevance: float` — クエリとテキストの TF-IDF コサイン類似度 (0〜1)
+- `LLMOScore.intent_type: str` — 検索意図分類 (`informational` / `navigational` / `transactional` / `commercial`)
+- `LLMOScorer.score_with_query(text, query)` — 既存 3軸スコア + クエリ関連性 + 意図分類を一括計算
+- `LLMOScorer._calc_query_relevance()` — TF-IDF コサイン類似度 (cosine×0.7 + hit_rate×0.3、外部依存なし)
+- `LLMOScorer._classify_intent()` — transactional → commercial → navigational → informational の優先順位で判定
+
+#### 改善提案エンジン (`open_mythos/llmo.py`)
+
+- `Improvement` dataclass — `axis / priority / suggestion / expected_delta`
+- `LLMOScorer.suggest_improvements(text, query, *, max_suggestions)` — 優先度高→中→低 + expected_delta 降順でソートされた改善提案リスト
+
+#### LLMOOptimizer — ルールベース自動最適化 (`open_mythos/llmo.py`)
+
+- `OptimizedResult` dataclass — `original_score / optimized_score / iterations / transformations_applied / final_text`
+- `LLMOOptimizer(scorer, *, entity_weight, directness_weight, citability_weight)` — 重み付きスコアで反復最適化
+- `optimize(text, *, query, target_score, max_iterations)` — 目標スコア到達まで最大 N 回反復
+- `rewrite_for_answer_first(text)` — 「なぜなら」センテンスを文頭に移動 (answer-first 変換)
+- 変換種別: `boost_entity_density` / `add_structure` (## Overview/Details/Summary) / `add_citation_cues` / `expand_content` (FAQ + Use Cases) / `inject_query_keyword`
+
+#### API エンドポイント追加 (`serve/api.py`)
+
+- `POST /v1/llmo/suggest` — テキスト + クエリから優先順位付き改善提案リストを返す
+- `POST /v1/llmo/optimize` — LLMOOptimizer による自動最適化テキストと変換履歴を返す
+- `POST /v1/llmo/score` — クエリ考慮スコアリング (query_relevance + intent_type 付き)
+
+#### テスト (`tests/test_sprint19.py`)
+
+- 42 tests — TestScoreWithQuery / TestSuggestImprovements / TestLLMOOptimizer / TestLLMOAPILogic / TestLLMOSprint19Integration
+
+---
+
 ## [0.21.0] — 2026-06-01
 
 ### Sprint 18: ファインチューニング実証 & マーケティング分析強化

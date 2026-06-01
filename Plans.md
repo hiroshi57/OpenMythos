@@ -167,6 +167,22 @@
 
 ---
 
+## Sprint 19: LLMO 強化 — クエリ関連性 / 意図分類 / LLMOOptimizer & v0.22.0
+
+> ブランチ: `feature/sprint19-llmo-enhance`
+
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 19.1.1 | `open_mythos/llmo.py` — `query_relevance` / `intent_type` フィールドを `LLMOScore` に追加 | cc:完了 |
+| 19.1.2 | `open_mythos/llmo.py` — `score_with_query()` — TF-IDF コサイン類似度 + 意図分類 | cc:完了 |
+| 19.2.1 | `open_mythos/llmo.py` — `Improvement` dataclass + `suggest_improvements()` 優先度付き提案エンジン | cc:完了 |
+| 19.3.1 | `open_mythos/llmo.py` — `LLMOOptimizer` + `OptimizedResult` — ルールベース反復最適化 | cc:完了 |
+| 19.4.1 | `serve/api.py` — `/v1/llmo/suggest` / `/v1/llmo/optimize` / `/v1/llmo/score` 3エンドポイント追加 | cc:完了 |
+| 19.T | `tests/test_sprint19.py` — 42 tests (ScoreWithQuery / SuggestImprovements / LLMOOptimizer / API / Integration) | cc:完了 |
+| 19.V | PyPI v0.22.0 — pyproject.toml + CHANGELOG Sprint 19 追加 | cc:完了 |
+
+---
+
 ## 進行中の作業メモ
 
 ### 現在のブランチ状態 (2026-06-01 更新)
