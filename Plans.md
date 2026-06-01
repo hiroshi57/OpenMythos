@@ -1,5 +1,5 @@
 # OpenMythos — Sprint Plans
-> 最終更新: 2026-05-29 | ブランチ規約: `feature/<sprint>-<topic>`
+> 最終更新: 2026-06-01 | ブランチ規約: `feature/<sprint>-<topic>`
 > Sprint 1〜9 のアーカイブ: `docs/archive/sprint-plans-1-9.md`
 
 ---
@@ -73,11 +73,26 @@
 
 ---
 
+## Sprint 13: Mixture-of-Depths (MoD) & SwarmOrchestrator (進行中)
+
+> ブランチ: `harness-work/13.1.2`
+> 戦略: A) MoD Transformer (routing_entropy / entropy tracking) B) SwarmOrchestrator 並列マルチエージェント
+
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 13.1.1 | `open_mythos/mod.py` — MoDConfig / TokenRouter / MixtureOfDepthsBlock / MoDTransformer / MoDAnalytics | cc:完了 [040261b] |
+| 13.1.2 | `open_mythos/mod.py` — routing_entropy / MoDAnalytics entropy tracking / MoDTransformer.compute_loss | cc:完了 [d8d9f1e] |
+| 13.2.1 | `open_mythos/swarm.py` — SwarmOrchestrator (map / broadcast / pipeline / vote) + 44 tests | cc:完了 [6d4c487] |
+
+> テスト: test_sprint13.py 63 tests + test_sprint13_swarm.py 44 tests = **107 tests PASS**
+
+---
+
 ## 進行中の作業メモ
 
-### 現在のブランチ状態 (2026-05-29 更新)
-- `master`: `5671840` — Sprint 1〜11 全完了 (664 PASS / v0.15.0)
-- `feature/sprint12-react-cache-memory`: Sprint 12 全完了 (729 PASS / v0.16.0) — master merge 待ち
+### 現在のブランチ状態 (2026-06-01 更新)
+- `master`: `3d6ffac` — Sprint 1〜12 全完了 (729 PASS / v0.16.0)
+- `harness-work/13.1.2`: Sprint 13 進行中 (107 tests PASS) — master merge 待ち
 
 ### 重要な技術的知見
 - `freqs_cis` は必ず `[:T]` スライスして渡すこと (apply_rope ブロードキャストエラー防止)
