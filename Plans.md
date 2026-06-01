@@ -340,12 +340,91 @@ P5 ミスから学習 (Sprint 24)  ← P3/P4 の実行ログをエラーDBに投
 ## 進行中の作業メモ
 
 ### 現在のブランチ状態 (2026-06-01 更新)
-- `master`: `3d6ffac` — Sprint 1〜12 全完了 (729 PASS / v0.16.0)
-- `harness-work/13.1.2` → PR #11: Sprint 13〜16 全完了 (933 tests 収集 / v0.19.0) — master merge 待ち
-- `feature/sprint17-auth-docker`: Sprint 17 全完了 (v0.20.0 / 40 new tests)
+- `master`: `3291620` — Sprint 1〜25 全完了 / v0.28.0 / **1408 PASS** (Sprint 20〜25: 354 PASS)
+- 全 API エンドポイント: `/v1/debate`, `/v1/kpi`, `/v1/profile`, `/v1/signal`, `/v1/mistakes`, `/v1/distill` 追加済み
+
+### 今日の進捗サマリー (2026-06-01)
+
+「育つAI」6パターンを Sprint 20〜25 で実装完了。
+
+| Sprint | パターン | コアモジュール | テスト |
+| --- | --- | --- | --- |
+| 20 | 討議型集合知 | `debate.py` — Propose→Critique→Refine→Consensus | 59 PASS |
+| 21 | KPI駆動自己改善 | `kpi_agent.py` — measure→analyze→plan→execute ループ | 66 PASS |
+| 22 | ボトルネック発見・解消 | `profiler.py` — IQR法外れ値検出→自動パッチ適用 | 61 PASS |
+| 23 | 外部要因適応 | `external_signal.py` — 季節/トレンド/競合シグナル→カウンター | 60 PASS |
+| 24 | ミスから学習 | `error_memory.py` — ErrorMemoryStore→RuleExtractor→MistakeGuard | 40 PASS |
+| 25 | 継続的自己蒸留 | `self_distill.py` — OutputFilter→SFT(シミュレート)→Eval ループ | 40 PASS |
+
+---
+
+## 次回課題 (Sprint 26〜)
+
+### 優先度 HIGH
+
+#### 1. P1〜P6 統合オーケストレーター (Sprint 26)
+> 6つのパターンを単一の `GrowingAIOrchestrator` で統合し、状況に応じてパターンを自動選択・組み合わせる。
+
+- `open_mythos/growing_ai.py` — `GrowingAIOrchestrator` (P1〜P6 を状況判断で自動切り替え)
+- 入力: タスク文字列 + KPI 定義 → 出力: 最適パターンの実行結果
+- `POST /v1/grow/run` エンドポイント
+
+#### 2. 実際の GPU LoRA SFT 統合 (Sprint 26 または 27)
+> Sprint 25 の `SelfDistillLoop` のSFTシミュレートを実際の LoRA 訓練に差し替える。
+
+- `scripts/finetune.py` の `LoraTrainer` を `SelfDistillLoop._simulate_sft()` に接続
+- GCP T4 / A100 での実際の訓練フローを検証
+- `benchmark/compare_opus.py` で蒸留前後の LLMO スコア比較
+
+#### 3. エラーメモリの永続化 (Sprint 26)
+> `ErrorMemoryStore` を現在のインメモリから SQLite / JSON ファイル永続化に移行。
+
+- `ErrorMemoryStore(backend="sqlite", path="mistakes.db")` オプション追加
+- サーバー再起動後もミス記録が維持される
+- `/v1/mistakes/export` エンドポイント (JSONL ダウンロード)
+
+### 優先度 MEDIUM
+
+#### 4. KPIAgent × DebateOrchestrator 統合 (Sprint 27)
+> P1 の Consensus 結果を P2 の `measure_fn` として接続するデモ実装。
+
+- `KPIDefinition.measure_fn` に `DebateOrchestrator.run()` の `agreement_score` を使用
+- 「討議品質が KPI として改善されていくか」を可視化するデモノートブック
+
+#### 5. ProfilerAgent × ExternalSignalAgent 統合 (Sprint 27)
+> 外部シグナル発生時に自動でパイプライン再プロファイル・ボトルネック修正を実行。
+
+- `ExternalSignalAgent` のシグナル検出を `ProfilerAgent` のトリガーとして使用
+- `P3→P4 連携`: 季節需要急増 → SEO パイプラインのボトルネック自動修正
+
+#### 6. MistakeGuard の全エンドポイント統合 (Sprint 27)
+> 全 API エンドポイントの入出力に `MistakeGuard.check()` を透過的に適用する FastAPI ミドルウェア化。
+
+- `MistakeGuardMiddleware` — FastAPI middleware として実装
+- ブロック時は 400 + block_reason を返す
+- ブロック内容を自動的に `ErrorMemoryStore` に記録してルールを強化
+
+### 優先度 LOW
+
+#### 7. SelfDistillLoop Web UI ダッシュボード (Sprint 28)
+> 蒸留ループの進行状況をリアルタイムで可視化する簡易 Web UI。
+
+- `/v1/distill/stream` — Server-Sent Events でラウンドごとの mean_score を配信
+- フロントエンド: シンプルな HTML + JS でスコアグラフを描画
+
+#### 8. ベンチマーク強化 (Sprint 28)
+> Sprint 20〜25 の各パターンのパフォーマンスをベンチマーク化。
+
+- `benchmark/growing_ai_bench.py` — 6パターンの KPI 改善量・レイテンシ・安定性を測定
+- Claude Opus 4.8 との比較: 同一タスクで OpenMythos の自律改善 vs Claude の単一応答
+
+---
 
 ### 重要な技術的知見
 - `freqs_cis` は必ず `[:T]` スライスして渡すこと (apply_rope ブロードキャストエラー防止)
 - LTI `get_A()` の `log_dt + log_A` は `.clamp(min=1e-6)` が必要 (float32 飽和防止)
 - decode_loops 2-phase: prefill=4 / decode=1 が最速 (2.54x)
 - stash pop 時に Plans.md でコンフリクト発生しやすい → `git checkout stash -- Plans.md` で解決
+- ConsensusEngine は英語は単語分割、日本語は文字 bi-gram にフォールバックして Jaccard 計算
+- `ErrorMemoryStore.query_similar()` は Jaccard 類似度で O(n) 線形探索 — 件数増加時は ANN インデックスへの移行を検討
+- `SelfDistillLoop._simulate_sft()` は GPU 訓練なし — 本番化時は `scripts/finetune.py` の `LoraTrainer` に差し替える
