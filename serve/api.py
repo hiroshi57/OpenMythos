@@ -143,7 +143,7 @@ app = FastAPI(
         "**認証**: `Authorization: Bearer <api-key>` ヘッダ必須 (環境変数 `API_KEY` 設定時)。\n\n"
         "**レート制限**: デフォルト 60 rpm (環境変数 `RATE_LIMIT_RPM` で変更可)。"
     ),
-    version="0.20.0",
+    version="0.21.0",
     lifespan=lifespan,
     dependencies=[Depends(verify_api_key)],
     openapi_tags=[
@@ -1567,3 +1567,182 @@ def get_session_context(session_id: str):
         context=mem.to_context_string(),
         n_turns=mem.n_turns,
     )
+
+
+# ---------------------------------------------------------------------------
+# Sprint 18 — A/B テストエンドポイント (18.4)
+# ---------------------------------------------------------------------------
+#
+# 設計:
+#   - hash(user_id) % 100 < AB_OPENMYTHOS_PCT → openmythos グループ (直接モデル推論)
+#   - それ以外 → existing_ml グループ (スタブ: 決定論的スコア返却)
+#   - /v1/ab/stats で集計 + Welch t 検定を返す
+#   - 既存 serve/ab_router.py (スタンドアロン A/B サーバ) とは独立
+
+import hashlib  # noqa: E402
+import math as _math  # noqa: E402
+from collections import defaultdict  # noqa: E402
+from typing import Dict, List  # noqa: E402
+
+AB_OPENMYTHOS_PCT: int = int(os.getenv("AB_OPENMYTHOS_PCT", "20"))
+
+
+class _ABStats:
+    def __init__(self):
+        self.counts: Dict[str, int] = defaultdict(int)
+        self.latencies: Dict[str, List[float]] = defaultdict(list)
+        self.scores: Dict[str, List[float]] = defaultdict(list)
+        self.correct: Dict[str, int] = defaultdict(int)
+
+
+_ab_stats = _ABStats()
+
+
+def _ab_route(user_id: str) -> str:
+    h = int(hashlib.md5(user_id.encode()).hexdigest(), 16) % 100
+    return "openmythos" if h < AB_OPENMYTHOS_PCT else "existing_ml"
+
+
+def _ab_significance(a: List[float], b: List[float], alpha: float = 0.05) -> dict:
+    na, nb = len(a), len(b)
+    if na < 2 or nb < 2:
+        return {
+            "p_value": 1.0,
+            "significant": False,
+            "mean_a": sum(a) / na if na else float("nan"),
+            "mean_b": sum(b) / nb if nb else float("nan"),
+            "n_a": na,
+            "n_b": nb,
+        }
+    mean_a = sum(a) / na
+    mean_b = sum(b) / nb
+    var_a = sum((x - mean_a) ** 2 for x in a) / (na - 1)
+    var_b = sum((x - mean_b) ** 2 for x in b) / (nb - 1)
+    se = _math.sqrt(var_a / na + var_b / nb)
+    if se == 0:
+        p_value = 0.0 if mean_a != mean_b else 1.0
+    else:
+        t_stat = (mean_a - mean_b) / se
+        num = (var_a / na + var_b / nb) ** 2
+        den = (var_a / na) ** 2 / (na - 1) + (var_b / nb) ** 2 / (nb - 1)
+        df = num / den if den > 0 else 1.0
+        z = abs(t_stat) * _math.sqrt(1 + df / (df + t_stat**2 + 1e-9))
+        p_one = 0.5 * _math.erfc(z / _math.sqrt(2))
+        p_value = min(2 * p_one, 1.0)
+    return {
+        "p_value": round(p_value, 6),
+        "significant": p_value < alpha,
+        "mean_a": round(mean_a, 6),
+        "mean_b": round(mean_b, 6),
+        "n_a": na,
+        "n_b": nb,
+    }
+
+
+class ABInferRequest(BaseModel):
+    user_id: str = Field(..., description="ルーティングハッシュに使用するユーザーID")
+    text: str = Field(..., description="推論対象テキスト")
+    task: TaskType = Field("general", description="タスク種別")
+    loops: int = Field(DEFAULT_LOOPS, ge=1, le=16)
+    ground_truth: Optional[int] = Field(None, description="正解ラベル (評価用、省略可)")
+
+
+class ABInferResponse(BaseModel):
+    model_id: str
+    ab_group: str
+    label: int
+    score: float
+    latency_ms: float
+    traffic_pct: int
+
+
+@app.post(
+    "/v1/ab/infer",
+    response_model=ABInferResponse,
+    tags=["infer"],
+    summary="A/B テスト推論",
+    description=(
+        "user_id のハッシュで OpenMythos (20%) または既存 ML スタブ (80%) に振り分ける。"
+        "`AB_OPENMYTHOS_PCT` 環境変数でトラフィック比率を変更可能。"
+    ),
+)
+def ab_infer(req: ABInferRequest):
+    """A/B テスト推論エンドポイント。
+
+    hash(user_id) % 100 < AB_OPENMYTHOS_PCT ならば OpenMythos モデルで推論、
+    それ以外は決定論的スタブ (既存MLモデル代替) を返す。
+    """
+    group = _ab_route(req.user_id)
+    loops = min(req.loops, MAX_LOOPS)
+    if req.task != "general" and req.loops == DEFAULT_LOOPS:
+        loops = TASK_LOOPS.get(req.task, DEFAULT_LOOPS)
+
+    enc = state.tokenizer(
+        req.text, return_tensors="pt", truncation=True, max_length=512
+    )
+    input_ids = enc["input_ids"].to(state.device)
+
+    t0 = time.perf_counter()
+
+    if group == "openmythos":
+        with torch.no_grad():
+            logits = state.model(input_ids, n_loops=loops)
+        probs = torch.softmax(logits[0, -1, :], dim=-1)
+        score = float(probs.max())
+        label = 1 if score >= 0.5 else 0
+        model_id = "openmythos-rdt"
+    else:
+        # 既存 ML スタブ: user_id ハッシュから決定論的スコアを生成
+        h = int(hashlib.md5(req.user_id.encode()).hexdigest(), 16)
+        score = 0.5 + (h % 500) / 1000.0  # 0.5–1.0 の決定論的スコア
+        label = 1 if score >= 0.5 else 0
+        model_id = "existing-ml-stub"
+
+    latency_ms = (time.perf_counter() - t0) * 1000
+
+    # 集計
+    _ab_stats.counts[group] += 1
+    _ab_stats.latencies[group].append(latency_ms)
+    _ab_stats.scores[group].append(score)
+    if req.ground_truth is not None and label == req.ground_truth:
+        _ab_stats.correct[group] += 1
+
+    return ABInferResponse(
+        model_id=model_id,
+        ab_group=group,
+        label=label,
+        score=round(score, 4),
+        latency_ms=round(latency_ms, 2),
+        traffic_pct=(
+            AB_OPENMYTHOS_PCT if group == "openmythos" else 100 - AB_OPENMYTHOS_PCT
+        ),
+    )
+
+
+@app.get(
+    "/v1/ab/stats",
+    tags=["infer"],
+    summary="A/B テスト集計",
+    description="OpenMythos / 既存 ML のリクエスト数・平均レイテンシ・平均スコア + Welch t 検定結果を返す。",
+)
+def ab_stats():
+    """A/Bテスト集計結果をリアルタイムで返す。"""
+    result: dict = {}
+    for group in ["openmythos", "existing_ml"]:
+        n = _ab_stats.counts[group]
+        lats = _ab_stats.latencies[group]
+        scrs = _ab_stats.scores[group]
+        corr = _ab_stats.correct[group]
+        result[group] = {
+            "requests": n,
+            "avg_latency_ms": round(sum(lats) / n, 2) if n else None,
+            "avg_score": round(sum(scrs) / n, 4) if n else None,
+            "accuracy": round(corr / n, 4) if n else None,
+            "traffic_pct": (
+                AB_OPENMYTHOS_PCT if group == "openmythos" else 100 - AB_OPENMYTHOS_PCT
+            ),
+        }
+    result["significance_test"] = _ab_significance(
+        _ab_stats.scores["openmythos"], _ab_stats.scores["existing_ml"]
+    )
+    return result

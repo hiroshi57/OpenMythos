@@ -4,6 +4,45 @@ All notable changes to OpenMythos are documented here.
 
 ---
 
+## [0.21.0] — 2026-06-01
+
+### Sprint 18: ファインチューニング実証 & マーケティング分析強化
+
+#### ROAS Monte Carlo シミュレーター (`open_mythos/tools_marketing.py`)
+
+- `roas_simulate()` — モンテカルロ法による ROAS 予測 (信頼区間付き)
+  - 各パラメータ (ctr / cvr / aov) に ±20% 一様ノイズを加えて n 回シミュレーション
+  - 返却値: mean_roas / p5 / p25 / p50 / p75 / p95 / std_dev / profitable_probability / expected_revenue_usd
+  - シード固定で再現可能、noise=0 で決定論的動作
+
+#### ペルソナ × 広告マッチング (`open_mythos/tools_marketing.py`)
+
+- `persona_ad_match()` — TF-IDF コサイン類似度ベースのペルソナ×広告スコアリング
+  - 外部依存なし (pure Python + math)
+  - 返却値: ranked (top_k件) / best_match / best_score / persona_keywords
+
+#### LLMO スコア比較ベンチマーク (`benchmark/compare_opus.py`)
+
+- OpenMythos LLMOScorer vs ルールベースライン (Opus 4.8 代替) の自動比較ツール
+- 6 組み込みテストケース (日英 SEO / 広告コピー / 技術文書)
+- オプション: `--claude` で実 Claude API と比較 (ANTHROPIC_API_KEY 必要)
+- CLI: `python benchmark/compare_opus.py --input data/seo_train.jsonl --n 50`
+- 結果保存: `benchmark/results/opus_comparison_YYYYMMDD_HHMMSS.json`
+
+#### A/B テストエンドポイント (`serve/api.py`)
+
+- `POST /v1/ab/infer` — hash(user_id) % 100 でトラフィックを振り分け
+  - `AB_OPENMYTHOS_PCT` 環境変数で OpenMythos 比率を変更 (デフォルト 20%)
+  - openmythos グループ: モデル直接推論
+  - existing_ml グループ: 決定論的スタブ (既存 ML 代替)
+- `GET /v1/ab/stats` — グループ別リクエスト数 / 平均レイテンシ / 平均スコア + Welch t 検定
+
+#### テスト (`tests/test_sprint18.py`)
+
+- 39 tests — roas_simulate / persona_ad_match / compare_opus / A/B router
+
+---
+
 ## [0.20.0] — 2026-06-01
 
 ### Sprint 17: Mythos 公開対応 & 外販 API 完成
