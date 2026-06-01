@@ -32,7 +32,6 @@ import torch.nn.functional as F
 
 from open_mythos.main import OpenMythos
 
-
 # ---------------------------------------------------------------------------
 # マーケティング用スキーマ定義
 # ---------------------------------------------------------------------------
@@ -326,7 +325,9 @@ class StructuredGenerator:
         for attempt in range(n_attempts):
             t = temperature * (1.0 + attempt * 0.1)  # 温度を少し上げて多様性追加
             try:
-                generated_text = self._generate_raw(input_ids, loops, max_new_tokens, t, top_p)
+                generated_text = self._generate_raw(
+                    input_ids, loops, max_new_tokens, t, top_p
+                )
                 result = self._extract_json("{" + generated_text)
                 if result is not None:
                     result = self._coerce_to_schema(result, schema)
@@ -349,8 +350,13 @@ class StructuredGenerator:
     ) -> list[dict[str, Any]]:
         """複数プロンプトを一括でJSON生成する。"""
         return [
-            self.generate_json(schema, p, loops=loops,
-                               max_new_tokens=max_new_tokens, temperature=temperature)
+            self.generate_json(
+                schema,
+                p,
+                loops=loops,
+                max_new_tokens=max_new_tokens,
+                temperature=temperature,
+            )
             for p in prompts
         ]
 

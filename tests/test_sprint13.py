@@ -14,7 +14,6 @@ import math
 import pytest
 import torch
 
-
 # ---------------------------------------------------------------------------
 # Imports under test
 # ---------------------------------------------------------------------------
@@ -33,7 +32,6 @@ from open_mythos import (
     MoDConfig as MoDConfigExported,
     MoDTransformer as MoDTransformerExported,
 )
-
 
 # ---------------------------------------------------------------------------
 # RNG isolation — save the global PyTorch RNG state ONCE before any test in
@@ -268,9 +266,9 @@ class TestMixtureOfDepthsBlock:
         not_selected = list(all_positions - selected_set)
 
         for pos in not_selected:
-            assert torch.allclose(out[0, pos], x[0, pos], atol=1e-6), (
-                f"Non-selected token at position {pos} should be unchanged"
-            )
+            assert torch.allclose(
+                out[0, pos], x[0, pos], atol=1e-6
+            ), f"Non-selected token at position {pos} should be unchanged"
 
     def test_capacity_one_full(self):
         """capacity_factor=1.0 → all tokens routed → output differs from input."""
@@ -519,6 +517,7 @@ class TestRoutingEntropy:
 
     def test_exported_from_package(self):
         from open_mythos import routing_entropy as re_exported
+
         assert re_exported is routing_entropy
 
     def test_gradient_flows(self):
@@ -621,7 +620,7 @@ class TestMoDTransformerComputeLoss:
         model, cfg, ids = self._model_and_batch()
         logits, _ = model(ids[:, :-1], return_aux_loss=False)
         targets = ids[:, 1:].clone()
-        targets[:, -1] = -100           # mask last position
+        targets[:, -1] = -100  # mask last position
         loss_masked = model.compute_loss(logits, targets)
         # Masked loss should differ from unmasked in general (not exactly, but callable)
         assert loss_masked.ndim == 0

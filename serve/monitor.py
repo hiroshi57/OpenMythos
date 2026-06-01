@@ -26,9 +26,9 @@ from pathlib import Path
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-DB_PATH      = Path("data/monitor.db")
-DRIFT_WINDOW = 500          # ドリフト検知に使う直近N件
-PSI_THRESHOLD = 0.2         # PSI > 0.2 = 大きなシフト
+DB_PATH = Path("data/monitor.db")
+DRIFT_WINDOW = 500  # ドリフト検知に使う直近N件
+PSI_THRESHOLD = 0.2  # PSI > 0.2 = 大きなシフト
 ACCURACY_ALERT_THRESHOLD = 0.05  # 精度が baseline から5%以上下がったらアラート
 
 _lock = threading.Lock()
@@ -37,6 +37,7 @@ _lock = threading.Lock()
 # ---------------------------------------------------------------------------
 # SQLite ログDB
 # ---------------------------------------------------------------------------
+
 
 def _init_db():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -87,14 +88,25 @@ def log_inference(
             "INSERT INTO inference_log "
             "(ts, model_id, task, n_loops, score, label, ground_truth, latency_ms, is_correct) "
             "VALUES (?,?,?,?,?,?,?,?,?)",
-            (ts, model_id, task, n_loops, score, label, ground_truth, latency_ms, is_correct),
+            (
+                ts,
+                model_id,
+                task,
+                n_loops,
+                score,
+                label,
+                ground_truth,
+                latency_ms,
+                is_correct,
+            ),
         )
         con.commit()
         con.close()
 
 
-def set_baseline(task: str, accuracy: float, avg_score: float,
-                 score_p25: float, score_p75: float):
+def set_baseline(
+    task: str, accuracy: float, avg_score: float, score_p25: float, score_p75: float
+):
     """ベースライン精度を登録する（初期デプロイ時に一度実行）。"""
     with _lock:
         con = sqlite3.connect(DB_PATH)
@@ -102,8 +114,14 @@ def set_baseline(task: str, accuracy: float, avg_score: float,
             "INSERT OR REPLACE INTO baseline "
             "(task, accuracy, avg_score, score_p25, score_p75, updated_at) "
             "VALUES (?,?,?,?,?,?)",
-            (task, accuracy, avg_score, score_p25, score_p75,
-             datetime.now(timezone.utc).isoformat()),
+            (
+                task,
+                accuracy,
+                avg_score,
+                score_p25,
+                score_p75,
+                datetime.now(timezone.utc).isoformat(),
+            ),
         )
         con.commit()
         con.close()
@@ -113,6 +131,7 @@ def set_baseline(task: str, accuracy: float, avg_score: float,
 # ドリフト検知
 # ---------------------------------------------------------------------------
 
+
 def _psi(expected: list[float], actual: list[float], bins: int = 10) -> float:
     """
     Population Stability Index（PSI）を計算。
@@ -121,6 +140,7 @@ def _psi(expected: list[float], actual: list[float], bins: int = 10) -> float:
     if not expected or not actual:
         return 0.0
     lo, hi = 0.0, 1.0
+
     def hist(data):
         counts = [0] * bins
         for v in data:
@@ -128,6 +148,7 @@ def _psi(expected: list[float], actual: list[float], bins: int = 10) -> float:
             counts[b] += 1
         total = max(len(data), 1)
         return [max(c / total, 1e-6) for c in counts]
+
     e = hist(expected)
     a = hist(actual)
     return sum((ae - ee) * math.log(ae / ee) for ae, ee in zip(a, e))
@@ -140,29 +161,33 @@ def check_drift(task: str) -> dict:
     rows = con.execute(
         "SELECT score, is_correct FROM inference_log "
         "WHERE task=? ORDER BY id DESC LIMIT ?",
-        (task, DRIFT_WINDOW)
+        (task, DRIFT_WINDOW),
     ).fetchall()
     baseline = con.execute(
         "SELECT accuracy, avg_score, score_p25, score_p75 FROM baseline WHERE task=?",
-        (task,)
+        (task,),
     ).fetchone()
     con.close()
 
     if not rows:
         return {"status": "no_data", "task": task}
 
-    recent_scores   = [r[0] for r in rows if r[0] is not None]
-    recent_correct  = [r[1] for r in rows if r[1] is not None]
-    current_accuracy = sum(recent_correct) / len(recent_correct) if recent_correct else None
-    current_avg_score = sum(recent_scores) / len(recent_scores) if recent_scores else None
+    recent_scores = [r[0] for r in rows if r[0] is not None]
+    recent_correct = [r[1] for r in rows if r[1] is not None]
+    current_accuracy = (
+        sum(recent_correct) / len(recent_correct) if recent_correct else None
+    )
+    current_avg_score = (
+        sum(recent_scores) / len(recent_scores) if recent_scores else None
+    )
 
     result = {
-        "task":              task,
-        "n_recent":          len(rows),
-        "current_accuracy":  round(current_accuracy, 4) if current_accuracy else None,
+        "task": task,
+        "n_recent": len(rows),
+        "current_accuracy": round(current_accuracy, 4) if current_accuracy else None,
         "current_avg_score": round(current_avg_score, 4) if current_avg_score else None,
-        "alerts":            [],
-        "psi":               None,
+        "alerts": [],
+        "psi": None,
     }
 
     if baseline:
@@ -174,20 +199,24 @@ def check_drift(task: str) -> dict:
         result["baseline_accuracy"] = bl_acc
 
         if psi > PSI_THRESHOLD:
-            result["alerts"].append({
-                "level": "warning",
-                "type":  "score_distribution_drift",
-                "msg":   f"PSI={psi:.3f} > {PSI_THRESHOLD}（スコア分布が大きくシフト）",
-            })
+            result["alerts"].append(
+                {
+                    "level": "warning",
+                    "type": "score_distribution_drift",
+                    "msg": f"PSI={psi:.3f} > {PSI_THRESHOLD}（スコア分布が大きくシフト）",
+                }
+            )
         if current_accuracy and bl_acc:
             drop = bl_acc - current_accuracy
             if drop > ACCURACY_ALERT_THRESHOLD:
-                result["alerts"].append({
-                    "level": "critical",
-                    "type":  "accuracy_degradation",
-                    "msg":   f"精度が {drop*100:.1f}pt 低下 "
-                             f"({bl_acc:.3f} → {current_accuracy:.3f})",
-                })
+                result["alerts"].append(
+                    {
+                        "level": "critical",
+                        "type": "accuracy_degradation",
+                        "msg": f"精度が {drop*100:.1f}pt 低下 "
+                        f"({bl_acc:.3f} → {current_accuracy:.3f})",
+                    }
+                )
 
     result["status"] = "alert" if result["alerts"] else "healthy"
     return result
@@ -197,6 +226,7 @@ def check_drift(task: str) -> dict:
 # 統計サマリー
 # ---------------------------------------------------------------------------
 
+
 def get_metrics(hours: int = 24) -> dict:
     """過去N時間の推論ログからメトリクスを集計する。"""
     since = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
@@ -204,7 +234,7 @@ def get_metrics(hours: int = 24) -> dict:
     rows = con.execute(
         "SELECT model_id, task, score, label, latency_ms, is_correct "
         "FROM inference_log WHERE ts >= ?",
-        (since,)
+        (since,),
     ).fetchall()
     con.close()
 
@@ -212,13 +242,14 @@ def get_metrics(hours: int = 24) -> dict:
         return {"status": "no_data", "hours": hours}
 
     from collections import defaultdict
-    task_stats: dict = defaultdict(lambda: {
-        "count": 0, "latencies": [], "scores": [], "correct": 0, "labeled": 0
-    })
+
+    task_stats: dict = defaultdict(
+        lambda: {"count": 0, "latencies": [], "scores": [], "correct": 0, "labeled": 0}
+    )
     for model_id, task, score, label, lat, correct in rows:
         key = f"{task}/{model_id}"
         s = task_stats[key]
-        s["count"]   += 1
+        s["count"] += 1
         s["latencies"].append(lat)
         if score is not None:
             s["scores"].append(score)
@@ -232,11 +263,11 @@ def get_metrics(hours: int = 24) -> dict:
         lats = s["latencies"]
         scrs = s["scores"]
         summary[key] = {
-            "requests":       n,
+            "requests": n,
             "avg_latency_ms": round(sum(lats) / n, 2) if n else None,
             "p95_latency_ms": round(sorted(lats)[int(n * 0.95)], 2) if n > 1 else None,
-            "avg_score":      round(sum(scrs) / len(scrs), 4) if scrs else None,
-            "accuracy":       round(s["correct"] / s["labeled"], 4) if s["labeled"] else None,
+            "avg_score": round(sum(scrs) / len(scrs), 4) if scrs else None,
+            "accuracy": round(s["correct"] / s["labeled"], 4) if s["labeled"] else None,
         }
     return {"hours": hours, "metrics": summary}
 
@@ -245,11 +276,13 @@ def get_metrics(hours: int = 24) -> dict:
 # FastAPI（監視ダッシュボード）
 # ---------------------------------------------------------------------------
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _init_db()
     print(f"[monitor] DB: {DB_PATH}")
     yield
+
 
 monitor_app = FastAPI(title="OpenMythos Monitor", version="0.1.0", lifespan=lifespan)
 
@@ -274,17 +307,17 @@ def dashboard():
     """全タスクのドリフト状況 + 直近24時間メトリクスを一括返す。"""
     tasks = ["content_quality", "ad_performance", "persona_segment", "market_research"]
     return {
-        "drift":   {t: check_drift(t) for t in tasks},
+        "drift": {t: check_drift(t) for t in tasks},
         "metrics": get_metrics(hours=24),
     }
 
 
 class BaselineRequest(BaseModel):
-    task:       str
-    accuracy:   float
-    avg_score:  float
-    score_p25:  float
-    score_p75:  float
+    task: str
+    accuracy: float
+    avg_score: float
+    score_p25: float
+    score_p75: float
 
 
 @monitor_app.post("/monitor/baseline")

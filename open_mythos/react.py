@@ -139,11 +139,11 @@ class ReActAgent:
     """
 
     _FINAL_ANSWER_PATTERN = re.compile(
-        r'(?:Final Answer|最終回答|Answer|回答)\s*[:：]\s*(.+)',
+        r"(?:Final Answer|最終回答|Answer|回答)\s*[:：]\s*(.+)",
         re.IGNORECASE | re.DOTALL,
     )
     _THOUGHT_PATTERN = re.compile(
-        r'(?:Thought|思考|考え)\s*[:：]\s*(.+?)(?=(?:Action|ツール|Final|$))',
+        r"(?:Thought|思考|考え)\s*[:：]\s*(.+?)(?=(?:Action|ツール|Final|$))",
         re.IGNORECASE | re.DOTALL,
     )
 
@@ -205,7 +205,9 @@ class ReActAgent:
             t_step = time.perf_counter()
 
             # --- Think: モデルに思考させる ---
-            thought_text = self._generate(context + "Thought: ", max_new_tokens=self.max_new_tokens)
+            thought_text = self._generate(
+                context + "Thought: ", max_new_tokens=self.max_new_tokens
+            )
 
             step_latency = (time.perf_counter() - t_step) * 1000
             thought_step = AgentStep(
@@ -220,18 +222,30 @@ class ReActAgent:
             answer_match = self._FINAL_ANSWER_PATTERN.search(thought_text)
             if answer_match:
                 final_answer = answer_match.group(1).strip()
-                steps.append(AgentStep(
-                    step_type="answer",
-                    content=final_answer,
-                    iteration=iteration,
-                ))
+                steps.append(
+                    AgentStep(
+                        step_type="answer",
+                        content=final_answer,
+                        iteration=iteration,
+                    )
+                )
                 stopped_reason = "completed"
                 break
 
-            stop_found = any(tok.lower() in thought_text.lower() for tok in self.stop_tokens)
+            stop_found = any(
+                tok.lower() in thought_text.lower() for tok in self.stop_tokens
+            )
             if stop_found:
-                final_answer = thought_text.split(":")[-1].strip() if ":" in thought_text else thought_text
-                steps.append(AgentStep(step_type="answer", content=final_answer, iteration=iteration))
+                final_answer = (
+                    thought_text.split(":")[-1].strip()
+                    if ":" in thought_text
+                    else thought_text
+                )
+                steps.append(
+                    AgentStep(
+                        step_type="answer", content=final_answer, iteration=iteration
+                    )
+                )
                 stopped_reason = "completed"
                 break
 
@@ -241,7 +255,11 @@ class ReActAgent:
             if not tool_calls:
                 # ツール不要 → 直接回答とみなす
                 final_answer = thought_text.strip()
-                steps.append(AgentStep(step_type="answer", content=final_answer, iteration=iteration))
+                steps.append(
+                    AgentStep(
+                        step_type="answer", content=final_answer, iteration=iteration
+                    )
+                )
                 stopped_reason = "no_tools_needed"
                 break
 
@@ -285,8 +303,16 @@ class ReActAgent:
             # max_iterations に達した
             stopped_reason = "max_iterations"
             if not final_answer:
-                final_answer = "最大イテレーション数に達しました。途中結果を参照してください。"
-                steps.append(AgentStep(step_type="answer", content=final_answer, iteration=self.max_iterations - 1))
+                final_answer = (
+                    "最大イテレーション数に達しました。途中結果を参照してください。"
+                )
+                steps.append(
+                    AgentStep(
+                        step_type="answer",
+                        content=final_answer,
+                        iteration=self.max_iterations - 1,
+                    )
+                )
 
         total_ms = (time.perf_counter() - t_total) * 1000
 
@@ -294,7 +320,9 @@ class ReActAgent:
             task=task,
             final_answer=final_answer,
             steps=steps,
-            iterations_used=min(iteration + 1, self.max_iterations) if iteration >= 0 else 0,
+            iterations_used=(
+                min(iteration + 1, self.max_iterations) if iteration >= 0 else 0
+            ),
             total_latency_ms=round(total_ms, 2),
             stopped_reason=stopped_reason,
         )
@@ -324,7 +352,9 @@ class ReActAgent:
                 probs = F.softmax(next_logits, dim=-1)
                 next_tok = int(torch.multinomial(probs, 1).item())
                 generated.append(next_tok)
-                cur = torch.cat([cur, torch.tensor([[next_tok]], device=self.device)], dim=1)
+                cur = torch.cat(
+                    [cur, torch.tensor([[next_tok]], device=self.device)], dim=1
+                )
                 if next_tok == vsize - 1:
                     break
 
@@ -365,7 +395,12 @@ def format_agent_trace(result: AgentResult, max_content_len: int = 120) -> str:
     ]
 
     for step in result.steps:
-        icon = {"thought": "💭", "action": "🔧", "observation": "👁", "answer": "✅"}.get(step.step_type, "•")
+        icon = {
+            "thought": "💭",
+            "action": "🔧",
+            "observation": "👁",
+            "answer": "✅",
+        }.get(step.step_type, "•")
         content = step.content[:max_content_len]
         if len(step.content) > max_content_len:
             content += "..."

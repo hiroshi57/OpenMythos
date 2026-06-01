@@ -33,7 +33,13 @@ from torch.optim import AdamW
 from torch.utils.data import DataLoader, IterableDataset
 
 from open_mythos.main import OpenMythos, TransformerBlock
-from open_mythos.variants import mythos_nano, mythos_1b, mythos_3b, mythos_7b, mythos_10b
+from open_mythos.variants import (
+    mythos_nano,
+    mythos_1b,
+    mythos_3b,
+    mythos_7b,
+    mythos_10b,
+)
 from open_mythos.logger_utils import TrainLogger
 
 _VARIANTS = {
@@ -47,6 +53,7 @@ _VARIANTS = {
 # ---------------------------------------------------------------------------
 # LR schedule
 # ---------------------------------------------------------------------------
+
 
 def warmup_stable_decay_schedule(
     optimizer: torch.optim.Optimizer,
@@ -74,6 +81,7 @@ def warmup_stable_decay_schedule(
 # ---------------------------------------------------------------------------
 # Streaming dataset
 # ---------------------------------------------------------------------------
+
 
 def _simple_tokenize(text: str, vocab_size: int) -> list[int]:
     """Byte-level tokenizer clipped to vocab_size — no external deps."""
@@ -158,6 +166,7 @@ class StreamingTokenDataset(IterableDataset):
 # Gradient checkpointing helpers
 # ---------------------------------------------------------------------------
 
+
 def _enable_gradient_checkpointing(model: OpenMythos) -> None:
     for module in model.modules():
         if isinstance(module, TransformerBlock):
@@ -173,6 +182,7 @@ def _disable_gradient_checkpointing(model: OpenMythos) -> None:
 # ---------------------------------------------------------------------------
 # Checkpoint I/O
 # ---------------------------------------------------------------------------
+
 
 def _save_checkpoint(model: OpenMythos, step: int, ckpt_dir: Path) -> Path:
     ckpt_dir.mkdir(parents=True, exist_ok=True)
@@ -197,6 +207,7 @@ def _load_checkpoint(path: str, device: str) -> tuple[dict, int]:
 # Training loop
 # ---------------------------------------------------------------------------
 
+
 def pretrain(args: argparse.Namespace) -> None:
     # ── Device ──────────────────────────────────────────────────────────────
     if args.device:
@@ -210,6 +221,7 @@ def pretrain(args: argparse.Namespace) -> None:
     if args.resume:
         ckpt, global_step = _load_checkpoint(args.resume, str(device))
         from open_mythos.main import OpenMythos as _OM
+
         model = _OM(ckpt["cfg"]).to(device)
         model.load_state_dict(ckpt["model"])
         print(f"[pretrain] resumed from {args.resume} at step {global_step}")
@@ -228,13 +240,19 @@ def pretrain(args: argparse.Namespace) -> None:
     # Clip seq_len to model's max_seq_len to avoid RoPE index-out-of-bounds
     seq_len = min(args.seq_len, model.cfg.max_seq_len)
     if seq_len < args.seq_len:
-        print(f"[pretrain] seq_len clipped {args.seq_len} → {seq_len} (model max_seq_len)")
+        print(
+            f"[pretrain] seq_len clipped {args.seq_len} → {seq_len} (model max_seq_len)"
+        )
     args.seq_len = seq_len
     print(f"[pretrain] variant={args.variant}  params={n_params:,}  device={device}")
-    print(f"[pretrain] max_tokens={args.max_tokens:,}  seq_len={args.seq_len}  batch={args.batch}")
+    print(
+        f"[pretrain] max_tokens={args.max_tokens:,}  seq_len={args.seq_len}  batch={args.batch}"
+    )
 
     # ── Optimizer & scheduler ────────────────────────────────────────────────
-    optimizer = AdamW(model.parameters(), lr=args.lr, weight_decay=0.1, betas=(0.9, 0.95))
+    optimizer = AdamW(
+        model.parameters(), lr=args.lr, weight_decay=0.1, betas=(0.9, 0.95)
+    )
 
     tokens_per_step = args.batch * args.grad_accum * args.seq_len
     total_steps = max(args.max_tokens // tokens_per_step, 1)
@@ -242,7 +260,9 @@ def pretrain(args: argparse.Namespace) -> None:
     stable_steps = int(total_steps * 0.68)
     decay_steps = total_steps - warmup_steps - stable_steps
 
-    scheduler = warmup_stable_decay_schedule(optimizer, warmup_steps, stable_steps, decay_steps)
+    scheduler = warmup_stable_decay_schedule(
+        optimizer, warmup_steps, stable_steps, decay_steps
+    )
     # fast-forward scheduler to resume step
     for _ in range(global_step):
         scheduler.step()
@@ -270,7 +290,7 @@ def pretrain(args: argparse.Namespace) -> None:
     loader = DataLoader(
         dataset,
         batch_size=args.batch,
-        num_workers=0,          # Windows + streaming: must be 0
+        num_workers=0,  # Windows + streaming: must be 0
         persistent_workers=False,
     )
 
@@ -288,11 +308,11 @@ def pretrain(args: argparse.Namespace) -> None:
 
         # batch: (B, seq_len+1)
         batch = batch.to(device)
-        x = batch[:, :-1]   # (B, seq_len)
-        y = batch[:, 1:]    # (B, seq_len)
+        x = batch[:, :-1]  # (B, seq_len)
+        y = batch[:, 1:]  # (B, seq_len)
 
         with autocast_ctx:
-            logits = model(x)           # (B, T, V)
+            logits = model(x)  # (B, T, V)
             loss = nn.functional.cross_entropy(
                 logits.reshape(-1, vocab_size),
                 y.reshape(-1),
@@ -319,7 +339,9 @@ def pretrain(args: argparse.Namespace) -> None:
                 f"  lr={lr_now:.2e}  tok/s={tok_per_sec:.0f}"
                 f"  consumed={consumed_tokens / 1e6:.1f}M"
             )
-            logger.log({"train/loss": accum_loss, "train/lr": lr_now}, step=global_step + 1)
+            logger.log(
+                {"train/loss": accum_loss, "train/lr": lr_now}, step=global_step + 1
+            )
             accum_loss = 0.0
 
         global_step += 1
@@ -348,7 +370,11 @@ def _run_eval(
 ) -> None:
     """Run WikiText-2 perplexity eval using the existing benchmark module."""
     try:
-        from benchmark.perplexity import evaluate_perplexity, _load_corpus, _tokenize_corpus
+        from benchmark.perplexity import (
+            evaluate_perplexity,
+            _load_corpus,
+            _tokenize_corpus,
+        )
 
         _disable_gradient_checkpointing(model)
         model.eval()
@@ -356,7 +382,9 @@ def _run_eval(
             text = _load_corpus("wikitext-2-raw-v1", split="validation")
             token_ids = _tokenize_corpus(text, model.cfg.vocab_size)
             result = evaluate_perplexity(
-                model, token_ids, str(device),
+                model,
+                token_ids,
+                str(device),
                 seq_len=min(512, args.seq_len),
                 stride=256,
                 batch_size=1,
@@ -376,27 +404,59 @@ def _run_eval(
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="OpenMythos pre-training on FineWeb-Edu")
-    p.add_argument("--variant", default="nano", choices=list(_VARIANTS), help="Model variant")
+    p.add_argument(
+        "--variant", default="nano", choices=list(_VARIANTS), help="Model variant"
+    )
     p.add_argument("--device", default=None, help="cpu / cuda (default: auto)")
     p.add_argument("--batch", type=int, default=8, help="Per-device batch size")
     p.add_argument("--lr", type=float, default=1e-3, help="Peak learning rate")
-    p.add_argument("--max-tokens", type=int, default=300_000_000, dest="max_tokens",
-                   help="Stop after consuming this many tokens")
-    p.add_argument("--ckpt-dir", default="checkpoints/pretrain", dest="ckpt_dir",
-                   help="Directory to save checkpoints")
+    p.add_argument(
+        "--max-tokens",
+        type=int,
+        default=300_000_000,
+        dest="max_tokens",
+        help="Stop after consuming this many tokens",
+    )
+    p.add_argument(
+        "--ckpt-dir",
+        default="checkpoints/pretrain",
+        dest="ckpt_dir",
+        help="Directory to save checkpoints",
+    )
     p.add_argument("--resume", default=None, help="Path to checkpoint to resume from")
-    p.add_argument("--seq-len", type=int, default=1024, dest="seq_len",
-                   help="Sequence length")
-    p.add_argument("--grad-accum", type=int, default=4, dest="grad_accum",
-                   help="Gradient accumulation steps (effective batch = batch * grad_accum)")
-    p.add_argument("--save-every", type=int, default=1000, dest="save_every",
-                   help="Save checkpoint every N steps")
-    p.add_argument("--eval-every", type=int, default=500, dest="eval_every",
-                   help="Run perplexity eval every N steps")
-    p.add_argument("--logger", default="none", choices=["none", "wandb", "mlflow", "tensorboard"],
-                   help="Experiment logger backend")
+    p.add_argument(
+        "--seq-len", type=int, default=1024, dest="seq_len", help="Sequence length"
+    )
+    p.add_argument(
+        "--grad-accum",
+        type=int,
+        default=4,
+        dest="grad_accum",
+        help="Gradient accumulation steps (effective batch = batch * grad_accum)",
+    )
+    p.add_argument(
+        "--save-every",
+        type=int,
+        default=1000,
+        dest="save_every",
+        help="Save checkpoint every N steps",
+    )
+    p.add_argument(
+        "--eval-every",
+        type=int,
+        default=500,
+        dest="eval_every",
+        help="Run perplexity eval every N steps",
+    )
+    p.add_argument(
+        "--logger",
+        default="none",
+        choices=["none", "wandb", "mlflow", "tensorboard"],
+        help="Experiment logger backend",
+    )
     return p.parse_args()
 
 

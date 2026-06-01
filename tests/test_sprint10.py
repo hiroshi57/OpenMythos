@@ -16,7 +16,6 @@ import json
 import pytest
 import torch
 
-
 # ===========================================================================
 # ヘルパー: テスト用最小モデル
 # ===========================================================================
@@ -117,7 +116,9 @@ class TestLLMOScorerScore:
         from open_mythos.llmo import LLMOScorer
 
         s = LLMOScorer()
-        answer_first = "Yes, LLMO and SEO are different. LLMO targets AI search engines."
+        answer_first = (
+            "Yes, LLMO and SEO are different. LLMO targets AI search engines."
+        )
         vague = "Well, it depends on many factors. Let me explain in detail."
         r_af = s.score(answer_first)
         r_v = s.score(vague)
@@ -154,7 +155,10 @@ class TestLLMOScorerScore:
         from open_mythos.llmo import LLMOScorer
 
         s = LLMOScorer()
-        texts = ["A.", "OpenMythos v0.14.0 scored 32% CTR improvement vs GPT-4 in Q3 2025."]
+        texts = [
+            "A.",
+            "OpenMythos v0.14.0 scored 32% CTR improvement vs GPT-4 in Q3 2025.",
+        ]
         ranking = s.rank(texts)
         assert len(ranking) == 2
         # 順位1が最高スコア

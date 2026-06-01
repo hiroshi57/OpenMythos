@@ -34,13 +34,20 @@ import torch
 # Model loader (shared with perplexity.py / lm_eval_harness.py)
 # ---------------------------------------------------------------------------
 
+
 def _load_model_and_device(
     variant: Optional[str],
     checkpoint: Optional[str],
     device: Optional[str],
 ):
     from open_mythos.main import OpenMythos
-    from open_mythos.variants import mythos_nano, mythos_1b, mythos_3b, mythos_7b, mythos_10b
+    from open_mythos.variants import (
+        mythos_nano,
+        mythos_1b,
+        mythos_3b,
+        mythos_7b,
+        mythos_10b,
+    )
 
     _VARIANTS = {
         "nano": mythos_nano,
@@ -68,6 +75,7 @@ def _load_model_and_device(
 # ---------------------------------------------------------------------------
 # Perplexity evaluation
 # ---------------------------------------------------------------------------
+
 
 def run_perplexity_eval(
     variant: Optional[str],
@@ -101,6 +109,7 @@ def run_perplexity_eval(
 # lm-eval evaluation
 # ---------------------------------------------------------------------------
 
+
 def run_lm_eval(
     variant: Optional[str],
     checkpoint: Optional[str],
@@ -128,7 +137,9 @@ def run_lm_eval(
         )
         out = {}
         for task, metrics in results["results"].items():
-            out[task] = {k: round(v, 4) for k, v in metrics.items() if isinstance(v, float)}
+            out[task] = {
+                k: round(v, 4) for k, v in metrics.items() if isinstance(v, float)
+            }
         return out
 
     except ImportError:
@@ -145,11 +156,14 @@ def run_lm_eval(
 # Result I/O
 # ---------------------------------------------------------------------------
 
+
 def _git_sha() -> str:
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         return result.stdout.strip() if result.returncode == 0 else "unknown"
     except Exception:
@@ -186,7 +200,9 @@ def _build_table(results_dir: Path) -> str:
         v = data.get("variant", p.stem.split("_")[0])
         ppl = data.get("perplexity", {}).get("wikitext2_test", {}).get("ppl", "—")
         lm = data.get("lm_eval", {})
-        hellaswag = lm.get("hellaswag", {}).get("acc_norm", lm.get("hellaswag", {}).get("acc", "—"))
+        hellaswag = lm.get("hellaswag", {}).get(
+            "acc_norm", lm.get("hellaswag", {}).get("acc", "—")
+        )
         arc = lm.get("arc_easy", {}).get("acc", "—")
         wino = lm.get("winogrande", {}).get("acc", "—")
         ts = data.get("timestamp", "")[:10]
@@ -232,27 +248,59 @@ def update_readme(results_dir: Path, readme_path: Path) -> None:
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="OpenMythos benchmark runner")
-    p.add_argument("--variant", default="nano",
-                   choices=["nano", "1b", "3b", "7b", "10b"],
-                   help="Model variant (ignored if --checkpoint is given)")
+    p.add_argument(
+        "--variant",
+        default="nano",
+        choices=["nano", "1b", "3b", "7b", "10b"],
+        help="Model variant (ignored if --checkpoint is given)",
+    )
     p.add_argument("--checkpoint", default=None, help="Path to .pt checkpoint file")
-    p.add_argument("--tasks", default="hellaswag,arc_easy,winogrande",
-                   help="Comma-separated lm-eval task names")
+    p.add_argument(
+        "--tasks",
+        default="hellaswag,arc_easy,winogrande",
+        help="Comma-separated lm-eval task names",
+    )
     p.add_argument("--device", default=None, help="cpu / cuda (default: auto)")
-    p.add_argument("--num-fewshot", type=int, default=0, dest="num_fewshot",
-                   help="Number of few-shot examples")
-    p.add_argument("--limit", type=int, default=None,
-                   help="Limit evaluation to this many samples (for quick testing)")
-    p.add_argument("--out-dir", default="benchmark/results", dest="out_dir",
-                   help="Directory to save result JSON files")
-    p.add_argument("--no-perplexity", action="store_true", dest="no_perplexity",
-                   help="Skip perplexity evaluation")
-    p.add_argument("--no-lm-eval", action="store_true", dest="no_lm_eval",
-                   help="Skip lm-eval tasks")
-    p.add_argument("--no-readme-update", action="store_true", dest="no_readme_update",
-                   help="Do not update README.md")
+    p.add_argument(
+        "--num-fewshot",
+        type=int,
+        default=0,
+        dest="num_fewshot",
+        help="Number of few-shot examples",
+    )
+    p.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Limit evaluation to this many samples (for quick testing)",
+    )
+    p.add_argument(
+        "--out-dir",
+        default="benchmark/results",
+        dest="out_dir",
+        help="Directory to save result JSON files",
+    )
+    p.add_argument(
+        "--no-perplexity",
+        action="store_true",
+        dest="no_perplexity",
+        help="Skip perplexity evaluation",
+    )
+    p.add_argument(
+        "--no-lm-eval",
+        action="store_true",
+        dest="no_lm_eval",
+        help="Skip lm-eval tasks",
+    )
+    p.add_argument(
+        "--no-readme-update",
+        action="store_true",
+        dest="no_readme_update",
+        help="Do not update README.md",
+    )
     return p.parse_args()
 
 
@@ -282,17 +330,32 @@ def main() -> None:
 
     # Model params (load once for metadata)
     try:
-        _, dev = _load_model_and_device(variant if not args.checkpoint else None,
-                                         args.checkpoint, device)
+        _, dev = _load_model_and_device(
+            variant if not args.checkpoint else None, args.checkpoint, device
+        )
         from open_mythos.main import OpenMythos
+
         if args.checkpoint:
             import torch as _t
+
             ckpt = _t.load(args.checkpoint, map_location="cpu", weights_only=False)
             _m = OpenMythos(ckpt["cfg"])
         else:
-            from open_mythos.variants import mythos_nano, mythos_1b, mythos_3b, mythos_7b, mythos_10b
-            _vfns = {"nano": mythos_nano, "1b": mythos_1b, "3b": mythos_3b,
-                     "7b": mythos_7b, "10b": mythos_10b}
+            from open_mythos.variants import (
+                mythos_nano,
+                mythos_1b,
+                mythos_3b,
+                mythos_7b,
+                mythos_10b,
+            )
+
+            _vfns = {
+                "nano": mythos_nano,
+                "1b": mythos_1b,
+                "3b": mythos_3b,
+                "7b": mythos_7b,
+                "10b": mythos_10b,
+            }
             _m = OpenMythos(_vfns[variant]())
         results["model_params"] = sum(p.numel() for p in _m.parameters())
     except Exception:

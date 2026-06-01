@@ -28,7 +28,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from open_mythos.llmo import LLMOScorer
 
-
 # ---------------------------------------------------------------------------
 # サンプルデータセット（日本語5件 + 英語5件）
 # ---------------------------------------------------------------------------
@@ -190,6 +189,7 @@ SAMPLE_DOCUMENTS = [
 # ベースライン: 単純キーワード密度のみ
 # ---------------------------------------------------------------------------
 
+
 def _baseline_score(doc: dict) -> float:
     """シンプルなキーワード密度スコア（比較ベースライン）。"""
     body = doc["body"].lower()
@@ -209,10 +209,12 @@ def _baseline_score(doc: dict) -> float:
 # Claude API 比較（オプション）
 # ---------------------------------------------------------------------------
 
+
 def _claude_score(doc: dict, api_key: str) -> Optional[float]:
     """Claude API で同じテキストの LLMO 品質スコアを取得する（オプション）。"""
     try:
         import anthropic
+
         client = anthropic.Anthropic(api_key=api_key)
         prompt = (
             f"Rate this SEO content for AI-search citation potential (LLMO score).\n"
@@ -237,6 +239,7 @@ def _claude_score(doc: dict, api_key: str) -> Optional[float]:
 # ---------------------------------------------------------------------------
 # メインベンチマーク
 # ---------------------------------------------------------------------------
+
 
 def run_benchmark(
     docs: Optional[list[dict]] = None,
@@ -269,23 +272,27 @@ def run_benchmark(
         baseline = _baseline_score(doc)
         claude = _claude_score(doc, api_key) if api_key else None
 
-        results.append({
-            "id": doc["id"],
-            "lang": doc["lang"],
-            "keyword": doc["keyword"],
-            "openmythos_llmo": om_result.llmo_total,
-            "openmythos_entity": om_result.entity_density,
-            "openmythos_directness": om_result.answer_directness,
-            "openmythos_citability": om_result.citability,
-            "openmythos_wkd": om_result.weighted_keyword_density,
-            "baseline_keyword_density": round(baseline, 4),
-            "claude_api_score": claude,
-        })
+        results.append(
+            {
+                "id": doc["id"],
+                "lang": doc["lang"],
+                "keyword": doc["keyword"],
+                "openmythos_llmo": om_result.llmo_total,
+                "openmythos_entity": om_result.entity_density,
+                "openmythos_directness": om_result.answer_directness,
+                "openmythos_citability": om_result.citability,
+                "openmythos_wkd": om_result.weighted_keyword_density,
+                "baseline_keyword_density": round(baseline, 4),
+                "claude_api_score": claude,
+            }
+        )
 
     # 集計
     om_avg = sum(r["openmythos_llmo"] for r in results) / len(results)
     bl_avg = sum(r["baseline_keyword_density"] for r in results) / len(results)
-    claude_scores = [r["claude_api_score"] for r in results if r["claude_api_score"] is not None]
+    claude_scores = [
+        r["claude_api_score"] for r in results if r["claude_api_score"] is not None
+    ]
     claude_avg = sum(claude_scores) / len(claude_scores) if claude_scores else None
 
     return {
@@ -306,11 +313,17 @@ def _print_table(benchmark: dict) -> None:
     print("\n" + "=" * 72)
     print("  OpenMythos LLMO Benchmark — Opus 4.8 対抗比較")
     print("=" * 72)
-    header = f"{'ID':<8} {'Lang':<5} {'OpenMythos':>11} {'Baseline':>10} {'Claude API':>11}"
+    header = (
+        f"{'ID':<8} {'Lang':<5} {'OpenMythos':>11} {'Baseline':>10} {'Claude API':>11}"
+    )
     print(header)
     print("-" * 72)
     for r in benchmark["results"]:
-        claude = f"{r['claude_api_score']:.3f}" if r["claude_api_score"] is not None else "   N/A   "
+        claude = (
+            f"{r['claude_api_score']:.3f}"
+            if r["claude_api_score"] is not None
+            else "   N/A   "
+        )
         print(
             f"{r['id']:<8} {r['lang']:<5} "
             f"{r['openmythos_llmo']:>11.3f} "
@@ -319,8 +332,12 @@ def _print_table(benchmark: dict) -> None:
         )
     print("-" * 72)
     s = benchmark["summary"]
-    claude_str = f"{s['claude_api_avg']:.3f}" if s["claude_api_avg"] is not None else "   N/A   "
-    print(f"{'AVERAGE':<14} {s['openmythos_avg']:>11.3f} {s['baseline_avg']:>10.3f} {claude_str:>11}")
+    claude_str = (
+        f"{s['claude_api_avg']:.3f}" if s["claude_api_avg"] is not None else "   N/A   "
+    )
+    print(
+        f"{'AVERAGE':<14} {s['openmythos_avg']:>11.3f} {s['baseline_avg']:>10.3f} {claude_str:>11}"
+    )
     print(f"\n  OpenMythos vs Baseline: {s['openmythos_vs_baseline_delta']:+.4f}")
     if s["claude_api_avg"] is not None:
         delta_vs_claude = s["openmythos_avg"] - s["claude_api_avg"]

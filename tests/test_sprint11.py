@@ -25,7 +25,6 @@ from unittest.mock import MagicMock
 import pytest
 import torch
 
-
 # ===========================================================================
 # serve/api.py が module-level で transformers.AutoTokenizer を import するため、
 # test_sprint11.py が先に実行されると test_sprint7_serve.py の mock_transformers
@@ -57,7 +56,9 @@ def mock_transformers_sprint11():
     """
     fake_transformers = types.ModuleType("transformers")
     fake_transformers.AutoTokenizer = MagicMock()
-    fake_transformers.AutoTokenizer.from_pretrained = MagicMock(return_value=_make_tok_mock())
+    fake_transformers.AutoTokenizer.from_pretrained = MagicMock(
+        return_value=_make_tok_mock()
+    )
 
     orig = sys.modules.get("transformers")
     sys.modules["transformers"] = fake_transformers
@@ -75,15 +76,27 @@ def mock_transformers_sprint11():
 
 def _tiny_cfg():
     from open_mythos.main import MythosConfig
+
     return MythosConfig(
-        vocab_size=512, dim=64, n_heads=4, n_kv_heads=2,
-        max_seq_len=128, max_loop_iters=4, prelude_layers=1, coda_layers=1,
-        n_experts=4, n_shared_experts=1, n_experts_per_tok=1, expert_dim=32, lora_rank=4,
+        vocab_size=512,
+        dim=64,
+        n_heads=4,
+        n_kv_heads=2,
+        max_seq_len=128,
+        max_loop_iters=4,
+        prelude_layers=1,
+        coda_layers=1,
+        n_experts=4,
+        n_shared_experts=1,
+        n_experts_per_tok=1,
+        expert_dim=32,
+        lora_rank=4,
     )
 
 
 def _tiny_model():
     from open_mythos.main import OpenMythos
+
     return OpenMythos(_tiny_cfg()).eval()
 
 
@@ -102,7 +115,9 @@ class TestToolDefinition:
         td = ToolDefinition(
             name="dummy",
             description="A dummy tool",
-            parameters={"x": ParameterSchema(type="string", description="input", required=True)},
+            parameters={
+                "x": ParameterSchema(type="string", description="input", required=True)
+            },
             fn=dummy,
         )
         schema = td.to_openai_schema()
@@ -135,7 +150,10 @@ class TestToolCall:
     def test_from_dict(self):
         from open_mythos.tools import ToolCall
 
-        data = {"name": "calculate_roi", "arguments": {"ad_spend": 1000.0, "revenue": 3000.0}}
+        data = {
+            "name": "calculate_roi",
+            "arguments": {"ad_spend": 1000.0, "revenue": 3000.0},
+        }
         tc = ToolCall.from_dict(data)
         assert tc.name == "calculate_roi"
         assert tc.arguments["ad_spend"] == 1000.0
@@ -173,7 +191,9 @@ class TestToolResult:
     def test_to_message(self):
         from open_mythos.tools import ToolResult
 
-        r = ToolResult(tool_name="calculate_roi", content={"roi_pct": 200.0}, call_id="c1")
+        r = ToolResult(
+            tool_name="calculate_roi", content={"roi_pct": 200.0}, call_id="c1"
+        )
         msg = r.to_message()
         assert msg["role"] == "tool"
         assert msg["name"] == "calculate_roi"
@@ -203,22 +223,29 @@ class TestToolRegistry:
         assert reg.get("add") is td
 
     def test_call_success(self):
-        from open_mythos.tools import ToolRegistry, ToolDefinition, ParameterSchema, ToolCall
+        from open_mythos.tools import (
+            ToolRegistry,
+            ToolDefinition,
+            ParameterSchema,
+            ToolCall,
+        )
 
         reg = ToolRegistry()
 
         def multiply(x: float, y: float) -> float:
             return x * y
 
-        reg.register(ToolDefinition(
-            name="multiply",
-            description="multiply",
-            parameters={
-                "x": ParameterSchema(type="number", required=True),
-                "y": ParameterSchema(type="number", required=True),
-            },
-            fn=multiply,
-        ))
+        reg.register(
+            ToolDefinition(
+                name="multiply",
+                description="multiply",
+                parameters={
+                    "x": ParameterSchema(type="number", required=True),
+                    "y": ParameterSchema(type="number", required=True),
+                },
+                fn=multiply,
+            )
+        )
         result = reg.call(ToolCall(name="multiply", arguments={"x": 3.0, "y": 4.0}))
         assert result.success
         assert result.content == pytest.approx(12.0)
@@ -233,6 +260,7 @@ class TestToolRegistry:
 
     def test_to_openai_tools(self):
         from open_mythos.tools import ToolRegistry
+
         reg = ToolRegistry.default()
         tools = reg.to_openai_tools()
         assert len(tools) >= 4
@@ -254,6 +282,7 @@ class TestToolRegistry:
 
     def test_len(self):
         from open_mythos.tools import ToolRegistry
+
         reg = ToolRegistry.default()
         assert len(reg) == 4
 
@@ -291,7 +320,9 @@ class TestExecuteToolCalls:
 
         reg = ToolRegistry.default()
         calls = [
-            ToolCall(name="calculate_roi", arguments={"ad_spend": 1000.0, "revenue": 3000.0}),
+            ToolCall(
+                name="calculate_roi", arguments={"ad_spend": 1000.0, "revenue": 3000.0}
+            ),
             ToolCall(name="fetch_trend", arguments={"keyword": "LLMO"}),
         ]
         results = execute_tool_calls(calls, reg)
@@ -351,8 +382,7 @@ class TestCalculateROI:
         from open_mythos.tools_marketing import calculate_roi
 
         r = calculate_roi(
-            ad_spend=1000.0, revenue=5000.0,
-            clicks=200, impressions=10000
+            ad_spend=1000.0, revenue=5000.0, clicks=200, impressions=10000
         )
         assert "ctr" in r
         assert r["ctr"] == pytest.approx(0.02)
@@ -400,7 +430,9 @@ class TestScoreContent:
     def test_returns_all_fields(self):
         from open_mythos.tools_marketing import score_content
 
-        r = score_content("OpenMythos achieved 32% CTR in Q3 2025.", target_keyword="CTR")
+        r = score_content(
+            "OpenMythos achieved 32% CTR in Q3 2025.", target_keyword="CTR"
+        )
         assert "llmo_total" in r
         assert "entity_density" in r
         assert "recommendations" in r
@@ -421,40 +453,49 @@ class TestScoreContent:
 class TestAPIToolsEndpoints:
     def test_tools_list_route_exists(self):
         from serve.api import app
+
         routes = [r.path for r in app.routes]
         assert "/v1/tools" in routes
 
     def test_tools_call_route_exists(self):
         from serve.api import app
+
         routes = [r.path for r in app.routes]
         assert "/v1/tools/call" in routes
 
     def test_tools_batch_route_exists(self):
         from serve.api import app
+
         routes = [r.path for r in app.routes]
         assert "/v1/tools/batch" in routes
 
     def test_tool_call_request_model(self):
         from serve.api import ToolCallRequest
 
-        req = ToolCallRequest(name="calculate_roi", arguments={"ad_spend": 100.0, "revenue": 300.0})
+        req = ToolCallRequest(
+            name="calculate_roi", arguments={"ad_spend": 100.0, "revenue": 300.0}
+        )
         assert req.name == "calculate_roi"
 
     def test_tools_batch_request_model(self):
         from serve.api import ToolsBatchRequest, ToolCallRequest
 
-        req = ToolsBatchRequest(calls=[
-            ToolCallRequest(name="fetch_trend", arguments={"keyword": "SEO"}),
-        ])
+        req = ToolsBatchRequest(
+            calls=[
+                ToolCallRequest(name="fetch_trend", arguments={"keyword": "SEO"}),
+            ]
+        )
         assert len(req.calls) == 1
 
     def test_rag_index_route_exists(self):
         from serve.api import app
+
         routes = [r.path for r in app.routes]
         assert "/v1/rag/index" in routes
 
     def test_rag_query_route_exists(self):
         from serve.api import app
+
         routes = [r.path for r in app.routes]
         assert "/v1/rag" in routes
 
@@ -498,8 +539,9 @@ class TestYarnRopeFreqs:
         dim, max_len, theta = 32, 64, 500000.0
         standard = precompute_rope_freqs(dim, max_len, theta)
         # factor=1 では補間なし (r=0 everywhere) のため標準と一致するはず
-        yarn = yarn_rope_freqs(dim=dim, max_len=max_len, theta=theta, factor=1.0,
-                               original_max_len=max_len)
+        yarn = yarn_rope_freqs(
+            dim=dim, max_len=max_len, theta=theta, factor=1.0, original_max_len=max_len
+        )
         # 位相が同じか確認 (angle が近い)
         assert standard.shape == yarn.shape
 
@@ -510,7 +552,9 @@ class TestYarnRopeFreqs:
 
         dim, max_len = 32, 64
         standard = precompute_rope_freqs(dim, max_len)
-        yarn = yarn_rope_freqs(dim=dim, max_len=max_len, factor=8.0, original_max_len=64)
+        yarn = yarn_rope_freqs(
+            dim=dim, max_len=max_len, factor=8.0, original_max_len=64
+        )
         # 低周波成分はスケーリングされているため angle が異なる
         assert not torch.allclose(standard.angle(), yarn.angle(), atol=1e-3)
 
@@ -636,7 +680,10 @@ class TestVectorStore:
         import torch
 
         store = VectorStore(embed_dim=32)
-        docs = [Document(text=f"doc {i}", embedding=torch.randn(32), doc_id=str(i)) for i in range(2)]
+        docs = [
+            Document(text=f"doc {i}", embedding=torch.randn(32), doc_id=str(i))
+            for i in range(2)
+        ]
         store.add(docs)
         results = store.search(torch.randn(32), top_k=5)  # top_k > len
         assert len(results) <= 2
@@ -664,11 +711,13 @@ class TestRAGPipeline:
 
         model = _tiny_model()
         pipeline = RAGPipeline(model, device="cpu", embed_dim=64)
-        pipeline.add_documents([
-            "LLMOはAI検索エンジン向けの最適化手法です",
-            "CTRはクリック率の略称です",
-            "ROASは広告費用対効果の指標です",
-        ])
+        pipeline.add_documents(
+            [
+                "LLMOはAI検索エンジン向けの最適化手法です",
+                "CTRはクリック率の略称です",
+                "ROASは広告費用対効果の指標です",
+            ]
+        )
         results = pipeline.retrieve("AI検索の最適化", top_k=2)
         assert len(results) == 2
         for r in results:
@@ -680,7 +729,9 @@ class TestRAGPipeline:
 
         model = _tiny_model()
         pipeline = RAGPipeline(model, device="cpu", embed_dim=64)
-        pipeline.add_documents(["LLMOとは Large Language Model Optimization の略です。"])
+        pipeline.add_documents(
+            ["LLMOとは Large Language Model Optimization の略です。"]
+        )
         result = pipeline.generate_with_context(
             query="LLMOとは？",
             top_k=1,
@@ -758,14 +809,15 @@ class TestSprint11Imports:
         from open_mythos import (
             ToolRegistry,
         )
+
         assert ToolRegistry is not None
 
     def test_rope_extension_importable(self):
-        from open_mythos import (
-            RopeScalingConfig
-        )
+        from open_mythos import RopeScalingConfig
+
         assert RopeScalingConfig is not None
 
     def test_rag_importable(self):
         from open_mythos import RAGPipeline
+
         assert RAGPipeline is not None

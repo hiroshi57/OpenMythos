@@ -160,13 +160,13 @@ TaskType = Literal[
     "persona_segment",  # ユーザーペルソナ分類
     "market_research",  # 市場調査レポート要約
     "identity_verify",  # 本人確認（リアルタイム）
-    "fraud_detect",     # 詐欺検知（高精度）
-    "seo_content",      # SEO記事・メタタグ生成
-    "llmo_optimize",    # LLM検索最適化（LLMO）コンテンツ生成
-    "ad_copy",          # 広告コピー生成（マーケティング）
+    "fraud_detect",  # 詐欺検知（高精度）
+    "seo_content",  # SEO記事・メタタグ生成
+    "llmo_optimize",  # LLM検索最適化（LLMO）コンテンツ生成
+    "ad_copy",  # 広告コピー生成（マーケティング）
     "persona_message",  # ペルソナ別メッセージ生成
-    "market_summary",   # 市場調査サマリー生成
-    "general",          # 汎用
+    "market_summary",  # 市場調査サマリー生成
+    "general",  # 汎用
 ]
 
 
@@ -242,13 +242,17 @@ _TASK_SYSTEM_PROMPTS: dict[str, str] = {
 
 class GenerateRequest(BaseModel):
     prompt: str = Field(..., description="生成プロンプト")
-    task: TaskType = Field("general", description="タスク種別（システムプロンプトを自動設定）")
+    task: TaskType = Field(
+        "general", description="タスク種別（システムプロンプトを自動設定）"
+    )
     max_new_tokens: int = Field(256, ge=1, le=1024, description="最大生成トークン数")
     temperature: float = Field(1.0, ge=0.01, le=2.0)
     top_p: float = Field(0.95, ge=0.0, le=1.0)
     top_k: int = Field(50, ge=0, le=500)
     n_loops: Optional[int] = Field(None, description="ループ深度オーバーライド")
-    system_prompt: Optional[str] = Field(None, description="カスタムシステムプロンプト（指定時はtaskより優先）")
+    system_prompt: Optional[str] = Field(
+        None, description="カスタムシステムプロンプト（指定時はtaskより優先）"
+    )
 
 
 class GenerateResponse(BaseModel):
@@ -261,7 +265,9 @@ class GenerateResponse(BaseModel):
 
 class AgentRequest(BaseModel):
     task_input: str = Field(..., description="エージェントへの入力テキスト")
-    session_id: Optional[str] = Field(None, description="会話セッションID（省略時は新規作成）")
+    session_id: Optional[str] = Field(
+        None, description="会話セッションID（省略時は新規作成）"
+    )
     task: TaskType = Field("general", description="タスク種別")
     system_prompt: Optional[str] = Field(None, description="カスタムシステムプロンプト")
     max_new_tokens: int = Field(256, ge=1, le=1024)
@@ -299,18 +305,18 @@ class RawInferResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 TASK_LOOPS: dict[str, int] = {
-    "ad_performance":  2,   # リアルタイム入稿審査: 速度優先
-    "content_quality": 6,   # SEO品質スコア: 精度と速度のバランス
-    "persona_segment": 4,   # ペルソナ分類: 中程度
-    "market_research": 4,   # 市場調査要約: 中程度
-    "identity_verify": 4,   # 本人確認: リアルタイム
-    "fraud_detect":    12,  # 詐欺検知: 精度最優先
-    "seo_content":     6,   # SEO記事生成: 品質重視
-    "llmo_optimize":   8,   # LLMO最適化: 深い推論で構造化
-    "ad_copy":         2,   # 広告コピー: 速度優先
-    "persona_message": 4,   # ペルソナ別メッセージ: 中程度
-    "market_summary":  6,   # 市場調査サマリー: 品質重視
-    "general":         4,   # DEFAULT_LOOPS
+    "ad_performance": 2,  # リアルタイム入稿審査: 速度優先
+    "content_quality": 6,  # SEO品質スコア: 精度と速度のバランス
+    "persona_segment": 4,  # ペルソナ分類: 中程度
+    "market_research": 4,  # 市場調査要約: 中程度
+    "identity_verify": 4,  # 本人確認: リアルタイム
+    "fraud_detect": 12,  # 詐欺検知: 精度最優先
+    "seo_content": 6,  # SEO記事生成: 品質重視
+    "llmo_optimize": 8,  # LLMO最適化: 深い推論で構造化
+    "ad_copy": 2,  # 広告コピー: 速度優先
+    "persona_message": 4,  # ペルソナ別メッセージ: 中程度
+    "market_summary": 6,  # 市場調査サマリー: 品質重視
+    "general": 4,  # DEFAULT_LOOPS
 }
 
 
@@ -330,12 +336,12 @@ def health():
         "task_default_loops": TASK_LOOPS,
         "active_sessions": len(state.agents),
         "endpoints": {
-            "POST /infer":           "スコアリング・分類",
-            "POST /infer/raw":       "rawロジット取得",
-            "POST /generate":        "テキスト生成（SEO/LLMO/広告コピー等）",
+            "POST /infer": "スコアリング・分類",
+            "POST /infer/raw": "rawロジット取得",
+            "POST /generate": "テキスト生成（SEO/LLMO/広告コピー等）",
             "GET  /generate/stream": "ストリーミング生成（SSE）",
-            "POST /agent":           "多ターン対話エージェント",
-            "DELETE /agent/{id}":    "セッションリセット",
+            "POST /agent": "多ターン対話エージェント",
+            "DELETE /agent/{id}": "セッションリセット",
         },
     }
 
@@ -381,11 +387,15 @@ def infer(req: InferRequest):
 @app.post("/generate", response_model=GenerateResponse)
 def generate(req: GenerateRequest):
     """テキスト生成エンドポイント。SEO記事・広告コピー・LLMOコンテンツ等を生成。"""
-    sys_prompt = req.system_prompt or _TASK_SYSTEM_PROMPTS.get(req.task, _TASK_SYSTEM_PROMPTS["general"])
+    sys_prompt = req.system_prompt or _TASK_SYSTEM_PROMPTS.get(
+        req.task, _TASK_SYSTEM_PROMPTS["general"]
+    )
     full_prompt = f"{sys_prompt}\n\n{req.prompt}" if sys_prompt else req.prompt
 
     # 入力トークン数を計測
-    enc = state.tokenizer(full_prompt, return_tensors="pt", truncation=True, max_length=512)
+    enc = state.tokenizer(
+        full_prompt, return_tensors="pt", truncation=True, max_length=512
+    )
     prompt_len = enc["input_ids"].shape[1]
 
     t0 = time.perf_counter()
@@ -398,7 +408,9 @@ def generate(req: GenerateRequest):
     latency_ms = (time.perf_counter() - t0) * 1000
 
     # 生成テキストのトークン数を簡易計測
-    gen_enc = state.tokenizer(text, return_tensors="pt", truncation=True, max_length=1024)
+    gen_enc = state.tokenizer(
+        text, return_tensors="pt", truncation=True, max_length=1024
+    )
     generated_tokens = gen_enc["input_ids"].shape[1]
 
     return GenerateResponse(
@@ -442,7 +454,9 @@ def agent_run(req: AgentRequest):
     session_id = req.session_id or str(uuid.uuid4())
 
     if session_id not in state.agents:
-        sys_prompt = req.system_prompt or _TASK_SYSTEM_PROMPTS.get(req.task, _TASK_SYSTEM_PROMPTS["general"])
+        sys_prompt = req.system_prompt or _TASK_SYSTEM_PROMPTS.get(
+            req.task, _TASK_SYSTEM_PROMPTS["general"]
+        )
         agent = MythosAgent(
             model=state.model,
             device=str(state.device),
@@ -476,7 +490,11 @@ def agent_reset(session_id: str):
     if session_id not in state.agents:
         raise HTTPException(404, f"session '{session_id}' not found")
     state.agents[session_id].reset()
-    return {"ok": True, "session_id": session_id, "message": "会話履歴をリセットしました"}
+    return {
+        "ok": True,
+        "session_id": session_id,
+        "message": "会話履歴をリセットしました",
+    }
 
 
 @app.post("/infer/raw", response_model=RawInferResponse)
@@ -603,7 +621,9 @@ def chat_completions(req: ChatRequest):
                     )
                     mask = cum_probs - torch.softmax(sorted_logits, dim=-1) > req.top_p
                     sorted_logits[mask] = float("-inf")
-                    next_logits = torch.full_like(next_logits, float("-inf")).scatter(0, sorted_idx, sorted_logits)
+                    next_logits = torch.full_like(next_logits, float("-inf")).scatter(
+                        0, sorted_idx, sorted_logits
+                    )
                 probs = torch.softmax(next_logits, dim=-1)
                 next_token = int(torch.multinomial(probs, 1).item())
                 generated.append(next_token)
@@ -875,12 +895,12 @@ def seo_generate(req: SEOGenerateRequest):
             next_logits = logits[0, -1, :] / max(req.temperature, 1e-6)
             if req.top_p < 1.0:
                 sorted_logits, sorted_idx = torch.sort(next_logits, descending=True)
-                cum_probs = torch.cumsum(
-                    torch.softmax(sorted_logits, dim=-1), dim=-1
-                )
+                cum_probs = torch.cumsum(torch.softmax(sorted_logits, dim=-1), dim=-1)
                 mask = cum_probs - torch.softmax(sorted_logits, dim=-1) > req.top_p
                 sorted_logits[mask] = float("-inf")
-                next_logits = torch.full_like(next_logits, float("-inf")).scatter(0, sorted_idx, sorted_logits)
+                next_logits = torch.full_like(next_logits, float("-inf")).scatter(
+                    0, sorted_idx, sorted_logits
+                )
             probs = torch.softmax(next_logits, dim=-1)
             next_token = int(torch.multinomial(probs, 1).item())
             generated_ids.append(next_token)
@@ -975,7 +995,11 @@ def extended_thinking(req: ThinkingRequest):
 # Tool Use / Function Calling エンドポイント
 # ---------------------------------------------------------------------------
 
-from open_mythos.tools import ToolRegistry as _ToolRegistry, ToolCall, execute_tool_calls  # noqa: E402
+from open_mythos.tools import (  # noqa: E402
+    ToolRegistry as _ToolRegistry,
+    ToolCall,
+    execute_tool_calls,
+)
 
 # デフォルトのマーケ特化ツールレジストリ (起動時1回構築)
 _default_tool_registry = _ToolRegistry.default()
@@ -1058,14 +1082,18 @@ def call_tools_batch(req: ToolsBatchRequest):
     for r in results:
         content = {}
         if r.content is not None:
-            content = r.content if isinstance(r.content, dict) else {"result": r.content}
-        responses.append(ToolCallResponse(
-            tool_name=r.tool_name,
-            content=content,
-            success=r.success,
-            error=r.error,
-            latency_ms=r.latency_ms,
-        ))
+            content = (
+                r.content if isinstance(r.content, dict) else {"result": r.content}
+            )
+        responses.append(
+            ToolCallResponse(
+                tool_name=r.tool_name,
+                content=content,
+                success=r.success,
+                error=r.error,
+                latency_ms=r.latency_ms,
+            )
+        )
 
     return ToolsBatchResponse(
         results=responses,
@@ -1091,9 +1119,15 @@ def _get_rag() -> _RAGPipeline:
 
 
 class RAGIndexRequest(BaseModel):
-    texts: list[str] = Field(..., min_length=1, max_length=256, description="インデックスするテキスト群")
-    doc_ids: list[str] = Field(default_factory=list, description="ドキュメントID (省略可)")
-    metadatas: list[dict] = Field(default_factory=list, description="メタデータ (省略可)")
+    texts: list[str] = Field(
+        ..., min_length=1, max_length=256, description="インデックスするテキスト群"
+    )
+    doc_ids: list[str] = Field(
+        default_factory=list, description="ドキュメントID (省略可)"
+    )
+    metadatas: list[dict] = Field(
+        default_factory=list, description="メタデータ (省略可)"
+    )
 
 
 class RAGIndexResponse(BaseModel):
@@ -1217,7 +1251,9 @@ class AgentRunRequest(BaseModel):
     task: str = Field(..., description="エージェントに解決させるタスク")
     system_prompt: str = Field("", description="カスタムシステムプロンプト (省略可)")
     max_iterations: int = Field(6, ge=1, le=12, description="最大イテレーション数")
-    max_new_tokens: int = Field(128, ge=1, le=512, description="各ステップの最大生成トークン数")
+    max_new_tokens: int = Field(
+        128, ge=1, le=512, description="各ステップの最大生成トークン数"
+    )
     temperature: float = Field(0.7, ge=0.0, le=2.0)
     loops: int = Field(DEFAULT_LOOPS, ge=1, le=16)
 
@@ -1259,14 +1295,16 @@ def react_agent_run(req: AgentRunRequest):
     for step in result.steps:
         tool_name = step.tool_call.name if step.tool_call else ""
         tool_success = step.tool_result.success if step.tool_result else True
-        step_responses.append(AgentStepResponse(
-            step_type=step.step_type,
-            content=step.content[:500],  # 最大500文字
-            iteration=step.iteration,
-            latency_ms=step.latency_ms,
-            tool_name=tool_name,
-            tool_success=tool_success,
-        ))
+        step_responses.append(
+            AgentStepResponse(
+                step_type=step.step_type,
+                content=step.content[:500],  # 最大500文字
+                iteration=step.iteration,
+                latency_ms=step.latency_ms,
+                tool_name=tool_name,
+                tool_success=tool_success,
+            )
+        )
 
     return AgentRunResponse(
         task=result.task,
@@ -1332,6 +1370,7 @@ def get_session(session_id: str):
     mem = _session_store.get(session_id)
     if mem is None:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
     s = mem.stats()
     return SessionStatsResponse(
@@ -1356,6 +1395,7 @@ def add_turn(session_id: str, req: TurnAddRequest):
     mem = _session_store.get(session_id)
     if mem is None:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
     mem.add_turn(req.role, req.content)
     s = mem.stats()
@@ -1374,6 +1414,7 @@ def get_session_context(session_id: str):
     mem = _session_store.get(session_id)
     if mem is None:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
     return SessionContextResponse(
         session_id=session_id,

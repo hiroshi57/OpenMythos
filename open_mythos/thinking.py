@@ -37,7 +37,6 @@ import torch.nn as nn
 
 from open_mythos.main import OpenMythos
 
-
 # ---------------------------------------------------------------------------
 # データクラス
 # ---------------------------------------------------------------------------
@@ -80,7 +79,7 @@ class LoopState:
     """単一ループステップの内部状態サマリ。"""
 
     loop: int
-    norm: float   # 隠れ状態の L2ノルム (変化の大きさ)
+    norm: float  # 隠れ状態の L2ノルム (変化の大きさ)
     delta: float  # 前ステップとのノルム差分
 
 
@@ -288,9 +287,7 @@ class ThinkingEngine:
 
         x = model.embed(input_ids)
         freqs_cis = (
-            model.freqs_cis_mla
-            if model.cfg.attn_type == "mla"
-            else model.freqs_cis
+            model.freqs_cis_mla if model.cfg.attn_type == "mla" else model.freqs_cis
         )[:T]
         mask = model._causal_mask(T, device, x.dtype) if T > 1 else None
 
