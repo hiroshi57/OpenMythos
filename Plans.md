@@ -133,11 +133,29 @@
 
 ---
 
+## Sprint 17: APIキー認証 & レート制限 & Docker本番化 & v0.20.0 (完了)
+
+> ブランチ: `feature/sprint17-auth-docker`
+
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 17.1 | `docs/mythos_vs_openmythos.md` — アーキテクチャ差分・ベンチマーク・移行ガイド | cc:完了 [87b669c] |
+| 17.2 | `serve/auth.py` — Bearer Token 認証 (`verify_api_key`) + FastAPI global dependency 適用 | cc:完了 [87b669c] |
+| 17.3 | `serve/Dockerfile` — Gunicorn + UvicornWorker 本番構成 / 非 root ユーザー | cc:完了 [87b669c] |
+| 17.3 | `docker-compose.yml` — RATE_LIMIT_RPM / API_KEY / WORKERS 設定追加 | cc:完了 [87b669c] |
+| 17.4 | `serve/auth.py` — `_SlidingWindow` + `RateLimitMiddleware` (60 rpm / `/health` スキップ) | cc:完了 [87b669c] |
+| 17.5 | `serve/api.py` — 全エンドポイントに tags / summary / description 追加 (11カテゴリ) | cc:完了 [87b669c] |
+| 17.6 | PyPI v0.20.0 — pyproject.toml + CHANGELOG | cc:完了 [87b669c] |
+| 17.T | `tests/test_sprint17.py` — 40 tests (auth / rate-limit / Docker / OpenAPI / doc) | cc:完了 [87b669c] |
+
+---
+
 ## 進行中の作業メモ
 
 ### 現在のブランチ状態 (2026-06-01 更新)
 - `master`: `3d6ffac` — Sprint 1〜12 全完了 (729 PASS / v0.16.0)
-- `harness-work/13.1.2`: Sprint 13〜16 全完了 (933 tests 収集 / v0.19.0) — master merge 待ち
+- `harness-work/13.1.2` → PR #11: Sprint 13〜16 全完了 (933 tests 収集 / v0.19.0) — master merge 待ち
+- `feature/sprint17-auth-docker`: Sprint 17 全完了 (v0.20.0 / 40 new tests)
 
 ### 重要な技術的知見
 - `freqs_cis` は必ず `[:T]` スライスして渡すこと (apply_rope ブロードキャストエラー防止)
