@@ -156,14 +156,14 @@
 
 | task-id | 説明 | 状態 |
 |---------|------|------|
-| 18.1 | `scripts/csv_to_jsonl.py` — CSV → JSONL 変換スクリプト (SFT データ前処理) | cc:TODO |
-| 18.2 | `scripts/finetune.py` — LoRA SFT 実行スクリプト (Trainer 統合) | cc:TODO |
-| 18.3 | `benchmark/compare_opus.py` — OpenMythos LLMOScorer vs ルールベースライン比較 | cc:TODO |
-| 18.4 | `serve/api.py` — `/v1/ab/infer` + `/v1/ab/stats` A/B テストエンドポイント | cc:TODO |
-| 18.5 | `open_mythos/tools_marketing.py` — `roas_simulate()` Monte Carlo ROAS シミュレーター | cc:TODO |
-| 18.6 | `open_mythos/tools_marketing.py` — `persona_ad_match()` TF-IDF ペルソナ×広告マッチング | cc:TODO |
-| 18.T | `tests/test_sprint18.py` — 39 tests (roas_simulate / persona_ad_match / compare_opus / A/B) | cc:TODO |
-| 18.V | PyPI v0.21.0 — pyproject.toml + CHANGELOG | cc:TODO |
+| 18.1 | `scripts/csv_to_jsonl.py` — CSV → JSONL 変換スクリプト (SFT データ前処理) | cc:完了 [89506bc] |
+| 18.2 | `scripts/finetune.py` — LoRA SFT 実行スクリプト (Trainer 統合) | cc:完了 [89506bc] |
+| 18.3 | `benchmark/compare_opus.py` — OpenMythos LLMOScorer vs ルールベースライン比較 | cc:完了 [89506bc] |
+| 18.4 | `serve/api.py` — `/v1/ab/infer` + `/v1/ab/stats` A/B テストエンドポイント | cc:完了 [89506bc] |
+| 18.5 | `open_mythos/tools_marketing.py` — `roas_simulate()` Monte Carlo ROAS シミュレーター | cc:完了 [89506bc] |
+| 18.6 | `open_mythos/tools_marketing.py` — `persona_ad_match()` TF-IDF ペルソナ×広告マッチング | cc:完了 [89506bc] |
+| 18.T | `tests/test_sprint18.py` — 39 tests (roas_simulate / persona_ad_match / compare_opus / A/B) | cc:完了 [89506bc] |
+| 18.V | PyPI v0.21.0 — pyproject.toml + CHANGELOG | cc:完了 [89506bc] |
 
 ---
 
