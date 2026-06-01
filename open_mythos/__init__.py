@@ -21,7 +21,7 @@ from open_mythos.moda import MoDAConfig, MoDAModel
 from open_mythos.hyperloop import HyperloopConfig, HyperloopBlock, HyperloopMythos
 from open_mythos.logger_utils import TrainLogger
 from open_mythos.agents import OpenMythosLLM, MythosAgent
-from open_mythos.llmo import LLMOScorer, LLMOScore
+from open_mythos.llmo import LLMOScorer, LLMOScore, ABTestResult
 from open_mythos.thinking import ThinkingEngine, ThinkingResult
 from open_mythos.structured import (
     StructuredGenerator,
@@ -71,6 +71,14 @@ from open_mythos.conversation import (
     MemorySummary,
     ConversationMemory,
     SessionStore,
+)
+from open_mythos.seo_pipeline import SEOPipeline, SEOPipelineResult
+from open_mythos.security import InputGuard, OutputGuard, SecurityCheckResult
+from open_mythos.swarm import (
+    SwarmConfig,
+    SwarmAgentResult,
+    SwarmResult,
+    SwarmOrchestrator,
 )
 from open_mythos.mod import (
     MoDConfig,
@@ -131,6 +139,17 @@ __all__ = [
     "HyperloopBlock",
     "HyperloopMythos",
     "cli_main",
+    # Sprint 16: SEO Pipeline / Security
+    "SEOPipeline",
+    "SEOPipelineResult",
+    "InputGuard",
+    "OutputGuard",
+    "SecurityCheckResult",
+    # Sprint 13: SwarmOrchestrator
+    "SwarmConfig",
+    "SwarmAgentResult",
+    "SwarmResult",
+    "SwarmOrchestrator",
     # Sprint 13: Mixture-of-Depths
     "MoDConfig",
     "TokenRouter",
@@ -174,6 +193,7 @@ __all__ = [
     # Sprint 10: LLMO / Thinking / Structured Output
     "LLMOScorer",
     "LLMOScore",
+    "ABTestResult",
     "ThinkingEngine",
     "ThinkingResult",
     "StructuredGenerator",
