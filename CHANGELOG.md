@@ -4,6 +4,50 @@ All notable changes to OpenMythos are documented here.
 
 ---
 
+## [0.20.0] — 2026-06-01
+
+### Sprint 17: Mythos 公開対応 & 外販 API 完成
+
+#### APIキー認証 (`serve/auth.py`)
+
+- `verify_api_key` — FastAPI dependency。Bearer Token 検証 (env: `API_KEY` / `API_KEYS`)
+- 環境変数未設定時は開発モード (認証スキップ) として動作
+- `app = FastAPI(dependencies=[Depends(verify_api_key)])` でグローバル適用
+
+#### レート制限 (`serve/auth.py`)
+
+- `_SlidingWindow` — スレッドセーフなスライディングウィンドウ方式 (外部依存なし)
+- `RateLimitMiddleware` — Starlette ミドルウェア。`/health` エンドポイントはスキップ
+- デフォルト 60 rpm (env: `RATE_LIMIT_RPM` で変更可)
+- レスポンスヘッダ: `X-RateLimit-Limit` / `X-RateLimit-Remaining` / `Retry-After`
+
+#### Docker 本番イメージ (`serve/Dockerfile`)
+
+- Gunicorn + UvicornWorker による本番グレードのマルチワーカー構成
+- 非 root ユーザー (`mythos`) でプロセスを実行 (セキュリティ強化)
+- `WORKERS` 環境変数でワーカー数を実行時に変更可能
+
+#### docker-compose.yml 更新
+
+- `RATE_LIMIT_RPM` / `API_KEY` / `WORKERS` 設定を追記
+- `start_period: 60s` のヘルスチェック (モデルロード時間を考慮)
+- JSON logging 設定追加
+
+#### OpenAPI ドキュメント整備
+
+- 全エンドポイントに `tags` / `summary` / `description` を追加
+- `openapi_tags` 一覧: health / infer / generate / agent / chat / seo / thinking / tools / rag / sessions / batch
+- `serve/api.py` バージョンを `0.20.0` に更新
+
+#### Mythos 公開対応ドキュメント
+
+- `docs/mythos_vs_openmythos.md` — アーキテクチャ差分・ベンチマーク比較・移行ガイド
+- セキュリティ / コンテキストドリフト / API 互換性 / SEO 特化機能の比較表
+
+Tests: 40 tests PASS (`tests/test_sprint17.py`)
+
+---
+
 ## [0.17.0] — 2026-05-30
 
 ### Sprint 8: GPU訓練 & ベンチマーク一括実行 & Cloud Runデプロイ

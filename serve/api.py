@@ -31,7 +31,7 @@ from contextlib import asynccontextmanager
 from typing import Iterator, Literal, Optional
 
 import torch
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -39,6 +39,7 @@ from transformers import AutoTokenizer
 
 from open_mythos.main import MythosConfig, OpenMythos
 from open_mythos.agents import MythosAgent, OpenMythosLLM
+from serve.auth import RateLimitMiddleware, verify_api_key
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -136,12 +137,31 @@ async def lifespan(app: FastAPI):
 # ---------------------------------------------------------------------------
 
 app = FastAPI(
-    title="OpenMythos Inference API",
-    description="Recurrent-Depth Transformer inference with variable loop depth.",
-    version="0.1.0",
+    title="OpenMythos API",
+    description=(
+        "OpenMythos — Recurrent-Depth Transformer による SEO / LLMO / 広告最適化 API。\n\n"
+        "**認証**: `Authorization: Bearer <api-key>` ヘッダ必須 (環境変数 `API_KEY` 設定時)。\n\n"
+        "**レート制限**: デフォルト 60 rpm (環境変数 `RATE_LIMIT_RPM` で変更可)。"
+    ),
+    version="0.20.0",
     lifespan=lifespan,
+    dependencies=[Depends(verify_api_key)],
+    openapi_tags=[
+        {"name": "health",    "description": "ヘルスチェック・サーバ情報"},
+        {"name": "infer",     "description": "スコアリング・分類推論"},
+        {"name": "generate",  "description": "テキスト生成 (SEO / LLMO / 広告コピー)"},
+        {"name": "agent",     "description": "多ターン対話エージェント"},
+        {"name": "chat",      "description": "OpenAI 互換 /v1/chat/completions"},
+        {"name": "seo",       "description": "SEO スコアリング・コンテンツ生成"},
+        {"name": "thinking",  "description": "Extended Thinking (内部思考トレース)"},
+        {"name": "tools",     "description": "Tool Use / Function Calling"},
+        {"name": "rag",       "description": "RAG (Retrieval-Augmented Generation)"},
+        {"name": "sessions",  "description": "会話セッション管理"},
+        {"name": "batch",     "description": "バッチ推論"},
+    ],
 )
 
+app.add_middleware(RateLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -319,7 +339,12 @@ TASK_LOOPS: dict[str, int] = {
 # ---------------------------------------------------------------------------
 
 
-@app.get("/health")
+@app.get(
+    "/health",
+    tags=["health"],
+    summary="サーバヘルスチェック",
+    description="モデルパラメータ数・デバイス・対応タスク一覧を返す。認証・レート制限スキップ。",
+)
 def health():
     return {
         "status": "ok",
@@ -340,7 +365,13 @@ def health():
     }
 
 
-@app.post("/infer", response_model=InferResponse)
+@app.post(
+    "/infer",
+    response_model=InferResponse,
+    tags=["infer"],
+    summary="スコアリング・タスク分類",
+    description="テキストをモデルに通してスコアを返す。`task` パラメータで推奨ループ数が自動選択される。",
+)
 def infer(req: InferRequest):
     # For task-specific requests, use recommended loops if caller didn't override
     loops = req.loops
@@ -378,7 +409,13 @@ def infer(req: InferRequest):
     )
 
 
-@app.post("/generate", response_model=GenerateResponse)
+@app.post(
+    "/generate",
+    response_model=GenerateResponse,
+    tags=["generate"],
+    summary="テキスト生成",
+    description="SEO記事・広告コピー・LLMOコンテンツ等を生成する。`task` でシステムプロンプトが自動選択される。",
+)
 def generate(req: GenerateRequest):
     """テキスト生成エンドポイント。SEO記事・広告コピー・LLMOコンテンツ等を生成。"""
     sys_prompt = req.system_prompt or _TASK_SYSTEM_PROMPTS.get(req.task, _TASK_SYSTEM_PROMPTS["general"])
@@ -410,7 +447,12 @@ def generate(req: GenerateRequest):
     )
 
 
-@app.get("/generate/stream")
+@app.get(
+    "/generate/stream",
+    tags=["generate"],
+    summary="ストリーミングテキスト生成 (SSE)",
+    description="Server-Sent Events でトークンを逐次返す。リアルタイム表示用。",
+)
 def generate_stream(
     prompt: str,
     task: TaskType = "general",
@@ -430,7 +472,13 @@ def generate_stream(
     return StreamingResponse(_event_stream(), media_type="text/event-stream")
 
 
-@app.post("/agent", response_model=AgentResponse)
+@app.post(
+    "/agent",
+    response_model=AgentResponse,
+    tags=["agent"],
+    summary="多ターン対話エージェント",
+    description="`session_id` で会話履歴を維持。SEO相談・広告コピー反復改善等に使用。",
+)
 def agent_run(req: AgentRequest):
     """MythosAgent エンドポイント。session_id で会話履歴を維持した多ターン対話。
 
@@ -479,7 +527,13 @@ def agent_reset(session_id: str):
     return {"ok": True, "session_id": session_id, "message": "会話履歴をリセットしました"}
 
 
-@app.post("/infer/raw", response_model=RawInferResponse)
+@app.post(
+    "/infer/raw",
+    response_model=RawInferResponse,
+    tags=["infer"],
+    summary="Raw ロジット取得",
+    description="全トークン位置のロジットを返す。ファインチューニング・蒸留用。",
+)
 def infer_raw(req: InferRequest):
     """Return raw logits for all positions — useful for downstream fine-tuning."""
     loops = min(req.loops, MAX_LOOPS)
@@ -562,7 +616,12 @@ def _build_chat_prompt(messages: list[ChatMessage]) -> str:
     return "\n".join(parts)
 
 
-@app.post("/v1/chat/completions")
+@app.post(
+    "/v1/chat/completions",
+    tags=["chat"],
+    summary="OpenAI 互換チャット推論",
+    description="OpenAI `/v1/chat/completions` 互換。`stream=true` で SSE ストリーミング対応。",
+)
 def chat_completions(req: ChatRequest):
     """OpenAI 互換チャット推論エンドポイント。
 
@@ -709,7 +768,13 @@ class BatchResponse(BaseModel):
     n_items: int
 
 
-@app.post("/v1/batch", response_model=BatchResponse)
+@app.post(
+    "/v1/batch",
+    response_model=BatchResponse,
+    tags=["batch"],
+    summary="バッチ推論",
+    description="複数テキストを一括で推論する。各アイテム独立・ループ数個別指定可。",
+)
 def batch_infer(req: BatchRequest):
     """複数テキストを一括推論する。
 
@@ -809,7 +874,13 @@ class SEOGenerateResponse(BaseModel):
     latency_ms: float
 
 
-@app.post("/v1/seo/score", response_model=SEOScoreResponse)
+@app.post(
+    "/v1/seo/score",
+    response_model=SEOScoreResponse,
+    tags=["seo"],
+    summary="SEO / LLMO スコアリング",
+    description="entity_density / answer_directness / citability の 3 軸で SEO品質を評価する。",
+)
 def seo_score(req: SEOScoreRequest):
     """テキストの LLMO / SEO スコアを計算する。
 
@@ -846,7 +917,13 @@ def _seo_style_prefix(style: str) -> str:
     return prefixes.get(style, prefixes["answer_first"])
 
 
-@app.post("/v1/seo/generate", response_model=SEOGenerateResponse)
+@app.post(
+    "/v1/seo/generate",
+    response_model=SEOGenerateResponse,
+    tags=["seo"],
+    summary="SEO / LLMO コンテンツ生成",
+    description="style (qa / listicle / entity_rich) を指定してコンテンツを生成し LLMO スコアを付与して返す。",
+)
 def seo_generate(req: SEOGenerateRequest):
     """SEO / LLMO 最適化コンテンツを生成し、スコアを付与して返す。
 
@@ -937,7 +1014,13 @@ class ThinkingResponse(BaseModel):
     latency_ms: float
 
 
-@app.post("/v1/thinking", response_model=ThinkingResponse)
+@app.post(
+    "/v1/thinking",
+    response_model=ThinkingResponse,
+    tags=["thinking"],
+    summary="Extended Thinking (思考トレース付き生成)",
+    description="内部ループの状態変化を `<thinking>` ブロックとして外部公開する。Opus 4.8 対抗機能。",
+)
 def extended_thinking(req: ThinkingRequest):
     """Extended Thinking — 思考トレース付きで回答を生成する。
 
@@ -1009,7 +1092,13 @@ class ToolsListResponse(BaseModel):
     n_tools: int
 
 
-@app.get("/v1/tools", response_model=ToolsListResponse)
+@app.get(
+    "/v1/tools",
+    response_model=ToolsListResponse,
+    tags=["tools"],
+    summary="利用可能なツール一覧",
+    description="登録済みツールを OpenAI 互換 function schema 形式で返す。",
+)
 def list_tools():
     """利用可能なツール一覧を OpenAI 互換 schema で返す。"""
     return ToolsListResponse(
@@ -1018,7 +1107,13 @@ def list_tools():
     )
 
 
-@app.post("/v1/tools/call", response_model=ToolCallResponse)
+@app.post(
+    "/v1/tools/call",
+    response_model=ToolCallResponse,
+    tags=["tools"],
+    summary="ツール呼び出し",
+    description="search_competitor / calculate_roi / fetch_trend / score_content 等を実行する。",
+)
 def call_tool(req: ToolCallRequest):
     """単一のツールを呼び出す。
 
@@ -1043,7 +1138,13 @@ def call_tool(req: ToolCallRequest):
     )
 
 
-@app.post("/v1/tools/batch", response_model=ToolsBatchResponse)
+@app.post(
+    "/v1/tools/batch",
+    response_model=ToolsBatchResponse,
+    tags=["tools"],
+    summary="ツール一括呼び出し",
+    description="最大16件のツール呼び出しを一括実行する。",
+)
 def call_tools_batch(req: ToolsBatchRequest):
     """複数ツールを一括呼び出しする (最大16件)。"""
     t_start = time.perf_counter()
@@ -1125,7 +1226,13 @@ class RAGQueryResponse(BaseModel):
     latency_ms: float
 
 
-@app.post("/v1/rag/index", response_model=RAGIndexResponse)
+@app.post(
+    "/v1/rag/index",
+    response_model=RAGIndexResponse,
+    tags=["rag"],
+    summary="RAG インデックス追加",
+    description="ドキュメントをベクトルストアに追加する。numpy ベース (FAISS オプション対応)。",
+)
 def rag_index(req: RAGIndexRequest):
     """ドキュメントをRAGインデックスに追加する。"""
     rag = _get_rag()
@@ -1137,7 +1244,13 @@ def rag_index(req: RAGIndexRequest):
     return RAGIndexResponse(added=n, total_docs=rag.n_docs())
 
 
-@app.post("/v1/rag", response_model=RAGQueryResponse)
+@app.post(
+    "/v1/rag",
+    response_model=RAGQueryResponse,
+    tags=["rag"],
+    summary="RAG 検索 + 生成",
+    description="クエリに関連するドキュメントを検索し、コンテキストとして生成を行う。",
+)
 def rag_query(req: RAGQueryRequest):
     """RAG検索 + 生成を実行する。
 
@@ -1241,7 +1354,13 @@ class AgentRunResponse(BaseModel):
     total_latency_ms: float
 
 
-@app.post("/v1/agent/run", response_model=AgentRunResponse)
+@app.post(
+    "/v1/agent/run",
+    response_model=AgentRunResponse,
+    tags=["agent"],
+    summary="ReAct エージェントループ実行",
+    description="Think→Act→Observe サイクルで複数ステップのタスクを自律実行する。Tool Use 連携対応。",
+)
 def react_agent_run(req: AgentRunRequest):
     """ReAct エージェントループでタスクを解決する。
 
@@ -1317,7 +1436,13 @@ class SessionContextResponse(BaseModel):
     n_turns: int
 
 
-@app.post("/v1/sessions", response_model=SessionCreateResponse)
+@app.post(
+    "/v1/sessions",
+    response_model=SessionCreateResponse,
+    tags=["sessions"],
+    summary="会話セッション作成",
+    description="新しい ConversationMemory セッションを作成する。`session_id` 省略で UUID 自動生成。",
+)
 def create_session(req: SessionCreateRequest):
     """新しい会話セッションを作成する。"""
     sid = req.session_id if req.session_id else None
@@ -1326,7 +1451,12 @@ def create_session(req: SessionCreateRequest):
     return SessionCreateResponse(session_id=new_sid, created=not already_exists)
 
 
-@app.get("/v1/sessions/{session_id}", response_model=SessionStatsResponse)
+@app.get(
+    "/v1/sessions/{session_id}",
+    response_model=SessionStatsResponse,
+    tags=["sessions"],
+    summary="セッション情報取得",
+)
 def get_session(session_id: str):
     """セッションの統計情報を取得する。"""
     mem = _session_store.get(session_id)
@@ -1343,14 +1473,24 @@ def get_session(session_id: str):
     )
 
 
-@app.delete("/v1/sessions/{session_id}")
+@app.delete(
+    "/v1/sessions/{session_id}",
+    tags=["sessions"],
+    summary="セッション削除",
+)
 def delete_session(session_id: str):
     """セッションを削除する。"""
     deleted = _session_store.delete(session_id)
     return {"deleted": deleted, "session_id": session_id}
 
 
-@app.post("/v1/sessions/{session_id}/turns", response_model=SessionStatsResponse)
+@app.post(
+    "/v1/sessions/{session_id}/turns",
+    response_model=SessionStatsResponse,
+    tags=["sessions"],
+    summary="ターン追加",
+    description="セッションに user / assistant ターンを追加する。自動圧縮対応。",
+)
 def add_turn(session_id: str, req: TurnAddRequest):
     """セッションにターンを追加する。"""
     mem = _session_store.get(session_id)
@@ -1368,7 +1508,13 @@ def add_turn(session_id: str, req: TurnAddRequest):
     )
 
 
-@app.get("/v1/sessions/{session_id}/context", response_model=SessionContextResponse)
+@app.get(
+    "/v1/sessions/{session_id}/context",
+    response_model=SessionContextResponse,
+    tags=["sessions"],
+    summary="セッションコンテキスト取得",
+    description="モデルへの入力文字列形式でセッション履歴を返す。",
+)
 def get_session_context(session_id: str):
     """セッションのコンテキスト文字列を取得する。"""
     mem = _session_store.get(session_id)
