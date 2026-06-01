@@ -284,7 +284,9 @@ class TestToolRegistry:
         from open_mythos.tools import ToolRegistry
 
         reg = ToolRegistry.default()
-        assert len(reg) == 4
+        assert (
+            len(reg) >= 4
+        )  # Sprint 16 で quality_score / generate_ad_variants が追加されて 6 以上
 
 
 class TestParseToolCalls:

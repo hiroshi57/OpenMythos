@@ -627,3 +627,216 @@ def register_marketing_tools(registry: ToolRegistry) -> None:
     """マーケ特化6ツールをレジストリに登録する。"""
     for tool_def in _MARKETING_TOOLS:
         registry.register(tool_def)
+
+
+# ---------------------------------------------------------------------------
+# Sprint 18: ROAS Monte Carlo シミュレーター (18.5)
+# ---------------------------------------------------------------------------
+
+
+def roas_simulate(
+    ad_spend: float,
+    ctr: float,
+    cvr: float,
+    aov: float,
+    n: int = 1000,
+    noise: float = 0.20,
+    seed: int | None = None,
+) -> dict:
+    """
+    モンテカルロ法による ROAS 予測（信頼区間付き）。
+
+    各パラメータに ±``noise`` (デフォルト 20%) の一様乱数ノイズを加えて
+    ``n`` 回シミュレーションし、ROAS 分布の統計量を返す。
+
+    モデル::
+
+        clicks_i      = ad_spend × ctr_i          # ctr_i = クリック/USD
+        conversions_i = clicks_i × cvr_i           # cvr_i = 成約率
+        revenue_i     = conversions_i × aov_i      # aov_i = 平均注文金額 (USD)
+        roas_i        = revenue_i / ad_spend = ctr_i × cvr_i × aov_i
+
+    Parameters
+    ----------
+    ad_spend : float
+        広告費 (USD)。
+    ctr : float
+        期待クリック率 (clicks per USD invested)。
+        例: 0.1 → 1ドルあたり 0.1 クリック期待。
+    cvr : float
+        期待成約率 (0.0–1.0)。例: 0.05 → 5%。
+    aov : float
+        平均注文金額 (USD)。例: 5000.0 → 5,000 USD。
+    n : int
+        シミュレーション回数。デフォルト 1,000。
+    noise : float
+        各パラメータへの一様ノイズ幅 (±noise)。デフォルト 0.20 (±20%)。
+    seed : int | None
+        乱数シード。None の場合は非決定的。
+
+    Returns
+    -------
+    dict
+        mean_roas / p5 / p25 / p50 / p75 / p95 / std_dev /
+        profitable_probability / expected_revenue_usd 等。
+    """
+    import math
+
+    if ad_spend <= 0:
+        raise ValueError("ad_spend must be > 0")
+    if not 0 < ctr:
+        raise ValueError("ctr must be > 0")
+    if not 0 < cvr <= 1:
+        raise ValueError("cvr must be in (0, 1]")
+    if aov <= 0:
+        raise ValueError("aov must be > 0")
+    if n < 1:
+        raise ValueError("n must be >= 1")
+
+    rng = random.Random(seed)
+    samples: list[float] = []
+
+    for _ in range(n):
+        ctr_i = max(1e-9, ctr * (1.0 + rng.uniform(-noise, noise)))
+        cvr_i = min(1.0, max(1e-9, cvr * (1.0 + rng.uniform(-noise, noise))))
+        aov_i = max(1e-9, aov * (1.0 + rng.uniform(-noise, noise)))
+        samples.append(ctr_i * cvr_i * aov_i)
+
+    samples.sort()
+    mean = sum(samples) / n
+    variance = sum((x - mean) ** 2 for x in samples) / n
+
+    def _percentile(p: float) -> float:
+        idx = max(0, min(n - 1, int(n * p)))
+        return samples[idx]
+
+    return {
+        "n_simulations": n,
+        "ad_spend_usd": round(ad_spend, 2),
+        "mean_roas": round(mean, 4),
+        "std_dev": round(math.sqrt(variance), 4),
+        "p5_roas": round(_percentile(0.05), 4),
+        "p25_roas": round(_percentile(0.25), 4),
+        "p50_roas": round(_percentile(0.50), 4),
+        "p75_roas": round(_percentile(0.75), 4),
+        "p95_roas": round(_percentile(0.95), 4),
+        "profitable_probability": round(sum(1 for r in samples if r > 1.0) / n, 4),
+        "expected_revenue_usd": round(mean * ad_spend, 2),
+        "break_even_roas": 1.0,
+        "inputs": {"ctr": ctr, "cvr": cvr, "aov": aov, "noise": noise},
+    }
+
+
+# ---------------------------------------------------------------------------
+# Sprint 18: ペルソナ × 広告マッチング (18.6)
+# ---------------------------------------------------------------------------
+
+
+def persona_ad_match(
+    persona_doc: str,
+    ad_candidates: list[str],
+    top_k: int = 3,
+) -> dict:
+    """
+    ペルソナドキュメントと広告コピー候補のマッチングスコアを算出する。
+
+    TF-IDF コサイン類似度ベースで各候補を採点し、上位 ``top_k`` 件を
+    返す。外部依存なし (numpy のみ)。
+
+    実装原理
+    --------
+    1. persona_doc + 全 ad_candidates をコーパスとして TF-IDF 行列を構築
+    2. persona_doc ベクトルと各 ad candidate ベクトルのコサイン類似度を計算
+    3. スコア降順で上位 top_k 件を返す
+
+    Parameters
+    ----------
+    persona_doc : str
+        ペルソナの説明文（例: 「30代女性・育児中・時短家事に関心」）。
+    ad_candidates : list[str]
+        広告コピー候補の文字列リスト。
+    top_k : int
+        返す上位件数。デフォルト 3。
+
+    Returns
+    -------
+    dict
+        ranked: [{rank, ad_text, score}, ...] (top_k件)
+        best_match: 最高スコアの広告コピー
+        persona_keywords: ペルソナから抽出した上位トークン
+    """
+    import math
+
+    if not ad_candidates:
+        raise ValueError("ad_candidates must not be empty")
+
+    top_k = min(top_k, len(ad_candidates))
+
+    # --- シンプルな前処理 (記号除去・小文字化) ---
+    def _tokenize(text: str) -> list[str]:
+        # 日本語は文字単位、ASCII は単語単位
+        tokens: list[str] = []
+        for ch in re.sub(r"[^\w\s]", " ", text):
+            if ch.strip():
+                tokens.append(ch.lower())
+        return tokens
+
+    corpus = [persona_doc] + list(ad_candidates)
+    tokenized = [_tokenize(doc) for doc in corpus]
+
+    # --- TF 計算 ---
+    def _tf(tokens: list[str]) -> dict[str, float]:
+        total = max(1, len(tokens))
+        freq: dict[str, int] = {}
+        for t in tokens:
+            freq[t] = freq.get(t, 0) + 1
+        return {t: c / total for t, c in freq.items()}
+
+    tfs = [_tf(t) for t in tokenized]
+    vocab = sorted({tok for doc in tokenized for tok in doc})
+
+    # --- IDF 計算 ---
+    n_docs = len(corpus)
+    idf: dict[str, float] = {}
+    for term in vocab:
+        df = sum(1 for doc in tokenized if term in doc)
+        idf[term] = math.log((n_docs + 1) / (df + 1)) + 1.0
+
+    # --- TF-IDF ベクトル & コサイン類似度 ---
+    def _vec(tf: dict[str, float]) -> list[float]:
+        return [tf.get(t, 0.0) * idf[t] for t in vocab]
+
+    def _cosine(a: list[float], b: list[float]) -> float:
+        dot = sum(x * y for x, y in zip(a, b))
+        na = math.sqrt(sum(x * x for x in a))
+        nb = math.sqrt(sum(x * x for x in b))
+        return dot / (na * nb) if na * nb > 0 else 0.0
+
+    persona_vec = _vec(tfs[0])
+    scores = [_cosine(persona_vec, _vec(tfs[i + 1])) for i in range(len(ad_candidates))]
+
+    # --- ランキング ---
+    ranked_idx = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
+    ranked = [
+        {
+            "rank": rank + 1,
+            "ad_text": ad_candidates[idx],
+            "score": round(scores[idx], 6),
+        }
+        for rank, idx in enumerate(ranked_idx[:top_k])
+    ]
+
+    # ペルソナの上位キーワード (IDF 重み付き)
+    persona_tokens = tokenized[0]
+    persona_tf = tfs[0]
+    kw_scores = {t: persona_tf.get(t, 0) * idf.get(t, 1) for t in set(persona_tokens)}
+    top_keywords = sorted(kw_scores, key=lambda t: kw_scores[t], reverse=True)[:10]
+
+    return {
+        "ranked": ranked,
+        "best_match": ranked[0]["ad_text"] if ranked else "",
+        "best_score": ranked[0]["score"] if ranked else 0.0,
+        "persona_keywords": top_keywords,
+        "n_candidates": len(ad_candidates),
+        "top_k": top_k,
+    }
