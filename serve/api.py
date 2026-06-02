@@ -24,6 +24,7 @@ Docker:
     docker run -p 8000:8000 openmythos-serve
 """
 
+import json as _json_mod
 import os
 import time
 import uuid
@@ -31,10 +32,11 @@ from contextlib import asynccontextmanager
 from typing import Iterator, Literal, Optional
 
 import torch
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from starlette.middleware.base import BaseHTTPMiddleware
 from transformers import AutoTokenizer
 
 from open_mythos.main import MythosConfig, OpenMythos
@@ -2805,6 +2807,136 @@ def plan_execute(req: TaskPlanRequest):
             for r in result.subtask_results
         ],
     }
+
+
+
+# ===========================================================================
+# Sprint 34: MistakeGuardMiddleware — 全エンドポイント透過チェック
+# ===========================================================================
+
+from open_mythos.error_memory import (  # noqa: E402
+    GuardMiddlewareConfig as _GuardMiddlewareConfig,
+    MistakeGuardMiddleware as _MistakeGuardMiddleware,
+)
+
+# 環境変数でガード有効/無効を制御 (デフォルト: 有効)
+_GUARD_ENABLED:  bool = os.environ.get("MISTAKE_GUARD_ENABLED", "true").lower() != "false"
+_GUARD_SEV:      str  = os.environ.get("MISTAKE_GUARD_SEVERITY", "medium")
+_GUARD_REFRESH:  int  = int(os.environ.get("MISTAKE_GUARD_REFRESH_INTERVAL", "100"))
+
+_guard_config = _GuardMiddlewareConfig(
+    enabled=_GUARD_ENABLED,
+    auto_record_blocked=True,
+    severity_threshold=_GUARD_SEV,
+    refresh_interval=_GUARD_REFRESH,
+)
+
+# グローバルミドルウェアインスタンス (mistake_store と共有)
+_guard_middleware: Optional[_MistakeGuardMiddleware] = None
+
+
+def _get_guard_middleware() -> _MistakeGuardMiddleware:
+    """MistakeGuardMiddleware シングルトンを返す (mistake_store と共有)。"""
+    global _guard_middleware
+    if _guard_middleware is None:
+        _guard_middleware = _MistakeGuardMiddleware(
+            store=_get_mistake_store(),
+            config=_guard_config,
+        )
+    return _guard_middleware
+
+
+class _MistakeGuardHTTPMiddleware(BaseHTTPMiddleware):
+    """
+    FastAPI HTTP ミドルウェア — 全 POST / PUT リクエストのボディを透過チェックする。
+
+    ブロック時: 422 + JSON {"detail": ..., "block_reason": ...} を返す。
+    ヘッダー:
+        X-Guard-Blocked: "true" / "false"
+        X-Guard-Rule-Id: matched rule_id (ブロック時のみ)
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        # /health はスキップ (startup 前に呼ばれる可能性あり)
+        if request.url.path == "/health":
+            return await call_next(request)
+
+        try:
+            gm = _get_guard_middleware()
+        except Exception:
+            return await call_next(request)
+
+        if not gm.is_enabled:
+            return await call_next(request)
+
+        # POST / PUT のリクエストボディをチェック
+        if request.method in ("POST", "PUT"):
+            try:
+                body_bytes = await request.body()
+                if body_bytes:
+                    body_text = body_bytes.decode("utf-8", errors="replace")
+                    guard_result = gm.process(body_text)
+                    if guard_result.blocked:
+                        return Response(
+                            content=_json_mod.dumps(
+                                {
+                                    "detail": "Request blocked by MistakeGuard",
+                                    "block_reason": guard_result.block_reason,
+                                },
+                                ensure_ascii=False,
+                            ),
+                            status_code=422,
+                            media_type="application/json",
+                            headers={
+                                "X-Guard-Blocked": "true",
+                                "X-Guard-Rule-Id": (
+                                    guard_result.matched_rule.rule_id
+                                    if guard_result.matched_rule else ""
+                                ),
+                            },
+                        )
+            except Exception:
+                pass  # ボディ読み取り失敗時はスルー
+
+        response = await call_next(request)
+        response.headers["X-Guard-Blocked"] = "false"
+        return response
+
+
+# ミドルウェアを登録 (CORSMiddleware より前に追加)
+app.add_middleware(_MistakeGuardHTTPMiddleware)
+
+
+# ---------------------------------------------------------------------------
+# Guard エンドポイント
+# ---------------------------------------------------------------------------
+
+
+@app.get(
+    "/v1/guard/stats",
+    tags=["guard"],
+    summary="MistakeGuard 統計 (Sprint 34)",
+    description="ガードミドルウェアの統計 (総リクエスト数・ブロック数・ブロック率・アクティブルール数) を返す。",
+    dependencies=[Depends(verify_api_key)],
+)
+def guard_stats():
+    """MistakeGuardMiddleware の統計情報を返す。"""
+    gm = _get_guard_middleware()
+    return gm.stats()
+
+
+@app.post(
+    "/v1/guard/refresh",
+    tags=["guard"],
+    summary="MistakeGuard ルール再抽出 (Sprint 34)",
+    description="ErrorMemoryStore の最新データからルールを再抽出する。",
+    dependencies=[Depends(verify_api_key)],
+)
+def guard_refresh():
+    """ガードルールを手動で再抽出する。"""
+    gm = _get_guard_middleware()
+    n_rules = gm.refresh()
+    return {"refreshed": True, "rule_count": n_rules}
 
 
 # Sprint 30: GrowingAIOrchestrator — /v1/grow/run

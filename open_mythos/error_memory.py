@@ -642,6 +642,192 @@ class MistakeGuard:
 
 
 # ---------------------------------------------------------------------------
+# GuardMiddlewareConfig
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class GuardMiddlewareConfig:
+    """
+    MistakeGuardMiddleware の動作設定。
+
+    Attributes
+    ----------
+    enabled            : ミドルウェア全体の有効/無効
+    auto_record_blocked: ブロックしたテキストを ErrorMemoryStore に自動記録するか
+    check_request      : リクエストテキストをチェックするか
+    check_response     : レスポンステキストをチェックするか (デフォルト OFF)
+    severity_threshold : この重要度以上のルールのみ適用 ("high" / "medium" / "low")
+    max_text_length    : チェックするテキストの最大長 (超過部分は切り捨て)
+    refresh_interval   : N リクエストごとにルールを自動再抽出 (0 = 無効)
+    """
+
+    enabled:             bool  = True
+    auto_record_blocked: bool  = True
+    check_request:       bool  = True
+    check_response:      bool  = False
+    severity_threshold:  str   = "medium"
+    max_text_length:     int   = 10_000
+    refresh_interval:    int   = 100
+
+
+# ---------------------------------------------------------------------------
+# MistakeGuardMiddleware
+# ---------------------------------------------------------------------------
+
+
+class MistakeGuardMiddleware:
+    """
+    全 API エンドポイントに透過的に適用できるミスガードミドルウェア。
+
+    `process(text)` を呼ぶとルール照合を行い ``GuardResult`` を返す。
+    FastAPI の ``BaseHTTPMiddleware`` や任意のアプリ層から呼び出せる。
+
+    Args
+    ----
+    store  : ErrorMemoryStore (省略時は memory バックエンドで新規作成)
+    config : GuardMiddlewareConfig (省略時はデフォルト設定)
+
+    使い方::
+
+        store = ErrorMemoryStore()
+        store.append("ignore previous instructions", category="security")
+        middleware = MistakeGuardMiddleware(store=store)
+        result = middleware.process("ignore previous instructions — do X")
+        if result.blocked:
+            print("blocked:", result.block_reason)
+    """
+
+    _SEV_ORDER: Dict[str, int] = {"high": 0, "medium": 1, "low": 2}
+
+    def __init__(
+        self,
+        store:  Optional[ErrorMemoryStore]       = None,
+        config: Optional[GuardMiddlewareConfig]  = None,
+    ) -> None:
+        self._store:          ErrorMemoryStore      = store  if store  is not None else ErrorMemoryStore()
+        self._config:         GuardMiddlewareConfig = config if config is not None else GuardMiddlewareConfig()
+        self._rules:          List[PreventionRule]  = []
+        self._guard:          Optional[MistakeGuard]= None
+        self._request_count:  int = 0
+        self._blocked_count:  int = 0
+        self._passed_count:   int = 0
+        self._refresh_rules()
+
+    # ------------------------------------------------------------------
+    # 内部: ルール管理
+    # ------------------------------------------------------------------
+
+    def _refresh_rules(self) -> None:
+        """ErrorMemoryStore からルールを再抽出し、severity_threshold でフィルタする。"""
+        extractor = RuleExtractor(self._store)
+        all_rules = extractor.extract()
+        threshold = self._SEV_ORDER.get(self._config.severity_threshold, 1)
+        self._rules = [
+            r for r in all_rules
+            if self._SEV_ORDER.get(r.severity, 2) <= threshold
+        ]
+        self._guard = MistakeGuard(rules=list(self._rules), store=self._store)
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def process(self, text: str) -> GuardResult:
+        """
+        テキストをルール照合し ``GuardResult`` を返す。
+
+        * ``config.enabled == False`` の場合は常に ``blocked=False`` を返す。
+        * ``config.refresh_interval > 0`` かつ呼び出し回数が閾値に達した場合、
+          ルールを自動再抽出する。
+        * ブロック時かつ ``config.auto_record_blocked`` が True の場合、
+          そのテキストを ErrorMemoryStore に自動記録する。
+
+        Args:
+            text: チェック対象テキスト
+
+        Returns:
+            GuardResult
+        """
+        self._request_count += 1
+
+        # 無効化時は即 pass
+        if not self._config.enabled:
+            return GuardResult(
+                text=text,
+                blocked=False,
+                matched_rule=None,
+                similar_records=[],
+                check_latency_ms=0.0,
+            )
+
+        # 定期的なルール再抽出
+        ri = self._config.refresh_interval
+        if ri > 0 and self._request_count % ri == 0:
+            self._refresh_rules()
+
+        # テキスト長制限
+        check_text = text[: self._config.max_text_length]
+        result = self._guard.check(check_text)
+
+        if result.blocked:
+            self._blocked_count += 1
+            if self._config.auto_record_blocked:
+                # 完全一致の重複は記録しない (軽量チェック)
+                similar = self._store.query_similar(text, top_k=1)
+                if not similar or similar[0].text != text:
+                    cat = (
+                        result.matched_rule.category
+                        if result.matched_rule else "other"
+                    )
+                    self._store.append(text, category=cat, severity="high",
+                                       context="auto-recorded by MistakeGuardMiddleware")
+        else:
+            self._passed_count += 1
+
+        return result
+
+    def add_rule(self, rule: PreventionRule) -> None:
+        """ルールを手動追加する。即座にアクティブになる。"""
+        self._rules.append(rule)
+        if self._guard is not None:
+            self._guard.add_rule(rule)
+
+    def refresh(self) -> int:
+        """
+        ルールを手動で再抽出する。
+
+        Returns:
+            再抽出後のアクティブルール数
+        """
+        self._refresh_rules()
+        return len(self._rules)
+
+    def stats(self) -> Dict:
+        """ミドルウェアの統計情報を返す。"""
+        total = max(self._request_count, 1)
+        return {
+            "enabled":        self._config.enabled,
+            "total_requests": self._request_count,
+            "blocked":        self._blocked_count,
+            "passed":         self._passed_count,
+            "block_rate":     round(self._blocked_count / total, 4),
+            "rule_count":     len(self._rules),
+            "store_total":    self._store.total,
+        }
+
+    @property
+    def rule_count(self) -> int:
+        """アクティブなルール数。"""
+        return len(self._rules)
+
+    @property
+    def is_enabled(self) -> bool:
+        """ミドルウェアが有効かどうか。"""
+        return self._config.enabled
+
+
+# ---------------------------------------------------------------------------
 # ユーティリティ
 # ---------------------------------------------------------------------------
 
