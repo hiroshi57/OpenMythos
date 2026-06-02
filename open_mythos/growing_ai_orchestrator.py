@@ -328,10 +328,10 @@ class GrowingAIOrchestrator:
         if pattern == PatternType.DISTILL:
             from open_mythos.self_distill import SelfDistillLoop
             loop   = SelfDistillLoop()
-            result = loop.run(goal, n_iterations=1)
+            result = loop.run([goal], n_iterations=1)   # Sprint 31: List[str] + n_iterations
             best   = result.best_output
             if best:
-                return best.text, float(best.score)
+                return best.output, float(best.score)   # .text → .output (DistillSample)
             return goal, 0.5
 
         if pattern == PatternType.MEMORY:
