@@ -73,6 +73,60 @@ from open_mythos.conversation import (
     SessionStore,
 )
 from open_mythos.seo_pipeline import SEOPipeline, SEOPipelineResult
+from open_mythos.debate import (
+    DebateConfig,
+    DebateRound,
+    DebateResult,
+    ConsensusEngine,
+    DebateOrchestrator,
+)
+from open_mythos.self_distill import (
+    DistillSample,
+    DistillDataset,
+    OutputFilter,
+    SFTResult,
+    SelfDistillConfig,
+    SelfDistillRoundResult,
+    SelfDistillResult,
+    SelfDistillCollector,
+    SelfDistillLoop,
+)
+from open_mythos.error_memory import (
+    MistakeRecord,
+    ErrorMemoryStore,
+    MistakeClassifier,
+    PreventionRule,
+    RuleExtractor,
+    GuardResult,
+    MistakeGuard,
+)
+from open_mythos.external_signal import (
+    ExternalSignal,
+    ImpactEstimate,
+    CounterAction,
+    ExternalSignalResult,
+    SignalDetector,
+    ImpactEstimator,
+    ExternalSignalAgent,
+)
+from open_mythos.profiler import (
+    StageMetrics,
+    ProfileResult,
+    BottleneckReport,
+    AutoFixResult,
+    PipelineProfiler,
+    BottleneckDetector,
+    ProfilerAgent,
+)
+from open_mythos.kpi_agent import (
+    KPIDefinition,
+    KPISnapshot,
+    GapReport,
+    Action,
+    ActionPlan,
+    KPIImproveResult,
+    KPIAgent,
+)
 from open_mythos.security import InputGuard, OutputGuard, SecurityCheckResult
 from open_mythos.swarm import (
     SwarmConfig,
@@ -139,6 +193,54 @@ __all__ = [
     "HyperloopBlock",
     "HyperloopMythos",
     "cli_main",
+    # Sprint 25: Self Distill Loop
+    "DistillSample",
+    "DistillDataset",
+    "OutputFilter",
+    "SFTResult",
+    "SelfDistillConfig",
+    "SelfDistillRoundResult",
+    "SelfDistillResult",
+    "SelfDistillCollector",
+    "SelfDistillLoop",
+    # Sprint 24: Error Memory / Mistake Guard
+    "MistakeRecord",
+    "ErrorMemoryStore",
+    "MistakeClassifier",
+    "PreventionRule",
+    "RuleExtractor",
+    "GuardResult",
+    "MistakeGuard",
+    # Sprint 23: External Signal Agent
+    "ExternalSignal",
+    "ImpactEstimate",
+    "CounterAction",
+    "ExternalSignalResult",
+    "SignalDetector",
+    "ImpactEstimator",
+    "ExternalSignalAgent",
+    # Sprint 22: Profiler Agent
+    "StageMetrics",
+    "ProfileResult",
+    "BottleneckReport",
+    "AutoFixResult",
+    "PipelineProfiler",
+    "BottleneckDetector",
+    "ProfilerAgent",
+    # Sprint 21: KPI Agent
+    "KPIDefinition",
+    "KPISnapshot",
+    "GapReport",
+    "Action",
+    "ActionPlan",
+    "KPIImproveResult",
+    "KPIAgent",
+    # Sprint 20: Debate Orchestrator
+    "DebateConfig",
+    "DebateRound",
+    "DebateResult",
+    "ConsensusEngine",
+    "DebateOrchestrator",
     # Sprint 16: SEO Pipeline / Security
     "SEOPipeline",
     "SEOPipelineResult",

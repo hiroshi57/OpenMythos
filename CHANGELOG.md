@@ -4,6 +4,143 @@ All notable changes to OpenMythos are documented here.
 
 ---
 
+## [0.28.0] — 2026-06-01
+
+### Sprint 25: 継続的自己蒸留 — SelfDistillLoop (P6パターン)
+
+#### SelfDistillLoop (`open_mythos/self_distill.py`)
+
+- `DistillSample` — prompt / output / score / round_num / to_jsonl_dict()
+- `DistillDataset` — add / add_batch / mean_score / samples_above() / to_jsonl()
+- `OutputFilter.filter()` — スコア閾値 + 最短長 + Jaccard重複除去 (多様性保証)
+- `SelfDistillCollector.collect()` — 推論→スコア→DistillSample リスト化
+- `SelfDistillLoop.run()` — Collect→Filter→SFT(シミュレート)→Eval を n_rounds 自律実行
+- 早期終了: mean_score >= early_stop_score で残りラウンドをスキップ
+- デフォルト生成/スコア関数: エコー生成 + LLMO スコア
+
+#### API (`serve/api.py`)
+
+- `POST /v1/distill/run` — n_rounds 蒸留を実行し rounds / mean_score_improvement を返す
+- `GET  /v1/distill/status` — 蒸留ステータス
+
+#### テスト (`tests/test_sprint25.py`)
+
+- `tests/test_sprint25.py` — 40 tests ALL PASS
+
+---
+
+### Sprint 24: ミスから学習 — ErrorMemory & MistakeGuard (P5パターン)
+
+#### ErrorMemory (`open_mythos/error_memory.py`)
+
+- `MistakeRecord` — text / category / severity / word_set() (Jaccard用)
+- `ErrorMemoryStore` — append / query_similar(Jaccard) / stats / records_by_category / max_records
+- `MistakeClassifier.classify()` — 8カテゴリ (security/privacy/hallucination/format/toxicity/loop/quality/other)
+- `PreventionRule.matches()` — 大小文字無視のパターンマッチ
+- `RuleExtractor.extract()` — 最頻シグナルキーワードから防止ルールを自動生成
+- `MistakeGuard.check()` — ルールDB照合・ブロック判定・類似ミス参照
+
+#### API (`serve/api.py`)
+
+- `POST /v1/mistakes/record` — ミス記録 (category 省略時は自動分類)
+- `GET  /v1/mistakes/rules` — 蓄積ミスから自動生成したルール一覧
+- `POST /v1/mistakes/check` — テキストをルールDB照合しブロック判定
+
+#### テスト (`tests/test_sprint24.py`)
+
+- `tests/test_sprint24.py` — 40 tests ALL PASS
+
+---
+
+### Sprint 23: 外部要因適応 — ExternalSignalAgent (P4パターン) [v0.26.0]
+
+(詳細は上記 Sprint 23 エントリを参照)
+
+---
+
+## [0.25.0] — 2026-06-01
+
+### Sprint 22: ボトルネック発見・解消 — ProfilerAgent (P3パターン)
+
+#### ProfilerAgent (`open_mythos/profiler.py`)
+
+- `StageMetrics` — latency_ms / score / error / ok / error_rate
+- `ProfileResult` — slowest_stage() / lowest_score_stage() / latencies() / scores()
+- `BottleneckReport` — bottleneck_type (latency/score/error/none) / severity / has_bottleneck
+- `AutoFixResult` — latency_improvement_pct / score_improvement / fixed / fix_description
+- `PipelineProfiler.run()` — 全ステージを順次実行・各ステージの latency/score/error を計測
+- `BottleneckDetector.detect()` — IQR法 (Q3+1.5×IQR) でレイテンシ外れ値を検出、スコア下限外れ値も検出
+- `ProfilerAgent.auto_fix()` — latency→出力長制限パッチ / score→品質強化パッチ / error→フォールバックパッチ
+- `ProfilerAgent.profile_and_fix()` — profile→detect→auto_fix を一括実行
+
+#### API (`serve/api.py`)
+
+- `POST /v1/profile/run` — 全ステージ計測 + ボトルネック検出結果を返す
+- `POST /v1/profile/fix` — profile_and_fix() を実行し latency_improvement_pct を返す
+- `GET  /v1/profile/report` — プロファイル履歴 (スタブ)
+
+#### テスト (`tests/test_sprint22.py`)
+
+- `tests/test_sprint22.py` — 61 tests ALL PASS
+
+---
+
+## [0.24.0] — 2026-06-01
+
+### Sprint 21: KPI駆動自己改善 — KPIAgent (P2パターン)
+
+#### KPIAgent (`open_mythos/kpi_agent.py`)
+
+- `KPIDefinition` — KPI名・目標値・計測関数・higher_is_better・action_budget
+- `KPISnapshot` — 計測値・サイクル番号・gap_to() / achieved() メソッド
+- `GapReport` — 目標差分・優先度 (high/medium/low)・診断コメント
+- `Action` — 変換関数・estimated_impact・priority を持つ改善アクション
+- `ActionPlan.top_actions(n)` — estimated_impact 降順で上位 n 件を返す
+- `KPIImproveResult` — 初期/最終スナップショット・improvement / improvement_pct
+- `KPIAgent.measure()` — 計測関数を呼び出し KPISnapshot を生成
+- `KPIAgent.analyze()` — GapReport 生成 (gap_pct > 30 → high / > 10 → medium)
+- `KPIAgent.plan()` — estimated_impact 降順でアクションを action_budget 件選択
+- `KPIAgent.execute()` — ActionPlan の変換関数を context に順次適用
+- `KPIAgent.improve_loop()` — measure→analyze→plan→execute を n_cycles 自律実行・早期終了対応
+- 組み込みアクション 6種: add_structure / boost_entities / answer_first / add_citations / expand_content / inject_keywords
+
+#### API (`serve/api.py`)
+
+- `POST /v1/kpi/measure` — コンテキストを計測して gap / priority / diagnosis を返す
+- `POST /v1/kpi/improve` — n_cycles サイクルの自律改善を実行し improvement_pct を返す
+
+#### テスト (`tests/test_sprint21.py`)
+
+- `tests/test_sprint21.py` — 40 tests ALL PASS
+
+---
+
+## [0.23.0] — 2026-06-01
+
+### Sprint 20: 討議型集合知 — DebateOrchestrator (P1パターン)
+
+#### DebateOrchestrator (`open_mythos/debate.py`)
+
+- `DebateConfig` — n_agents / n_rounds / consensus_threshold / max_workers 設定
+- `DebateRound` — 1ラウンド (proposals / critiques / refinements / agreement_score)
+- `DebateResult` — 討議全体の結果 (consensus / agreement_score / confidence / early_stopped)
+- `ConsensusEngine.score()` — Jaccard類似度ベース合意スコア + 代表テキスト選出 (日本語bi-gram対応)
+- `ConsensusEngine.confidence()` — ラウンドスコア収束信頼度計算
+- `DebateOrchestrator.run()` — Propose → Critique → Refine → Consensus 4フェーズ討議
+- 早期終了: agreement_score が consensus_threshold を超えた時点でループ終了
+- スレッドプール並列実行 (各フェーズで全エージェントを同時実行)
+
+#### API (`serve/api.py`)
+
+- `POST /v1/debate/run` — topic / n_agents / n_rounds / consensus_threshold 指定で討議実行
+  - レスポンス: consensus / agreement_score / confidence / rounds / early_stopped / improved_over_solo
+
+#### テスト (`tests/test_sprint20.py`)
+
+- `tests/test_sprint20.py` — 40 tests (DebateConfig / ConsensusEngine / DebateRound / DebateResult / DebateOrchestrator / API)
+
+---
+
 ## [0.22.0] — 2026-06-01
 
 ### Sprint 19: LLMO 強化 — クエリ関連性 / 意図分類 / 自動最適化 (LLMOOptimizer)

@@ -1907,6 +1907,538 @@ def ab_infer(req: ABInferRequest):
     )
 
 
+# ---------------------------------------------------------------------------
+# Sprint 25: Self Distill Loop endpoints
+# ---------------------------------------------------------------------------
+
+
+class DistillRunRequest(BaseModel):
+    prompts: list = Field(..., description="蒸留に使うプロンプトリスト")
+    n_rounds: int = Field(3, ge=1, le=10, description="蒸留ラウンド数")
+    score_threshold: float = Field(0.6, ge=0.0, le=1.0, description="フィルタスコア閾値")
+    early_stop_score: float = Field(0.85, ge=0.0, le=1.0, description="早期終了スコア閾値")
+
+
+@app.post(
+    "/v1/distill/run",
+    tags=["distill"],
+    summary="自己蒸留ループ実行",
+    description="Collect→Filter→SFT→Eval サイクルを n_rounds 実行し蒸留結果を返す。",
+)
+def distill_run(req: DistillRunRequest, _: str = Depends(verify_api_key)):
+    from open_mythos.self_distill import SelfDistillConfig, SelfDistillLoop
+
+    cfg = SelfDistillConfig(
+        n_rounds=req.n_rounds,
+        score_threshold=req.score_threshold,
+        early_stop_score=req.early_stop_score,
+    )
+    loop = SelfDistillLoop(cfg)
+    result = loop.run(prompts=[str(p) for p in req.prompts])
+
+    return {
+        "rounds_completed": result.rounds_completed,
+        "total_samples": result.total_samples,
+        "initial_mean_score": result.initial_mean_score,
+        "final_mean_score": result.final_mean_score,
+        "mean_score_improvement": result.mean_score_improvement,
+        "early_stopped": result.early_stopped,
+        "total_latency_ms": result.total_latency_ms,
+        "rounds": [
+            {
+                "round": r.round_num,
+                "collected": r.collected,
+                "filtered": r.filtered,
+                "mean_score": r.mean_score,
+            }
+            for r in result.round_results
+        ],
+    }
+
+
+@app.get(
+    "/v1/distill/status",
+    tags=["distill"],
+    summary="蒸留ステータス",
+    description="蒸留ループのステータスを返す (スタブ)。",
+)
+def distill_status(_: str = Depends(verify_api_key)):
+    return {"status": "idle", "message": "蒸留ループは現在待機中です。"}
+
+
+# ---------------------------------------------------------------------------
+# Sprint 24: Error Memory / Mistake Guard endpoints
+# ---------------------------------------------------------------------------
+
+
+class MistakeRecordRequest(BaseModel):
+    text: str = Field(..., description="ミステキスト")
+    category: Optional[str] = Field(None, description="カテゴリ (省略時は自動分類)")
+    severity: str = Field("medium", description="重要度 high/medium/low")
+    context: str = Field("", description="発生コンテキスト")
+
+
+class MistakeCheckRequest(BaseModel):
+    text: str = Field(..., description="チェック対象テキスト")
+
+
+_mistake_store: Optional[object] = None
+
+
+def _get_mistake_store():
+    global _mistake_store
+    if _mistake_store is None:
+        from open_mythos.error_memory import ErrorMemoryStore
+        _mistake_store = ErrorMemoryStore()
+    return _mistake_store
+
+
+@app.post(
+    "/v1/mistakes/record",
+    tags=["mistakes"],
+    summary="ミス記録",
+    description="ミスをストアに記録する。category 省略時は自動分類。",
+)
+def mistakes_record(req: MistakeRecordRequest, _: str = Depends(verify_api_key)):
+    from open_mythos.error_memory import MistakeClassifier
+
+    store = _get_mistake_store()
+    category = req.category
+    if not category:
+        category = MistakeClassifier().classify(req.text)
+    record = store.append(req.text, category=category, severity=req.severity, context=req.context)
+    return {
+        "record_id": record.record_id,
+        "category": record.category,
+        "severity": record.severity,
+        "total_records": store.total,
+    }
+
+
+@app.get(
+    "/v1/mistakes/rules",
+    tags=["mistakes"],
+    summary="防止ルール取得",
+    description="蓄積ミスから自動生成した防止ルール一覧を返す。",
+)
+def mistakes_rules(_: str = Depends(verify_api_key)):
+    from open_mythos.error_memory import RuleExtractor
+
+    store = _get_mistake_store()
+    rules = RuleExtractor(store).extract()
+    return {
+        "n_rules": len(rules),
+        "rules": [
+            {
+                "rule_id": r.rule_id,
+                "category": r.category,
+                "pattern": r.pattern,
+                "description": r.description,
+                "severity": r.severity,
+                "source_count": r.source_count,
+            }
+            for r in rules
+        ],
+    }
+
+
+@app.post(
+    "/v1/mistakes/check",
+    tags=["mistakes"],
+    summary="ミスガード チェック",
+    description="テキストをルールDB照合し、ブロック判定を返す。",
+)
+def mistakes_check(req: MistakeCheckRequest, _: str = Depends(verify_api_key)):
+    from open_mythos.error_memory import RuleExtractor, MistakeGuard
+
+    store = _get_mistake_store()
+    rules = RuleExtractor(store).extract()
+    guard = MistakeGuard(rules=rules, store=store)
+    result = guard.check(req.text)
+
+    return {
+        "text": req.text,
+        "blocked": result.blocked,
+        "block_reason": result.block_reason,
+        "matched_rule": (
+            {
+                "rule_id": result.matched_rule.rule_id,
+                "category": result.matched_rule.category,
+                "pattern": result.matched_rule.pattern,
+            }
+            if result.matched_rule
+            else None
+        ),
+        "n_similar_records": len(result.similar_records),
+        "check_latency_ms": result.check_latency_ms,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Sprint 23: External Signal Agent endpoints
+# ---------------------------------------------------------------------------
+
+
+class SignalDetectRequest(BaseModel):
+    context: str = Field("", description="分析対象コンテキスト")
+    keyword: str = Field("", description="対象キーワード")
+    month: Optional[int] = Field(None, ge=1, le=12, description="現在月 (1〜12)")
+    kpi_name: str = Field("llmo_score", description="影響推定するKPI名")
+
+
+class SignalCounterRequest(BaseModel):
+    context: str = Field(..., description="最適化対象コンテキスト")
+    keyword: str = Field("", description="対象キーワード")
+    month: Optional[int] = Field(None, ge=1, le=12, description="現在月")
+    kpi_name: str = Field("llmo_score")
+
+
+@app.post(
+    "/v1/signal/detect",
+    tags=["signal"],
+    summary="外部シグナル検出",
+    description="季節・トレンド・競合・市場シグナルを検出し KPI への推定影響を返す。",
+)
+def signal_detect(req: SignalDetectRequest, _: str = Depends(verify_api_key)):
+    from open_mythos.external_signal import SignalDetector, ImpactEstimator
+
+    detector = SignalDetector()
+    estimator = ImpactEstimator()
+    signals = detector.detect(req.context, keyword=req.keyword, month=req.month)
+    impacts = [estimator.estimate(s, req.kpi_name) for s in signals]
+    net = sum(i.impact_delta for i in impacts)
+
+    return {
+        "keyword": req.keyword,
+        "signals": [
+            {
+                "type": s.signal_type,
+                "name": s.name,
+                "strength": round(s.strength, 4),
+                "direction": s.direction,
+                "is_threat": s.is_threat,
+            }
+            for s in signals
+        ],
+        "impacts": [
+            {
+                "kpi_name": i.kpi_name,
+                "impact_delta": i.impact_delta,
+                "severity": i.severity,
+                "confidence": i.confidence,
+                "explanation": i.explanation,
+            }
+            for i in impacts
+        ],
+        "net_kpi_impact": round(net, 4),
+        "n_threats": sum(1 for s in signals if s.is_threat),
+        "n_opportunities": sum(1 for s in signals if s.is_opportunity),
+    }
+
+
+@app.post(
+    "/v1/signal/counter",
+    tags=["signal"],
+    summary="外部シグナル対抗アクション",
+    description="シグナルを検出し、対応するカウンターアクションを適用した最適化コンテキストを返す。",
+)
+def signal_counter(req: SignalCounterRequest, _: str = Depends(verify_api_key)):
+    from open_mythos.external_signal import ExternalSignalAgent
+
+    agent = ExternalSignalAgent()
+    result = agent.run(
+        context=req.context,
+        keyword=req.keyword,
+        month=req.month,
+        kpi_name=req.kpi_name,
+    )
+
+    return {
+        "keyword": result.keyword,
+        "n_signals": len(result.signals),
+        "threat_count": result.threat_count,
+        "opportunity_count": result.opportunity_count,
+        "net_kpi_impact": result.net_kpi_impact,
+        "counter_actions": [
+            {
+                "action_id": a.action_id,
+                "description": a.description,
+                "estimated_kpi_recovery": a.estimated_kpi_recovery,
+            }
+            for a in result.counter_actions
+        ],
+        "optimized_context": result.optimized_context,
+        "total_latency_ms": result.total_latency_ms,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Sprint 22: Profiler Agent endpoints
+# ---------------------------------------------------------------------------
+
+
+class ProfileRunRequest(BaseModel):
+    input_text: str = Field(..., description="パイプラインへの入力テキスト")
+    stages: Optional[list] = Field(None, description="使用するステージ名リスト (省略時はデフォルト3ステージ)")
+
+
+class ProfileFixRequest(BaseModel):
+    input_text: str = Field(..., description="パイプラインへの入力テキスト")
+
+
+def _default_stages():
+    """デモ用デフォルトステージ (スコア付き)。"""
+    from open_mythos.llmo import LLMOScorer
+    scorer = LLMOScorer()
+
+    def fetch(text: str):
+        return text + " [fetched]", scorer.score(text).llmo_total
+
+    def rank(text: str):
+        ranked = text + " [ranked]"
+        return ranked, scorer.score(ranked).llmo_total
+
+    def fmt(text: str):
+        formatted = f"## 結果\n{text}\n[formatted]"
+        return formatted, scorer.score(formatted).llmo_total
+
+    return {"fetch": fetch, "rank": rank, "format": fmt}
+
+
+@app.post(
+    "/v1/profile/run",
+    tags=["profiler"],
+    summary="パイプラインプロファイル",
+    description="各ステージの実行時間・スコアを計測し、ボトルネック候補を返す。",
+)
+def profile_run(req: ProfileRunRequest, _: str = Depends(verify_api_key)):
+    from open_mythos.profiler import PipelineProfiler, BottleneckDetector
+
+    stages = _default_stages()
+    profiler = PipelineProfiler(stages)
+    result = profiler.run(req.input_text)
+    report = BottleneckDetector().detect(result)
+
+    return {
+        "total_latency_ms": result.total_latency_ms,
+        "stages": {
+            name: {
+                "latency_ms": m.latency_ms,
+                "score": round(m.score, 4) if m.score >= 0 else None,
+                "ok": m.ok,
+            }
+            for name, m in result.stages.items()
+        },
+        "bottleneck_stage": report.bottleneck_stage,
+        "bottleneck_type": report.bottleneck_type,
+        "severity": report.severity,
+        "diagnosis": report.diagnosis,
+        "suggested_fix": report.suggested_fix,
+    }
+
+
+@app.post(
+    "/v1/profile/fix",
+    tags=["profiler"],
+    summary="ボトルネック自動修正",
+    description="profile → detect → auto_fix を一括実行し、修正前後のレイテンシ改善率を返す。",
+)
+def profile_fix(req: ProfileFixRequest, _: str = Depends(verify_api_key)):
+    from open_mythos.profiler import ProfilerAgent
+
+    agent = ProfilerAgent(_default_stages())
+    fix_result = agent.profile_and_fix(req.input_text)
+
+    return {
+        "bottleneck_stage": fix_result.bottleneck_report.bottleneck_stage,
+        "bottleneck_type": fix_result.bottleneck_report.bottleneck_type,
+        "before_latency_ms": fix_result.before_profile.total_latency_ms,
+        "after_latency_ms": fix_result.after_profile.total_latency_ms,
+        "latency_improvement_pct": fix_result.latency_improvement_pct,
+        "score_improvement": fix_result.score_improvement,
+        "fixed": fix_result.fixed,
+        "fix_description": fix_result.fix_description,
+    }
+
+
+@app.get(
+    "/v1/profile/report",
+    tags=["profiler"],
+    summary="プロファイル履歴",
+    description="直近のプロファイル実行結果サマリーを返す (スタブ)。",
+)
+def profile_report(_: str = Depends(verify_api_key)):
+    return {"message": "プロファイル履歴機能は今後のバージョンで実装予定です。"}
+
+
+# ---------------------------------------------------------------------------
+# Sprint 21: KPI Agent endpoints
+# ---------------------------------------------------------------------------
+
+
+class KPIDefineRequest(BaseModel):
+    name: str = Field(..., description="KPI識別名 (例: llmo_score, roas)")
+    target: float = Field(..., description="達成目標値")
+    context: str = Field("", description="計測対象コンテキスト文字列")
+    higher_is_better: bool = Field(True, description="大きいほど良いKPIか")
+    unit: str = Field("", description="単位ラベル")
+    action_budget: int = Field(3, ge=1, le=6, description="1サイクルのアクション上限")
+
+
+class KPIMeasureRequest(BaseModel):
+    name: str = Field(..., description="KPI識別名")
+    target: float = Field(..., description="目標値")
+    context: str = Field("", description="計測対象コンテキスト")
+    higher_is_better: bool = Field(True)
+
+
+class KPIImproveRequest(BaseModel):
+    name: str = Field(..., description="KPI識別名")
+    target: float = Field(..., description="目標値")
+    context: str = Field("", description="改善対象コンテキスト")
+    n_cycles: int = Field(3, ge=1, le=10, description="改善サイクル数")
+    higher_is_better: bool = Field(True)
+    action_budget: int = Field(3, ge=1, le=6)
+    early_stop: bool = Field(True, description="目標達成時に早期終了するか")
+
+
+def _llmo_measure_fn(text: str) -> float:
+    """LLMO スコアを KPI 計測関数として使用。"""
+    from open_mythos.llmo import LLMOScorer
+    return LLMOScorer().score(text).llmo_total
+
+
+@app.post(
+    "/v1/kpi/measure",
+    tags=["kpi"],
+    summary="KPI 計測",
+    description="コンテキストに対して KPI 値を計測し KPISnapshot を返す。",
+)
+def kpi_measure(req: KPIMeasureRequest, _: str = Depends(verify_api_key)):
+    from open_mythos.kpi_agent import KPIDefinition, KPIAgent
+
+    kpi = KPIDefinition(
+        name=req.name,
+        target=req.target,
+        measure_fn=_llmo_measure_fn,
+        context=req.context,
+        higher_is_better=req.higher_is_better,
+    )
+    agent = KPIAgent(kpi)
+    snapshot = agent.measure(req.context, cycle=0)
+    gap_report = agent.analyze(snapshot)
+    return {
+        "kpi_name": snapshot.kpi_name,
+        "value": round(snapshot.value, 4),
+        "target": req.target,
+        "gap": round(gap_report.gap, 4),
+        "gap_pct": gap_report.gap_pct,
+        "priority": gap_report.priority,
+        "diagnosis": gap_report.diagnosis,
+        "achieved": gap_report.achieved,
+    }
+
+
+@app.post(
+    "/v1/kpi/improve",
+    tags=["kpi"],
+    summary="KPI 自律改善",
+    description=(
+        "measure → analyze → plan → execute サイクルを n_cycles 回自律実行し、"
+        "KPI を目標値に近づける。"
+    ),
+)
+def kpi_improve(req: KPIImproveRequest, _: str = Depends(verify_api_key)):
+    from open_mythos.kpi_agent import KPIDefinition, KPIAgent
+
+    kpi = KPIDefinition(
+        name=req.name,
+        target=req.target,
+        measure_fn=_llmo_measure_fn,
+        context=req.context,
+        higher_is_better=req.higher_is_better,
+        action_budget=req.action_budget,
+    )
+    agent = KPIAgent(kpi)
+    result = agent.improve_loop(n_cycles=req.n_cycles, early_stop=req.early_stop)
+
+    return {
+        "kpi_name": result.kpi_name,
+        "initial_value": round(result.initial_snapshot.value, 4),
+        "final_value": round(result.final_snapshot.value, 4),
+        "target": req.target,
+        "achieved_target": result.achieved_target,
+        "improvement": round(result.improvement, 4),
+        "improvement_pct": round(result.improvement_pct, 2),
+        "n_cycles_used": result.n_cycles_used,
+        "total_latency_ms": result.total_latency_ms,
+        "snapshots": [
+            {"cycle": s.cycle, "value": round(s.value, 4)}
+            for s in result.snapshots
+        ],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Sprint 20: Debate Orchestrator endpoints
+# ---------------------------------------------------------------------------
+
+
+class DebateRunRequest(BaseModel):
+    topic: str = Field(..., description="討議トピック / 質問")
+    n_agents: int = Field(3, ge=2, le=8, description="討議エージェント数")
+    n_rounds: int = Field(2, ge=1, le=5, description="討議ラウンド数")
+    consensus_threshold: float = Field(0.75, ge=0.0, le=1.0, description="早期終了する合意スコア閾値")
+    max_new_tokens: int = Field(64, ge=1, le=256, description="1生成あたりの最大トークン数")
+
+
+@app.post(
+    "/v1/debate/run",
+    tags=["debate"],
+    summary="討議型集合知",
+    description=(
+        "複数エージェントが Propose → Critique → Refine → Consensus の4フェーズで討議し、"
+        "合意テキストと agreement_score を返す。"
+    ),
+)
+def debate_run(req: DebateRunRequest, _: str = Depends(verify_api_key)):
+    from open_mythos.debate import DebateConfig, DebateOrchestrator
+
+    cfg = DebateConfig(
+        n_agents=req.n_agents,
+        n_rounds=req.n_rounds,
+        consensus_threshold=req.consensus_threshold,
+    )
+    with DebateOrchestrator(
+        state.model,
+        cfg,
+        device=str(state.device),
+        max_new_tokens=req.max_new_tokens,
+    ) as debate:
+        result = debate.run(req.topic)
+
+    rounds_summary = [
+        {
+            "round": r.round_num,
+            "agreement_score": round(r.agreement_score, 4),
+            "latency_ms": r.latency_ms,
+            "n_proposals": len(r.proposals),
+        }
+        for r in result.rounds
+    ]
+    return {
+        "topic": result.topic,
+        "consensus": result.consensus,
+        "agreement_score": round(result.agreement_score, 4),
+        "confidence": round(result.confidence, 4),
+        "n_rounds_used": result.n_rounds_used,
+        "early_stopped": result.early_stopped,
+        "improved_over_solo": result.improved_over_solo,
+        "total_latency_ms": result.total_latency_ms,
+        "rounds": rounds_summary,
+    }
+
+
 @app.get(
     "/v1/ab/stats",
     tags=["infer"],
