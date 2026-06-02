@@ -4,6 +4,32 @@ All notable changes to OpenMythos are documented here.
 
 ---
 
+## [0.35.0] — 2026-06-02
+
+### Sprint 32: エラーメモリ永続化 — SQLite backend
+
+#### ErrorMemoryStore 拡張 (`open_mythos/error_memory.py`)
+- `ErrorMemoryStore(backend="sqlite", db_path="mistakes.db")` — SQLite 永続化バックエンド
+- `db_path=":memory:"` でインメモリ SQLite も利用可 (テスト・一時利用向け)
+- 全既存メソッド (append/query_similar/stats/records_by_category/total) が SQLite 対応
+- max_records 超過時は `created_at` が古いものを自動削除 (SQLite)
+- `export_jsonl()` — 全レコードを JSONL 文字列で返す
+- `export_records()` — 全レコードを辞書リストで返す
+- `save_jsonl(path)` — JSONL ファイル保存 (親ディレクトリ自動作成)
+- `import_jsonl(path)` — JSONL ファイルからインポート
+- `clear()` — 全レコード削除
+- `close()` — SQLite 接続クローズ (memory backend では no-op)
+
+#### API 追加 (`serve/api.py`)
+- `GET  /v1/mistakes/export` — JSONL / JSON 形式エクスポート (category フィルタ対応)
+- `DELETE /v1/mistakes/clear` — 全ミス記録削除
+- `_get_mistake_store()` に `MISTAKES_BACKEND` / `MISTAKES_DB_PATH` 環境変数対応
+
+#### テスト: `tests/test_sprint32.py` — 40 tests PASS
+#### バージョン: v0.35.0
+
+---
+
 ## [0.34.0] — 2026-06-02
 
 ### Sprint 31: GPU LoRA SFT 統合 — LoraTrainer

@@ -4,10 +4,17 @@ ErrorMemory & MistakeGuard — ミスから学習 (Sprint 24 / P5パターン).
 エラー・低品質出力を自動分類・蓄積し、同パターンのミスを事前にブロックする
 ガードレールと、ルール抽出による継続的な品質向上ループ。
 
+Sprint 32 追加:
+    ErrorMemoryStore(backend="sqlite", db_path="mistakes.db")
+    - SQLite 永続化バックエンド (":memory:" でインメモリ SQLite も可)
+    - export_jsonl() / save_jsonl() / import_jsonl() — データの出入力
+    - clear() — 全レコード削除
+    - close() — SQLite 接続クローズ
+
 設計:
     MistakeCategory   -- エラー分類 (8カテゴリ)
     MistakeRecord     -- 個別ミスの記録
-    ErrorMemoryStore  -- append / query_similar / stats
+    ErrorMemoryStore  -- append / query_similar / stats / export
     MistakeClassifier -- エラータイプ自動分類
     RuleExtractor     -- 蓄積ミスから防止ルール自動生成
     MistakeGuard      -- 入力/出力をルールDB照合し事前ブロック
@@ -16,9 +23,17 @@ ErrorMemory & MistakeGuard — ミスから学習 (Sprint 24 / P5パターン).
 
     from open_mythos.error_memory import ErrorMemoryStore, MistakeGuard, RuleExtractor
 
+    # インメモリ (デフォルト)
     store = ErrorMemoryStore()
+
+    # SQLite 永続化
+    store = ErrorMemoryStore(backend="sqlite", db_path="mistakes.db")
+
     store.append("プロンプトインジェクションを試みた入力", category="security")
     store.append("個人情報を含む出力", category="privacy")
+
+    jsonl = store.export_jsonl()          # JSONL 文字列
+    n     = store.save_jsonl("out.jsonl") # ファイル保存
 
     extractor = RuleExtractor(store)
     rules = extractor.extract()
@@ -30,10 +45,12 @@ ErrorMemory & MistakeGuard — ミスから学習 (Sprint 24 / P5パターン).
 
 from __future__ import annotations
 
+import json as _json
 import re
 import time
 import uuid
 from dataclasses import dataclass, field
+from pathlib import Path as _Path
 from typing import Dict, List, Optional
 
 
@@ -105,18 +122,99 @@ class ErrorMemoryStore:
     Args
     ----
     max_records : 保持する最大レコード数 (古いものから削除)
+    backend     : "memory" (デフォルト) | "sqlite" (Sprint 32 永続化)
+    db_path     : SQLite ファイルパス (":memory:" でインメモリ SQLite)
     """
 
-    def __init__(self, max_records: int = 1000) -> None:
-        self._records: List[MistakeRecord] = []
+    def __init__(
+        self,
+        max_records: int = 1000,
+        backend:     str = "memory",
+        db_path:     str = "mistakes.db",
+    ) -> None:
         self.max_records = max_records
+        self.backend     = backend
+        self._records: List[MistakeRecord] = []   # memory backend
+        self._conn = None                          # sqlite backend
+
+        if backend == "sqlite":
+            self._init_sqlite(db_path)
+
+    # ------------------------------------------------------------------
+    # SQLite 初期化
+    # ------------------------------------------------------------------
+
+    def _init_sqlite(self, db_path: str) -> None:
+        import sqlite3
+        self._conn = sqlite3.connect(db_path, check_same_thread=False)
+        self._conn.execute("""
+            CREATE TABLE IF NOT EXISTS mistakes (
+                record_id  TEXT PRIMARY KEY,
+                text       TEXT NOT NULL,
+                category   TEXT NOT NULL,
+                severity   TEXT NOT NULL,
+                context    TEXT DEFAULT '',
+                created_at REAL NOT NULL,
+                metadata   TEXT DEFAULT '{}'
+            )
+        """)
+        self._conn.commit()
+
+    def _sqlite_insert(self, record: MistakeRecord) -> None:
+        self._conn.execute(
+            "INSERT OR REPLACE INTO mistakes VALUES (?,?,?,?,?,?,?)",
+            (
+                record.record_id,
+                record.text,
+                record.category,
+                record.severity,
+                record.context,
+                record.created_at,
+                _json.dumps(record.metadata, ensure_ascii=False),
+            ),
+        )
+        # max_records を超えたら created_at が古いものを削除
+        self._conn.execute(
+            "DELETE FROM mistakes WHERE record_id NOT IN "
+            "(SELECT record_id FROM mistakes ORDER BY created_at DESC LIMIT ?)",
+            (self.max_records,),
+        )
+        self._conn.commit()
+
+    def _sqlite_fetch_all(self) -> List[MistakeRecord]:
+        cursor = self._conn.execute(
+            "SELECT record_id, text, category, severity, context, created_at, metadata "
+            "FROM mistakes ORDER BY created_at DESC"
+        )
+        records: List[MistakeRecord] = []
+        for row in cursor.fetchall():
+            records.append(MistakeRecord(
+                record_id=row[0],
+                text=row[1],
+                category=row[2],
+                severity=row[3],
+                context=row[4] or "",
+                created_at=row[5],
+                metadata=_json.loads(row[6] or "{}"),
+            ))
+        return records
+
+    def _all_records(self) -> List[MistakeRecord]:
+        """バックエンドを問わず全レコードを返す (内部共通ヘルパー)"""
+        if self.backend == "sqlite":
+            return self._sqlite_fetch_all()
+        return list(self._records)
+
+    # ------------------------------------------------------------------
+    # Core methods
+    # ------------------------------------------------------------------
 
     def append(
         self,
-        text: str,
+        text:     str,
         category: str = "other",
         severity: str = "medium",
-        context: str = "",
+        context:  str = "",
         metadata: Optional[Dict] = None,
     ) -> MistakeRecord:
         """ミスを記録して MistakeRecord を返す。"""
@@ -129,9 +227,12 @@ class ErrorMemoryStore:
             context=context,
             metadata=metadata or {},
         )
-        self._records.append(record)
-        if len(self._records) > self.max_records:
-            self._records = self._records[-self.max_records:]
+        if self.backend == "sqlite":
+            self._sqlite_insert(record)
+        else:
+            self._records.append(record)
+            if len(self._records) > self.max_records:
+                self._records = self._records[-self.max_records:]
         return record
 
     def query_similar(self, text: str, top_k: int = 5) -> List[MistakeRecord]:
@@ -145,11 +246,12 @@ class ErrorMemoryStore:
         Returns:
             類似度の高い順に top_k 件の MistakeRecord
         """
-        if not self._records:
+        records = self._all_records()
+        if not records:
             return []
         query_words = _to_word_set(text)
         scored = []
-        for rec in self._records:
+        for rec in records:
             sim = _jaccard(query_words, rec.word_set())
             scored.append((sim, rec))
         scored.sort(key=lambda x: -x[0])
@@ -157,26 +259,120 @@ class ErrorMemoryStore:
 
     def stats(self) -> Dict:
         """カテゴリ別・重要度別の件数を返す。"""
+        records = self._all_records()
         by_cat: Dict[str, int] = {}
         by_sev: Dict[str, int] = {}
-        for rec in self._records:
+        for rec in records:
             by_cat[rec.category] = by_cat.get(rec.category, 0) + 1
             by_sev[rec.severity] = by_sev.get(rec.severity, 0) + 1
         return {
-            "total": len(self._records),
+            "total": len(records),
             "by_category": by_cat,
             "by_severity": by_sev,
         }
 
     def records_by_category(self, category: str) -> List[MistakeRecord]:
-        return [r for r in self._records if r.category == category]
+        return [r for r in self._all_records() if r.category == category]
 
     @property
     def total(self) -> int:
+        if self.backend == "sqlite" and self._conn is not None:
+            return self._conn.execute("SELECT COUNT(*) FROM mistakes").fetchone()[0]
         return len(self._records)
 
     def __len__(self) -> int:
         return self.total
+
+    # ------------------------------------------------------------------
+    # Sprint 32: Export / Import / Clear / Close
+    # ------------------------------------------------------------------
+
+    def export_jsonl(self) -> str:
+        """全レコードを JSONL 形式の文字列で返す。"""
+        records = self._all_records()
+        return "\n".join(
+            _json.dumps(
+                {
+                    "record_id": r.record_id,
+                    "text":       r.text,
+                    "category":   r.category,
+                    "severity":   r.severity,
+                    "context":    r.context,
+                    "created_at": r.created_at,
+                    "metadata":   r.metadata,
+                },
+                ensure_ascii=False,
+            )
+            for r in records
+        )
+
+    def export_records(self) -> List[Dict]:
+        """全レコードを辞書リストで返す。"""
+        return [
+            {
+                "record_id": r.record_id,
+                "text":       r.text,
+                "category":   r.category,
+                "severity":   r.severity,
+                "context":    r.context,
+                "created_at": r.created_at,
+                "metadata":   r.metadata,
+            }
+            for r in self._all_records()
+        ]
+
+    def save_jsonl(self, path: str) -> int:
+        """
+        全レコードを JSONL ファイルに保存し、保存件数を返す。
+
+        Args:
+            path : 保存先ファイルパス (親ディレクトリは自動作成)
+        """
+        p = _Path(path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        content = self.export_jsonl()
+        p.write_text(content, encoding="utf-8")
+        return self.total
+
+    def import_jsonl(self, path: str) -> int:
+        """
+        JSONL ファイルからレコードをインポートし、インポート件数を返す。
+
+        Args:
+            path : インポート元ファイルパス
+
+        Returns:
+            インポートした件数
+        """
+        n = 0
+        for line in _Path(path).read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            d = _json.loads(line)
+            self.append(
+                text=d["text"],
+                category=d.get("category", "other"),
+                severity=d.get("severity", "medium"),
+                context=d.get("context", ""),
+                metadata=d.get("metadata", {}),
+            )
+            n += 1
+        return n
+
+    def clear(self) -> None:
+        """全レコードを削除する。"""
+        if self.backend == "sqlite" and self._conn is not None:
+            self._conn.execute("DELETE FROM mistakes")
+            self._conn.commit()
+        else:
+            self._records.clear()
+
+    def close(self) -> None:
+        """SQLite 接続を閉じる (メモリバックエンドでは no-op)。"""
+        if self._conn is not None:
+            self._conn.close()
+            self._conn = None
 
 
 # ---------------------------------------------------------------------------

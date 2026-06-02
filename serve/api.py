@@ -1989,7 +1989,9 @@ def _get_mistake_store():
     global _mistake_store
     if _mistake_store is None:
         from open_mythos.error_memory import ErrorMemoryStore
-        _mistake_store = ErrorMemoryStore()
+        backend = os.environ.get("MISTAKES_BACKEND", "memory")    # "memory" | "sqlite"
+        db_path = os.environ.get("MISTAKES_DB_PATH",  "mistakes.db")
+        _mistake_store = ErrorMemoryStore(backend=backend, db_path=db_path)
     return _mistake_store
 
 
@@ -2072,6 +2074,47 @@ def mistakes_check(req: MistakeCheckRequest, _: str = Depends(verify_api_key)):
         "n_similar_records": len(result.similar_records),
         "check_latency_ms": result.check_latency_ms,
     }
+
+
+@app.get(
+    "/v1/mistakes/export",
+    tags=["mistakes"],
+    summary="ミス記録エクスポート (Sprint 32)",
+    description="蓄積したミス記録を JSONL または JSON 形式でエクスポートする。"
+                " category で絞り込み可。",
+    dependencies=[Depends(verify_api_key)],
+)
+def mistakes_export(
+    format:   str            = "jsonl",
+    category: Optional[str] = None,
+):
+    from fastapi.responses import Response as _Resp
+    store   = _get_mistake_store()
+    records = store.export_records()
+    if category:
+        records = [r for r in records if r["category"] == category]
+
+    if format == "json":
+        return {"records": records, "total": len(records)}
+
+    # JSONL (default)
+    import json as _json
+    lines   = [_json.dumps(r, ensure_ascii=False) for r in records]
+    content = "\n".join(lines)
+    return _Resp(content=content, media_type="text/plain; charset=utf-8")
+
+
+@app.delete(
+    "/v1/mistakes/clear",
+    tags=["mistakes"],
+    summary="ミス記録全削除 (Sprint 32)",
+    description="蓄積した全ミス記録を削除する。",
+    dependencies=[Depends(verify_api_key)],
+)
+def mistakes_clear():
+    store = _get_mistake_store()
+    store.clear()
+    return {"cleared": True, "total": store.total}
 
 
 # ---------------------------------------------------------------------------
