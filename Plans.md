@@ -40,8 +40,9 @@
 | 30 | **統合** P1〜P10 オーケストレーター — GrowingAIOrchestrator | `growing_ai_orchestrator.py` | 1617 | v0.33 |
 | 31 | GPU LoRA SFT 統合 — LoraTrainer / sft_backend | `lora_trainer.py` | 1657 | v0.34 |
 | 32 | エラーメモリ永続化 — SQLite backend / export | `error_memory.py` | 1697 | v0.35 |
+| 33 | LongTermMemory ANN インデックス — FAISS 移行 | `long_term_memory.py` | 1737 | v0.36 |
 
-> **累計テスト数**: 1697 PASS (Sprint 32: +40)
+> **累計テスト数**: 1737 PASS (Sprint 33: +40)
 
 ---
 
@@ -105,6 +106,21 @@ P1→P2→P3/P4  P5→P6→P7→P8→P9→P10
 | 29.4 | `serve/api.py` — `/v1/plan/decompose` / `/execute` | cc:完了 |
 | 29.T | `tests/test_sprint29.py` — 40 tests PASS | cc:完了 |
 | 29.V | PyPI v0.32.0 | cc:完了 |
+
+---
+
+## Sprint 33 詳細 (完了)
+
+### Sprint 33: LongTermMemory FAISS ANN インデックス — v0.36.0
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 33.1 | `long_term_memory.py` — `_text_to_vector()` ハッシュ TF-IDF L2 正規化ベクトル化 | cc:完了 |
+| 33.2 | `long_term_memory.py` — `ANNIndex` (FAISS IndexFlatIP ラッパー + linear fallback) | cc:完了 |
+| 33.3 | `long_term_memory.py` — `EpisodicStore(ann_backend=...)` ハイブリッド検索 | cc:完了 |
+| 33.4 | `long_term_memory.py` — `EpisodicStore._rebuild_ann()` / `_evict` / `consolidate` 後の再構築 | cc:完了 |
+| 33.5 | `long_term_memory.py` — `LongTermMemoryAgent(ann_backend=...)` パラメータ追加 | cc:完了 |
+| 33.T | `tests/test_sprint33.py` — 40 tests PASS (FAISS 6 tests 含む) | cc:完了 |
+| 33.V | PyPI v0.36.0 | cc:完了 |
 
 ---
 

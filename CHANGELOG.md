@@ -4,6 +4,32 @@ All notable changes to OpenMythos are documented here.
 
 ---
 
+## [0.36.0] — 2026-06-02
+
+### Sprint 33: LongTermMemory FAISS ANN インデックス
+
+#### `open_mythos/long_term_memory.py`
+- `ANN_DIM = 256` — ハッシュ TF-IDF ベクトルの固定次元数
+- `_text_to_vector(text, dim)` — トークンを `hash % dim` でバケット割り当て → L2 正規化
+- `ANNIndex` — FAISS `IndexFlatIP` ラッパー
+  - `backend="auto"` : faiss 利用可能なら faiss、否なら linear へ自動フォールバック
+  - `backend="faiss"` : 強制使用 (未インストールなら ImportError)
+  - `backend="linear"`: 線形フォールバック (既存動作互換)
+  - `add() / search() / rebuild() / clear()` / `is_faiss` / `faiss_available()`
+- `EpisodicStore(ann_backend=...)` — ハイブリッド検索
+  - `append()`: ANN インデックスへの自動追加
+  - `search()`: FAISS で候補を `top_k × 8` に絞り込み → TF-IDF 精密スコアリング
+  - `_evict()` / `consolidate()` 後に `_rebuild_ann()` で整合性を維持
+  - `stats()` に `ann_backend` / `ann_size` キー追加
+  - `ann` プロパティ公開
+- `LongTermMemoryAgent(ann_backend=...)` — EpisodicStore に委譲
+
+#### テスト: `tests/test_sprint33.py` — 40 tests PASS (FAISS 6 tests 含む)
+#### 依存追加: `faiss-cpu` (optional, 未インストール時は自動 linear fallback)
+#### バージョン: v0.36.0
+
+---
+
 ## [0.35.0] — 2026-06-02
 
 ### Sprint 32: エラーメモリ永続化 — SQLite backend
