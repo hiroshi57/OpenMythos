@@ -255,11 +255,24 @@ class BottleneckDetector:
 
     IQR = Q3 - Q1。Q3 + 1.5×IQR を超えるステージを「遅延ボトルネック」、
     Q1 - 1.5×IQR を下回るスコアを「品質ボトルネック」と判定する。
-    ステージ数が少ない場合は最大/最小値を使う。
+    ステージ数が少ない場合はレシオ比較 (max/median) にフォールバック。
+
+    Parameters
+    ----------
+    iqr_factor            : IQR 倍率 (デフォルト 1.5)
+    min_latency_threshold : これ未満の絶対レイテンシはボトルネックと見なさない (ms)
+    ratio_threshold       : 2-3ステージ時の max/median 比 (この値超でボトルネック)
     """
 
-    def __init__(self, iqr_factor: float = 1.5) -> None:
+    def __init__(
+        self,
+        iqr_factor: float = 1.5,
+        min_latency_threshold: float = 50.0,
+        ratio_threshold: float = 3.0,
+    ) -> None:
         self.iqr_factor = iqr_factor
+        self.min_latency_threshold = min_latency_threshold
+        self.ratio_threshold = ratio_threshold
 
     def detect(self, profile: ProfileResult) -> BottleneckReport:
         """
@@ -335,10 +348,27 @@ class BottleneckDetector:
 
     def _detect_latency_outlier(self, stages: List[StageMetrics]) -> Optional[str]:
         latencies = [s.latency_ms for s in stages]
+
         if len(latencies) < 2:
-            return stages[0].stage_name if stages[0].latency_ms > 0 else None
+            # 単一ステージ: 絶対閾値を超えた場合のみボトルネックと報告
+            # (以前は latency > 0 なら常にボトルネックと誤報告していた)
+            s = stages[0]
+            return s.stage_name if s.latency_ms > self.min_latency_threshold else None
+
+        if len(latencies) < 4:
+            # 2-3ステージ: IQR が不安定なため max/min レシオ比較にフォールバック
+            # (median より min を使う方が2ステージで感度が高い)
+            min_lat = min(latencies)
+            max_stage = max(stages, key=lambda s: s.latency_ms)
+            ref = max(min_lat, 1e-9)
+            if max_stage.latency_ms / ref >= self.ratio_threshold:
+                if max_stage.latency_ms > self.min_latency_threshold:
+                    return max_stage.stage_name
+            return None
+
         threshold = self._upper_fence(latencies)
-        outliers = [s for s in stages if s.latency_ms > threshold]
+        outliers = [s for s in stages if s.latency_ms > threshold
+                    and s.latency_ms > self.min_latency_threshold]
         if not outliers:
             return None
         return max(outliers, key=lambda s: s.latency_ms).stage_name
@@ -537,24 +567,74 @@ class ProfilerAgent:
             fix_description=fix_desc,
         )
 
-    def profile_and_fix(self, input_text: str) -> AutoFixResult:
+    def profile_and_fix(self, input_text: str, max_retries: int = 2) -> AutoFixResult:
         """
-        profile → detect → auto_fix を一括実行する便利メソッド。
+        profile → detect → auto_fix を一括実行し、改善されなければ再試行する。
+
+        各試行でボトルネックを再検出して修正を繰り返す。
+        max_retries 回試みても改善しない場合は最後の結果を返す。
 
         Args:
-            input_text: パイプラインへの入力テキスト
+            input_text : パイプラインへの入力テキスト
+            max_retries: 最大修正試行回数 (デフォルト 2)
 
         Returns:
-            AutoFixResult
+            AutoFixResult (最後の試行結果)
         """
         profile = self.profile(input_text)
         report = self.detect(profile)
-        return self.auto_fix(report, input_text)
+        result = self.auto_fix(report, input_text)
+
+        for attempt in range(1, max_retries):
+            if result.fixed or not report.has_bottleneck:
+                break
+            # 前回の after_profile を起点に再検出
+            report = self.detect(result.after_profile)
+            if not report.has_bottleneck:
+                break
+            new_result = self.auto_fix(report, input_text)
+            # 改善量が増えた場合のみ上書き
+            if (new_result.latency_improvement_pct > result.latency_improvement_pct
+                    or new_result.score_improvement > result.score_improvement):
+                result = new_result
+
+        return result
 
     @property
     def tune_log(self) -> List[dict]:
         """これまでの自動チューニング履歴。"""
         return list(self._tune_log)
+
+    def compare_profiles(
+        self, before: ProfileResult, after: ProfileResult
+    ) -> Dict[str, float]:
+        """
+        2つのプロファイルを比較して改善量を返す。
+
+        Returns
+        -------
+        dict:
+            latency_improvement_pct, score_improvement,
+            improved_stages (改善されたステージ名リスト)
+        """
+        before_lat = before.total_latency_ms
+        after_lat = after.total_latency_ms
+        lat_pct = ((before_lat - after_lat) / max(before_lat, 1e-9)) * 100
+
+        before_scores = {n: m.score for n, m in before.stages.items() if m.score >= 0}
+        after_scores = {n: m.score for n, m in after.stages.items() if m.score >= 0}
+        common = set(before_scores) & set(after_scores)
+        improved = [n for n in common if after_scores[n] > before_scores[n]]
+        avg_score_delta = (
+            sum(after_scores[n] - before_scores[n] for n in common) / max(len(common), 1)
+            if common else 0.0
+        )
+
+        return {
+            "latency_improvement_pct": round(lat_pct, 2),
+            "score_improvement": round(avg_score_delta, 4),
+            "improved_stages": improved,
+        }
 
 
 # ---------------------------------------------------------------------------

@@ -85,7 +85,17 @@ def _cosine(a: str, b: str) -> float:
 
 
 def _llmo_score(text: str) -> float:
-    """簡易 LLMO スコア (entity_density + answer_directness + citability の平均)。"""
+    """
+    LLMO スコア。Sprint 10/19 の LLMOScorer が利用可能な場合は統合し、
+    利用不可の場合は内部簡易版にフォールバックする。
+    """
+    try:
+        # Sprint 10/19 の実装を優先使用 (精度が高い)
+        from open_mythos.llmo import LLMOScorer
+        return LLMOScorer().score(text).llmo_total
+    except Exception:  # noqa: BLE001
+        pass
+    # フォールバック: 内部簡易スコア
     words = len(text.split()) or 1
     entities = _count_entities(text)
     entity_density = min(1.0, entities / max(words * 0.15, 1))
@@ -258,6 +268,8 @@ class EnsembleScorer:
         "structure": 0.10,
     }
 
+    _MAX_FEEDBACK_HISTORY = 200  # フィードバック履歴の上限
+
     def __init__(
         self,
         weights: Optional[Dict[str, float]] = None,
@@ -265,6 +277,7 @@ class EnsembleScorer:
         adaptive: bool = True,
     ) -> None:
         raw = weights or self._DEFAULT_WEIGHTS
+        self._initial_weights: Dict[str, float] = dict(raw)  # reset 用に保存
         self._weights: Dict[str, ScorerWeight] = {
             name: ScorerWeight(name=name, weight=w)
             for name, w in raw.items()
@@ -273,7 +286,7 @@ class EnsembleScorer:
         self.adaptive = adaptive
         # カスタムスコアラー: name → Callable[[str, Optional[str]], float]
         self._custom: Dict[str, Tuple[Callable[[str, Optional[str]], float], float]] = {}
-        # フィードバック履歴 (adaptive 用)
+        # フィードバック履歴 (adaptive 用, 上限あり)
         self._feedback_history: List[Tuple[str, float]] = []
 
     # ------------------------------------------------------------------ score
@@ -413,6 +426,8 @@ class EnsembleScorer:
         """
         スコアラーの重みを調整する (adaptive 学習)。
 
+        更新後に全ウェイトの総和を初期総和へ正規化してドリフトを防ぐ。
+
         Args:
             name : スコアラー識別名
             delta: 重みの増減量
@@ -422,6 +437,19 @@ class EnsembleScorer:
         if name in self._weights:
             new_w = max(0.01, self._weights[name].weight + delta)
             self._weights[name].weight = round(new_w, 4)
+            # ウェイトドリフト防止: 総和を初期総和に正規化
+            current_total = sum(w.weight for w in self._weights.values())
+            initial_total = sum(self._initial_weights.values()) or 1.0
+            if abs(current_total - initial_total) > 0.1:
+                factor = initial_total / current_total
+                for sw in self._weights.values():
+                    sw.weight = round(max(0.01, sw.weight * factor), 4)
+
+    def reset_weights(self) -> None:
+        """ウェイトを初期値にリセットする。"""
+        for name, w in self._initial_weights.items():
+            if name in self._weights:
+                self._weights[name].weight = w
 
     # ---------------------------------------------------------------- feedback
 
@@ -430,9 +458,13 @@ class EnsembleScorer:
         人間評価スコアを記録し、重みの自動調整に使用する。
 
         EnsembleScorer のスコアが人間評価と乖離しているスコアラーの重みを下げる。
+        フィードバック履歴は _MAX_FEEDBACK_HISTORY 件で打ち切る。
         """
         auto = self.score(text)
         self._feedback_history.append((text, human_score))
+        # 履歴上限: 古いものから削除
+        if len(self._feedback_history) > self._MAX_FEEDBACK_HISTORY:
+            self._feedback_history = self._feedback_history[-self._MAX_FEEDBACK_HISTORY:]
 
         if not self.adaptive:
             return

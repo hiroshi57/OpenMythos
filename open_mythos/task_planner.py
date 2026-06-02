@@ -105,11 +105,33 @@ class TaskGraph:
         self._validate()
 
     def _validate(self) -> None:
-        for name, task in self._tasks.items():
-            for dep in task.depends_on:
-                if dep not in self._tasks:
-                    # 依存先が存在しない場合は依存を除去 (ベストエフォート)
-                    task.depends_on = [d for d in task.depends_on if d in self._tasks]
+        # 存在しない依存先を除去 (ベストエフォート)
+        for task in self._tasks.values():
+            task.depends_on = [d for d in task.depends_on if d in self._tasks]
+
+        # 循環依存チェック (DFS)
+        visited: Set[str] = set()
+        rec_stack: Set[str] = set()
+
+        def _has_cycle(node: str) -> bool:
+            visited.add(node)
+            rec_stack.add(node)
+            for dep in self._tasks[node].depends_on:
+                if dep not in visited:
+                    if _has_cycle(dep):
+                        return True
+                elif dep in rec_stack:
+                    return True
+            rec_stack.discard(node)
+            return False
+
+        for name in self._tasks:
+            if name not in visited:
+                if _has_cycle(name):
+                    raise ValueError(
+                        f"TaskGraph: 循環依存を検出しました (task '{name}' を含むサイクル)。"
+                        " depends_on を確認してください。"
+                    )
 
     def topological_order(self) -> List[List[Task]]:
         """
@@ -513,19 +535,43 @@ class TaskPlanner:
 
     @staticmethod
     def _score_output(text: str, task: Task) -> float:
-        """タスク出力の簡易スコアリング。"""
+        """
+        タスク出力の品質スコアリング。
+
+        以前は空出力に 0.0, その他に最低 0.6 を与えていたが、
+        短すぎる出力も低スコアになるよう改善した。
+        """
         if not text:
             return 0.0
         words = len(text.split())
-        length_score = min(1.0, words / 30)
-        # タスクタイプ別ボーナス
-        type_bonus = {
-            "analysis": bool(re.search(r"分析|結果|発見|判定", text)) * 0.1,
-            "generation": bool(re.search(r"。|改行|\n", text)) * 0.1,
-            "evaluation": bool(re.search(r"スコア|score|\d\.\d", text)) * 0.1,
-            "optimization": bool(re.search(r"改善|最適|向上", text)) * 0.1,
+        # 長さスコア: 5語未満は低評価、30語以上で満点
+        if words < 5:
+            length_score = 0.1 + words * 0.04   # 0〜0.3
+        else:
+            length_score = min(1.0, 0.3 + (words - 5) / 25 * 0.7)
+
+        # タスクタイプ別ボーナス (関連キーワードが含まれているか)
+        type_bonus: float = {
+            "analysis": (
+                bool(re.search(r"分析|解析|結果|発見|判定|詳細", text)) * 0.12
+                + bool(re.search(r"\d+(?:\.\d+)?", text)) * 0.05  # 数値あり
+            ),
+            "generation": (
+                bool(re.search(r"[。\n]", text)) * 0.08
+                + bool(re.search(r"##|【|■", text)) * 0.07  # 見出し構造
+            ),
+            "evaluation": (
+                bool(re.search(r"スコア|score|\d\.\d{1,2}", text)) * 0.10
+                + bool(re.search(r"高い|低い|合格|不合格|OK|NG", text)) * 0.05
+            ),
+            "optimization": (
+                bool(re.search(r"改善|最適|向上|効率", text)) * 0.10
+                + bool(re.search(r"\d+%|\d+倍", text)) * 0.05  # 改善率
+            ),
         }.get(task.task_type, 0.0)
-        return min(1.0, 0.6 + length_score * 0.3 + type_bonus)
+
+        # ベーススコア 0.4 に長さ・タイプボーナスを加算 (最大 1.0)
+        return min(1.0, 0.4 + length_score * 0.45 + type_bonus)
 
     @staticmethod
     def _synthesize(results: List[TaskExecutionResult], goal: str) -> str:
