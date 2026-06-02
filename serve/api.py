@@ -2762,3 +2762,44 @@ def plan_execute(req: TaskPlanRequest):
             for r in result.subtask_results
         ],
     }
+
+
+# Sprint 30: GrowingAIOrchestrator — /v1/grow/run
+from open_mythos.growing_ai_orchestrator import (
+    GrowingAIOrchestrator as _GrowingAIOrchestrator,
+)
+
+
+class GrowRunRequest(BaseModel):
+    goal: str = Field(..., description="達成したい目標・質問・タスク記述")
+    hints: list[str] = Field(default_factory=list, description="パターン選択ヒント")
+    max_patterns: int = Field(3, ge=1, le=10, description="同時適用パターン上限")
+    metadata: dict = Field(default_factory=dict, description="任意付加情報")
+
+
+@app.post(
+    "/v1/grow/run",
+    tags=["grow"],
+    summary="P1〜P10 統合オーケストレーター実行 (Sprint 30)",
+    description="ゴールを受け取り、最適な育つAIパターンを自動選択・実行して統合結果を返す。",
+    dependencies=[Depends(verify_api_key)],
+)
+def grow_run(req: GrowRunRequest):
+    orch   = _GrowingAIOrchestrator(max_patterns=req.max_patterns)
+    result = orch.run(req.goal, hints=req.hints, metadata=req.metadata)
+    return {
+        "goal":             result.goal,
+        "patterns_used":    [p.value for p in result.patterns_used],
+        "final_output":     result.final_output,
+        "overall_score":    result.overall_score,
+        "total_latency_ms": result.total_latency_ms,
+        "results": [
+            {
+                "pattern":    r.pattern.value,
+                "score":      r.score,
+                "latency_ms": r.latency_ms,
+                "error":      r.error,
+            }
+            for r in result.results
+        ],
+    }

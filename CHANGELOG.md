@@ -4,6 +4,24 @@ All notable changes to OpenMythos are documented here.
 
 ---
 
+## [0.33.0] — 2026-06-02
+
+### Sprint 30: P1〜P10 統合オーケストレーター — GrowingAIOrchestrator
+
+#### GrowingAIOrchestrator (`open_mythos/growing_ai_orchestrator.py`)
+- `PatternType` enum: P1〜P10 の 10 パターン識別子 (debate/kpi/profiler/signal/mistake/distill/memory/ensemble/evolve/plan)
+- `GrowthContext`: goal / hints / metadata / history を保持するコンテキスト
+- `PatternSelector`: キーワードマッチングによるパターン自動選択 (日英両対応・hints スコア加算)
+- `GrowingAIOrchestrator.run()`: パターン選択 → 各パターン実行 → スコア統合 → 最終アウトプット合成
+- エラー耐性: 個別パターンの例外を isolate し全体を止めない
+- `history()` / `clear_history()`: 実行ログ管理
+
+#### API: `POST /v1/grow/run`
+#### テスト: `tests/test_sprint30.py` — 47 tests PASS
+#### バージョン: v0.33.0
+
+---
+
 ## [0.32.0] — 2026-06-02
 
 ### Sprint 29: 自律タスク計画 — TaskPlanner (P10パターン)
