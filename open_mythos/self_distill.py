@@ -174,12 +174,27 @@ class OutputFilter:
 
     @staticmethod
     def _similarity(a: str, b: str) -> float:
+        """
+        Jaccard 類似度でテキストを比較する。
+
+        英語: 空白分割、日本語: 文字 bi-gram を使用。
+        split() のみでは日本語テキストが全不一致になるバグを修正。
+        """
         if not a or not b:
             return 0.0
-        set_a = set(a.split())
-        set_b = set(b.split())
-        if not set_a and not set_b:
-            return 1.0
+
+        def _tokens(text: str) -> set:
+            import re
+            # 英語トークン
+            words = re.findall(r"[a-zA-Z0-9]+", text.lower())
+            # 日本語 bi-gram (空白分割では全トークン1つになり類似度が 0 または 1 になる)
+            ja = re.findall(r"[^\x00-\x7F\s]", text)
+            bigrams = [ja[i] + ja[i + 1] for i in range(len(ja) - 1)]
+            combined = words + bigrams
+            return set(combined) if combined else {text[:20]}  # フォールバック
+
+        set_a = _tokens(a)
+        set_b = _tokens(b)
         union = set_a | set_b
         return len(set_a & set_b) / len(union) if union else 0.0
 

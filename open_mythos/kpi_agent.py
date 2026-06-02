@@ -331,6 +331,9 @@ class KPIAgent:
         self._actions: List[Action] = list(_BUILTIN_ACTIONS)
         if extra_actions:
             self._actions.extend(extra_actions)
+        # アクション効果履歴: action_id → [delta_values]
+        # improve_loop が連続して使うことで非効果的なアクションを動的スキップ
+        self._action_history: Dict[str, List[float]] = {}
 
     # ------------------------------------------------------------------
     # Public API
@@ -390,14 +393,30 @@ class KPIAgent:
         """
         GapReport を元に ActionPlan を生成する。
 
-        優先度・estimated_impact の高いアクションを action_budget 件まで選択する。
+        - 過去に2回以上試行して平均改善量が負だったアクションはスキップ
+        - 残りを estimated_impact 降順・priority 昇順でソートして budget 件選択
 
         Args:
             gap_report: analyze() で生成した GapReport
             cycle     : サイクル番号
         """
         budget = self.kpi.action_budget
-        selected = sorted(self._actions, key=lambda a: (-a.estimated_impact, a.priority))[:budget]
+
+        def _effective_impact(action: Action) -> float:
+            history = self._action_history.get(action.action_id, [])
+            if len(history) >= 2:
+                avg = sum(history) / len(history)
+                if avg < 0:
+                    return -1.0  # 非効果的 → 優先度最低
+                # 実績ベースで estimated_impact を補正
+                return (action.estimated_impact + avg) / 2
+            return action.estimated_impact
+
+        candidates = [a for a in self._actions if _effective_impact(a) >= 0]
+        selected = sorted(candidates, key=lambda a: (-_effective_impact(a), a.priority))[:budget]
+        # フォールバック: 全アクション除外された場合はデフォルトを使用
+        if not selected:
+            selected = sorted(self._actions, key=lambda a: (-a.estimated_impact, a.priority))[:budget]
 
         return ActionPlan(
             kpi_name=self.kpi.name,
@@ -463,7 +482,22 @@ class KPIAgent:
                 if early_stop:
                     break
             else:
+                before_val = snapshots[-1].value
                 current_context = self.execute(action_plan, current_context)
+                # アクション効果を記録
+                snapshot_after = self.measure(current_context, cycle=cycle)
+                delta = (snapshot_after.value - before_val
+                         if self.kpi.higher_is_better
+                         else before_val - snapshot_after.value)
+                for action in action_plan.actions:
+                    hist = self._action_history.setdefault(action.action_id, [])
+                    hist.append(delta)
+                    if len(hist) > 10:  # 履歴上限
+                        self._action_history[action.action_id] = hist[-10:]
+                snapshots.append(snapshot_after)
+                if snapshot_after.achieved(self.kpi.target, self.kpi.higher_is_better) and early_stop:
+                    break
+                continue  # measure を再度呼ばないよう continue
 
             snapshot = self.measure(current_context, cycle=cycle)
             snapshots.append(snapshot)

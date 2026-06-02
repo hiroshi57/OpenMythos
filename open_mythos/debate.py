@@ -316,6 +316,19 @@ class DebateOrchestrator:
             rounds_used = self.cfg.n_rounds
             early_stopped = False
 
+        # n_rounds=0 または全ラウンドがスキップされた場合の防護
+        if not rounds:
+            return DebateResult(
+                topic=topic,
+                rounds=[],
+                consensus=topic,
+                agreement_score=0.0,
+                confidence=0.0,
+                n_rounds_used=0,
+                total_latency_ms=round((time.perf_counter() - t_total) * 1000, 2),
+                early_stopped=False,
+            )
+
         # 最終合意を最終ラウンドの洗練案から生成
         last_round = rounds[-1]
         final_texts = list(last_round.refinements.values()) or list(last_round.proposals.values())

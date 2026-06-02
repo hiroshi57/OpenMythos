@@ -116,6 +116,7 @@ class MemoryEntry:
     created_at : 作成 UNIX タイムスタンプ
     entry_id   : 一意ID
     access_count: 検索でヒットした回数 (鮮度×重要度のシグナル)
+    freshness_half_life_h: 鮮度の半減期 (時間)。デフォルト 17h
     """
 
     text: str
@@ -126,12 +127,14 @@ class MemoryEntry:
     created_at: float = field(default_factory=time.time)
     entry_id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
     access_count: int = 0
+    freshness_half_life_h: float = 17.0  # 設定可能な半減期
 
     @property
     def freshness(self) -> float:
-        """経過時間に基づく鮮度 (1h=1.0, 24h≈0.7, 7d≈0.3)。"""
+        """経過時間に基づく鮮度 (半減期は freshness_half_life_h で設定可能)。"""
         age_h = (time.time() - self.created_at) / 3600.0
-        return math.exp(-0.04 * age_h)  # half-life ≈ 17h
+        decay = math.log(2) / max(self.freshness_half_life_h, 1e-6)
+        return math.exp(-decay * age_h)
 
     def priority(self, relevance: float = 0.0) -> float:
         """relevance × score × freshness の3軸優先スコア。"""
@@ -200,11 +203,27 @@ class EpisodicStore:
         max_size: int = 500,
         score_threshold: float = 0.5,
         dedup_threshold: float = 0.85,
+        freshness_half_life_h: float = 17.0,
     ) -> None:
         self.max_size = max_size
         self.score_threshold = score_threshold
         self.dedup_threshold = dedup_threshold
+        self.freshness_half_life_h = freshness_half_life_h
         self._entries: List[MemoryEntry] = []
+        self._idf: Dict[str, float] = {}  # コーパスレベルの IDF
+
+    def _rebuild_idf(self) -> None:
+        """全エントリからコーパスレベルの IDF を再計算する。"""
+        n = max(len(self._entries), 1)
+        df: Dict[str, int] = {}
+        for e in self._entries:
+            tokens = set(_tokenize(e.context + " " + e.text))
+            for t in tokens:
+                df[t] = df.get(t, 0) + 1
+        self._idf = {
+            t: math.log((n + 1) / (cnt + 1)) + 1.0  # スムージング付き IDF
+            for t, cnt in df.items()
+        }
 
     # ------------------------------------------------------------------ append
 
@@ -230,9 +249,14 @@ class EpisodicStore:
         for e in self._entries[-50:]:  # 最近50件とのみ比較 (高速化)
             if _jaccard(e.text, text) >= self.dedup_threshold:
                 # 同一に近い内容が既存 → score が高い方を残す
+                # context・tags・created_at も新しい方で更新する (B5 fix)
                 if score > e.score:
                     e.score = score
                     e.text = text
+                    e.context = context
+                    if tags:
+                        e.tags = tags
+                    e.created_at = time.time()
                 return None
         entry = MemoryEntry(
             text=text,
@@ -240,10 +264,14 @@ class EpisodicStore:
             score=score,
             category="episode",
             tags=tags or [],
+            freshness_half_life_h=self.freshness_half_life_h,
         )
         self._entries.append(entry)
         if len(self._entries) > self.max_size:
             self._evict()
+        # IDF は一定件数追加ごとに再計算 (毎回は高コスト)
+        if len(self._entries) % 50 == 0:
+            self._rebuild_idf()
         return entry
 
     # ------------------------------------------------------------------ search
@@ -261,8 +289,9 @@ class EpisodicStore:
         if not candidates:
             return []
         scored: List[Tuple[MemoryEntry, float]] = []
+        idf = self._idf if self._idf else None  # IDF がある場合は使用
         for e in candidates:
-            rel = _cosine_tfidf(query, e.context + " " + e.text)
+            rel = _cosine_tfidf(query, e.context + " " + e.text, idf=idf)
             if rel >= min_relevance:
                 scored.append((e, rel))
         # priority (relevance + score + freshness) で降順ソート
