@@ -285,8 +285,24 @@ class BottleneckDetector:
                 baseline_profile=profile,
             )
 
-        # レイテンシ外れ値検出
+        # レイテンシ外れ値とスコア外れ値を両方検出し、相対的な深刻度で優先順を決める
         latency_stage = self._detect_latency_outlier(stages)
+        score_stage = self._detect_score_outlier(stages)
+
+        if latency_stage and score_stage:
+            # 相対深刻度を比較: スコアの方が深刻なら latency を無視
+            latencies = [s.latency_ms for s in stages]
+            scored = [s for s in stages if s.score >= 0]
+            scores_vals = [s.score for s in scored]
+            median_lat = statistics.median(latencies) if latencies else 1e-9
+            median_score = statistics.median(scores_vals) if scores_vals else 1.0
+            lat_outlier_val = profile.stages[latency_stage].latency_ms
+            score_outlier_val = profile.stages[score_stage].score
+            lat_rel = (lat_outlier_val - median_lat) / max(median_lat, 1e-9)
+            score_rel = (median_score - score_outlier_val) / max(median_score, 1e-9)
+            if score_rel > lat_rel:
+                latency_stage = None  # スコアボトルネックを優先
+
         if latency_stage:
             lat = profile.stages[latency_stage].latency_ms
             total = profile.total_latency_ms
@@ -303,7 +319,6 @@ class BottleneckDetector:
             )
 
         # スコア外れ値検出
-        score_stage = self._detect_score_outlier(stages)
         if score_stage:
             score = profile.stages[score_stage].score
             return BottleneckReport(

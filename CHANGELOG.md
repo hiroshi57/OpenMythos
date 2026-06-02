@@ -4,6 +4,72 @@ All notable changes to OpenMythos are documented here.
 
 ---
 
+## [0.32.0] — 2026-06-02
+
+### Sprint 29: 自律タスク計画 — TaskPlanner (P10パターン)
+
+#### TaskPlanner (`open_mythos/task_planner.py`)
+- `Task` / `TaskGraph` / `TaskPlan` / `TaskExecutionResult` / `TaskPlanResult` / `TaskPlanner`
+- ゴール文字列をルールベースで階層的サブタスクに分解 (analysis/generation/evaluation/optimization)
+- TaskGraph: 依存 DAG トポロジカルソートで wave-based 並列実行
+- 前段タスクの出力を後段タスクのコンテキストに自動接続
+- KPI達成判定 (kpi_target)、SwarmOrchestrator / DebateOrchestrator との統合
+
+#### API: `POST /v1/plan/decompose`, `POST /v1/plan/execute`
+#### テスト: `tests/test_sprint29.py` — 40 tests
+
+---
+
+## [0.31.0] — 2026-06-02
+
+### Sprint 28: 適応型プロンプト進化 — PromptEvolution (P9パターン)
+
+#### PromptEvolution (`open_mythos/prompt_evolution.py`)
+- `PromptGene` / `EvolutionConfig` / `EvolutionRound` / `EvolutionResult` / `PromptEvolution`
+- 遺伝的アルゴリズム: トーナメント選択 + 文レベル交叉 + キーワード変異
+- エリート保存、早期収束防止 (多様性低下時に突然変異率増加)
+- 早期終了 (early_stop_patience 世代改善なし)
+- カスタムフィットネス関数、ガード関数 (MistakeGuard 統合)
+
+#### API: `POST /v1/evolve/run`
+#### テスト: `tests/test_sprint28.py` — 40 tests
+
+---
+
+## [0.30.0] — 2026-06-02
+
+### Sprint 27: アンサンブル品質評価 — EnsembleScorer (P8パターン)
+
+#### EnsembleScorer (`open_mythos/ensemble_scorer.py`)
+- `ScorerWeight` / `ScorerBreakdown` / `EnsembleScore` / `EnsembleScorer`
+- 5スコアラー統合: llmo / query_rel / security / length_quality / structure
+- Softmax 正規化重み付き投票、分散ベース confidence フラグ
+- カスタムスコアラー追加 (add_custom_scorer)
+- 適応的重み調整 (record_feedback → update_weights)
+- スコア分散が高い場合は low_confidence フラグ
+
+#### API: `POST /v1/ensemble/score`, `POST /v1/ensemble/rank`, `POST /v1/ensemble/feedback`
+#### テスト: `tests/test_sprint27.py` — 40 tests
+
+---
+
+## [0.29.0] — 2026-06-02
+
+### Sprint 26: 長期記憶統合 — LongTermMemoryAgent (P7パターン)
+
+#### LongTermMemoryAgent (`open_mythos/long_term_memory.py`)
+- `MemoryEntry` / `EpisodicStore` / `SemanticStore` / `MemoryRetrieval` / `LongTermMemoryAgent`
+- エピソード記憶: score_threshold + Jaccard重複除去 + TF-IDF類似度検索
+- セマンティック記憶: キーワードタグインデックス付き知識ストア
+- priority = 0.5×relevance + 0.3×score + 0.2×freshness の3軸ランキング
+- consolidate(): 重複除去 + 低品質記憶削除
+- ConversationMemory (Sprint 12) / LLMOScorer (Sprint 19) との連携
+
+#### API: `POST /v1/memory/store`, `POST /v1/memory/retrieve`, `POST /v1/memory/consolidate`
+#### テスト: `tests/test_sprint26.py` — 42 tests
+
+---
+
 ## [0.28.0] — 2026-06-01
 
 ### Sprint 25: 継続的自己蒸留 — SelfDistillLoop (P6パターン)

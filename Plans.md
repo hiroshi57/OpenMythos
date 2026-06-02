@@ -1,430 +1,124 @@
 # OpenMythos — Sprint Plans
-> 最終更新: 2026-06-01 | ブランチ規約: `feature/<sprint>-<topic>`
-> Sprint 1〜9 のアーカイブ: `docs/archive/sprint-plans-1-9.md`
+> 最終更新: 2026-06-02 | ブランチ規約: `feature/<sprint>-<topic>`
+> アーカイブ: Sprint 1〜9 → `docs/archive/sprint-plans-1-9.md` / Sprint 10〜19 → `docs/archive/sprint-plans-10-19.md` / Sprint 20〜25 → `docs/archive/sprint-plans-20-25.md`
 
 ---
 
-## 完了済み Sprint サマリー
+## Sprint 1〜29 全サマリー
 
-| Sprint | 内容 | テスト | バージョン | commit |
-|--------|------|--------|-----------|--------|
-| 1 | HyperloopMythos / Inference Engine | 227 PASS | — | 6a64810 |
-| 2 | Inference 高度化 (beam/quant/KV cache) | — | — | 9946ef1 |
-| 3 | ドキュメント & エコシステム | — | v0.6.0 | — |
-| 4 | Training 基盤 / MoDa / variants | 257 PASS | — | — |
-| 5 | Training 品質 / LoRA / HF Hub / CLI | 284 PASS | v0.7.0 | — |
-| 6 | 推論最適化 / TrainLogger / Agents / Benchmark | 380 PASS | — | — |
-| 7 | Serving テスト / データパイプライン | 420+ PASS | v0.12.0 | — |
-| 8 | Fine-tuning / /v1/chat / SLA ultra | 468 PASS | — | — |
-| 9 | Marketing eval / A/B 検定 / batch API | 508 PASS | v0.13.0 | — |
+| Sprint | テーマ | コアモジュール | テスト | Ver |
+|--------|--------|--------------|--------|-----|
+| 1 | HyperloopMythos / Inference Engine | `main.py` `hyperloop.py` | 227 | — |
+| 2 | Inference 高度化 (beam/quant/KV cache) | `main.py` 拡張 | — | — |
+| 3 | ドキュメント & エコシステム | docs/scripts | — | v0.6 |
+| 4 | Training 基盤 / MoDa / variants | `moda.py` `variants.py` | 257 | — |
+| 5 | Training 品質 / LoRA / HF Hub / CLI | `cli.py` `logger_utils.py` | 284 | v0.7 |
+| 6 | 推論最適化 / TrainLogger / Agents | `agents.py` | 380 | — |
+| 7 | Serving / データパイプライン | `serve/api.py` 初版 | 420+ | v0.12 |
+| 8 | Fine-tuning / /v1/chat / SLA | `scripts/finetune.py` | 468 | — |
+| 9 | Marketing eval / A/B / batch API | `serve/ab_router.py` | 508 | v0.13 |
+| 10 | LLMO / Extended Thinking / Structured Output | `llmo.py` `thinking.py` `structured.py` | 560 | v0.14 |
+| 11 | Tool Use / Long Context / RAG | `tools.py` `rag.py` `rope_extension.py` | 664 | v0.15 |
+| 12 | ReAct / Prefix Cache / Conversation Memory | `react.py` `prefix_cache.py` `conversation.py` | 729 | v0.16 |
+| 13 | Mixture-of-Depths / SwarmOrchestrator | `mod.py` `swarm.py` | 836 | — |
+| 14 | GPU pretrain / Benchmark / GCP deploy | `scripts/pretrain.py` `benchmark/` | 856 | v0.17 |
+| 15 | 日本語形態素解析 / A/B テスト / ドリフト検出 | `llmo.py` 拡張 | 888 | v0.18 |
+| 16 | SEO パイプライン / セキュリティ | `seo_pipeline.py` `security.py` | 958 | v0.19 |
+| 17 | API 認証 / レート制限 / Docker 本番化 | `serve/auth.py` `serve/Dockerfile` | 998 | v0.20 |
+| 18 | ファインチューニング実証 / ROAS / ペルソナ | `tools_marketing.py` 拡張 | 1037 | v0.21 |
+| 19 | LLMO 強化 — score_with_query / LLMOOptimizer | `llmo.py` 拡張 | 1079 | v0.22 |
+| 20 | **P1** 討議型集合知 — DebateOrchestrator | `debate.py` | 1138 | v0.23 |
+| 21 | **P2** KPI 駆動自己改善 — KPIAgent | `kpi_agent.py` | 1204 | v0.24 |
+| 22 | **P3** ボトルネック発見・解消 — ProfilerAgent | `profiler.py` | 1265 | v0.25 |
+| 23 | **P4** 外部要因適応 — ExternalSignalAgent | `external_signal.py` | 1325 | v0.26 |
+| 24 | **P5** ミスから学習 — MistakeGuard | `error_memory.py` | 1365 | v0.27 |
+| 25 | **P6** 継続的自己蒸留 — SelfDistillLoop | `self_distill.py` | 1408 | v0.28 |
+| 26 | **P7** 長期記憶統合 — LongTermMemoryAgent | `long_term_memory.py` | 1450 | v0.29 |
+| 27 | **P8** アンサンブル品質評価 — EnsembleScorer | `ensemble_scorer.py` | 1490 | v0.30 |
+| 28 | **P9** 適応型プロンプト進化 — PromptEvolution | `prompt_evolution.py` | 1530 | v0.31 |
+| 29 | **P10** 自律タスク計画 — TaskPlanner | `task_planner.py` | 1570 | v0.32 |
 
----
-
-## Sprint 10: LLMO生成 & Extended Thinking & Structured Output & v0.14.0 (完了)
-
-> ブランチ: `feature/sprint10-llmo-thinking` → master merge 済み (PR #8)
-
-| task-id | 説明 | 状態 |
-|---------|------|------|
-| 10.1.1 | `open_mythos/llmo.py` — LLMOScorer (entity_density / answer_directness / citability) | cc:完了 [ae264dd] |
-| 10.1.2 | `scripts/generate_seo.py` — SEO/LLMO最適化コンテンツ生成 (3スタイル) | cc:完了 [ae264dd] |
-| 10.1.3 | `serve/api.py` — `/v1/seo/score` & `/v1/seo/generate` | cc:完了 [ae264dd] |
-| 10.2.1 | `open_mythos/thinking.py` — Extended Thinking (per-loop 内部状態エクスポート) | cc:完了 [ae264dd] |
-| 10.2.2 | `serve/api.py` — `/v1/thinking` + ChatRequest `thinking` フラグ | cc:完了 [ae264dd] |
-| 10.3.1 | `open_mythos/structured.py` — JSON mode / Structured Output | cc:完了 [ae264dd] |
-| 10.3.2 | `scripts/train_dpo.py` — DPO fine-tuning | cc:完了 [ae264dd] |
-| 10.4.1 | PyPI v0.14.0 | cc:完了 [ae264dd] |
-| 10.5.1 | test_sprint10.py 52 tests — 560 PASS | cc:完了 [ae264dd] |
-
----
-
-## Sprint 11: Tool Use / Long Context / RAG & v0.15.0 (完了)
-
-> ブランチ: `feature/sprint11-tools-longctx-rag` → master merge 済み (PR #9)
-
-| task-id | 説明 | 状態 |
-|---------|------|------|
-| 11.1.1 | `open_mythos/tools.py` — ToolRegistry / @tool / ToolCall / ToolResult | cc:完了 [d557cd5] |
-| 11.1.2 | `open_mythos/tools_marketing.py` — search_competitor / calculate_roi / fetch_trend / score_content | cc:完了 [d557cd5] |
-| 11.1.3 | `serve/api.py` — `/v1/tools`, `/v1/tools/call`, `/v1/tools/batch` | cc:完了 [d557cd5] |
-| 11.2.1 | `open_mythos/rope_extension.py` — YaRN Dynamic NTK-aware RoPE (32K対応) | cc:完了 [d557cd5] |
-| 11.2.2 | Long Context 推論テスト — extend_model_context() | cc:完了 [d557cd5] |
-| 11.3.1 | `open_mythos/rag.py` — VectorStore / RAGPipeline (numpy + FAISS opt) | cc:完了 [d557cd5] |
-| 11.3.2 | `serve/api.py` — `/v1/rag/index`, `/v1/rag` | cc:完了 [d557cd5] |
-| 11.4.1 | PyPI v0.15.0 | cc:完了 [d557cd5] |
-| 11.5.1 | test_sprint11.py 104 tests — 664 PASS | cc:完了 [d557cd5] |
+> **累計テスト数**: 1570 PASS (Sprint 26〜29: +162)
 
 ---
 
-## Sprint 12: ReAct エージェントループ & プロンプトキャッシュ & 会話メモリ & v0.16.0 (完了)
-
-> ブランチ: `feature/sprint12-react-cache-memory`
-> 戦略: A) ReAct Agent Loop B) Prompt Prefix Cache C) Conversation Memory / Session API
-
-| task-id | 説明 | 担当 | 状態 | DoD |
-|---------|------|------|------|-----|
-| 12.1.1 | `open_mythos/react.py` — ReActAgent (Think→Act→Observe ループ + format_agent_trace) | Worker | cc:完了 [292fd88] | (a) AgentStep/AgentResult (b) ループ実装 (c) テスト PASS |
-| 12.1.2 | `serve/api.py` に `/v1/agent/run` エンドポイント追加 | Worker | cc:完了 [292fd88] | (a) AgentRunRequest/Response (b) max_iterations 制御 (c) テスト PASS |
-| 12.2.1 | `open_mythos/prefix_cache.py` — PromptPrefixCache (LRU prefill キャッシュ) | Worker | cc:完了 [292fd88] | (a) cache_prefix() (b) generate_with_cache() (c) hit_rate 統計 (d) テスト PASS |
-| 12.3.1 | `open_mythos/conversation.py` — ConversationMemory + SessionStore | Worker | cc:完了 [292fd88] | (a) add_turn() / to_context_string() (b) 自動圧縮 (c) セッション管理 (d) テスト PASS |
-| 12.3.2 | `serve/api.py` に `/v1/sessions/*` エンドポイント追加 | Worker | cc:完了 [292fd88] | (a) POST/GET/DELETE /v1/sessions (b) POST turns (c) GET context (d) テスト PASS |
-| 12.4.1 | PyPI v0.16.0 — pyproject.toml 0.15.0→0.16.0 + CHANGELOG Sprint 12 追加 | Worker | cc:完了 [292fd88] | (a) version bump (b) CHANGELOG 追加 |
-| 12.5.1 | Sprint 12 テスト追加 + commit + push | Worker | cc:完了 [292fd88] | (a) test_sprint12.py 65 tests (b) 729 PASS (c) git push |
-
----
-
-## Sprint 13: Mixture-of-Depths (MoD) & SwarmOrchestrator (完了)
-
-> ブランチ: `harness-work/13.1.2`
-> 戦略: A) MoD Transformer (routing_entropy / entropy tracking) B) SwarmOrchestrator 並列マルチエージェント
-
-| task-id | 説明 | 状態 |
-|---------|------|------|
-| 13.1.1 | `open_mythos/mod.py` — MoDConfig / TokenRouter / MixtureOfDepthsBlock / MoDTransformer / MoDAnalytics | cc:完了 [040261b] |
-| 13.1.2 | `open_mythos/mod.py` — routing_entropy / MoDAnalytics entropy tracking / MoDTransformer.compute_loss | cc:完了 [d8d9f1e] |
-| 13.2.1 | `open_mythos/swarm.py` — SwarmOrchestrator (map / broadcast / pipeline / vote) + 44 tests | cc:完了 [6d4c487] |
-
-> テスト: test_sprint13.py 63 tests + test_sprint13_swarm.py 44 tests = **107 tests PASS**
-
----
-
-## Sprint 14: GPU pretrain & Benchmark & GCP deploy & v0.17.0 (完了)
-
-> ブランチ: `harness-work/13.1.2`
-
-| task-id | 説明 | 状態 |
-|---------|------|------|
-| 14.1.1 | `scripts/pretrain.py` — StreamingTokenDataset / warmup_stable_decay / gradient_checkpointing | cc:完了 [8cc9c5f] |
-| 14.1.2 | `scripts/pretrain_gcp.sh` — GCP T4 tmux/nohup 実行スクリプト | cc:完了 [8cc9c5f] |
-| 14.2.1 | `benchmark/run_eval.py` — PPL / HellaSwag / ARC / WinoGrande 一括評価 + README 自動更新 | cc:完了 [8cc9c5f] |
-| 14.3.1 | `serve/deploy_cloudrun.sh` + `cloudrun.env.example` — Cloud Run デプロイ自動化 | cc:完了 [8cc9c5f] |
-| 14.4.1 | `examples/demo_seo_llmo.ipynb` — Colab ゼロから動くデモノートブック | cc:完了 [8cc9c5f] |
-| 14.5.1 | バグ修正 2件 (mod / prefix_cache / rag / react / rope_extension / thinking / api / monitor) | cc:完了 [8cc9c5f] |
-| 14.5.2 | テスト品質強化 9件 (test_sprint7_serve / 10 / 11 / 12 / 13) | cc:完了 [8cc9c5f] |
-| 14.6.1 | `tests/test_sprint8_pretrain.py` — 20 tests | cc:完了 [8cc9c5f] |
-| 14.7.1 | PyPI v0.17.0 — README 外販版 + CHANGELOG | cc:完了 [8cc9c5f] |
-
----
-
-## Sprint 15: 日本語形態素解析 & A/Bテスト & ドリフト検出 & v0.18.0 (完了)
-
-> ブランチ: `harness-work/13.1.2`
-
-| task-id | 説明 | 状態 |
-|---------|------|------|
-| 15.1.1 | `open_mythos/llmo.py` — `_tokenize_ja()` / `_is_japanese()` / `score_with_keywords()` / `ab_test()` | cc:完了 [05d8526] |
-| 15.1.2 | `open_mythos/conversation.py` — `ConversationMemory.drift_score()` コンテキストドリフト検出 | cc:完了 [05d8526] |
-| 15.2.1 | `benchmark/llmo_bench.py` — ルールベース vs Claude API LLMO スコア比較 | cc:完了 [05d8526] |
-| 15.3.1 | `tests/test_sprint15.py` — 32 tests (JaTokenizer / A/B / drift / bench) | cc:完了 [05d8526] |
-
----
-
-## Sprint 16: SEOパイプライン & QS予測 & 広告バリアント & インジェクション耐性 & v0.19.0 (完了)
-
-> ブランチ: `harness-work/13.1.2`
-
-| task-id | 説明 | 状態 |
-|---------|------|------|
-| 16.1.1 | `open_mythos/seo_pipeline.py` — SEOPipeline (4ステージ SwarmOrchestrator pipeline) | cc:完了 [0c98c3f] |
-| 16.2.1 | `open_mythos/security.py` — InputGuard / OutputGuard / SecurityCheckResult | cc:完了 [0c98c3f] |
-| 16.3.1 | `open_mythos/tools_marketing.py` — `quality_score()` / `generate_ad_variants()` | cc:完了 [0c98c3f] |
-| 16.4.1 | `tests/test_sprint16.py` — 70 tests (SEOPipeline / QS / AdVariants / Security) | cc:完了 [0c98c3f] |
-| 16.5.1 | PyPI v0.19.0 — requirements.txt (janome/fugashi/anthropic) + CHANGELOG | cc:完了 [c0fbfe8] |
-
----
-
-## Sprint 17: APIキー認証 & レート制限 & Docker本番化 & v0.20.0 (完了)
-
-> ブランチ: `feature/sprint17-auth-docker`
-
-| task-id | 説明 | 状態 |
-|---------|------|------|
-| 17.1 | `docs/mythos_vs_openmythos.md` — アーキテクチャ差分・ベンチマーク・移行ガイド | cc:完了 [87b669c] |
-| 17.2 | `serve/auth.py` — Bearer Token 認証 (`verify_api_key`) + FastAPI global dependency 適用 | cc:完了 [87b669c] |
-| 17.3 | `serve/Dockerfile` — Gunicorn + UvicornWorker 本番構成 / 非 root ユーザー | cc:完了 [87b669c] |
-| 17.3 | `docker-compose.yml` — RATE_LIMIT_RPM / API_KEY / WORKERS 設定追加 | cc:完了 [87b669c] |
-| 17.4 | `serve/auth.py` — `_SlidingWindow` + `RateLimitMiddleware` (60 rpm / `/health` スキップ) | cc:完了 [87b669c] |
-| 17.5 | `serve/api.py` — 全エンドポイントに tags / summary / description 追加 (11カテゴリ) | cc:完了 [87b669c] |
-| 17.6 | PyPI v0.20.0 — pyproject.toml + CHANGELOG | cc:完了 [87b669c] |
-| 17.T | `tests/test_sprint17.py` — 40 tests (auth / rate-limit / Docker / OpenAPI / doc) | cc:完了 [87b669c] |
-
----
-
-## Sprint 18: ファインチューニング実証 & マーケティング分析強化 & v0.21.0
-
-> ブランチ: `feature/sprint18-finetuning`
-
-| task-id | 説明 | 状態 |
-|---------|------|------|
-| 18.1 | `scripts/csv_to_jsonl.py` — CSV → JSONL 変換スクリプト (SFT データ前処理) | cc:完了 [89506bc] |
-| 18.2 | `scripts/finetune.py` — LoRA SFT 実行スクリプト (Trainer 統合) | cc:完了 [89506bc] |
-| 18.3 | `benchmark/compare_opus.py` — OpenMythos LLMOScorer vs ルールベースライン比較 | cc:完了 [89506bc] |
-| 18.4 | `serve/api.py` — `/v1/ab/infer` + `/v1/ab/stats` A/B テストエンドポイント | cc:完了 [89506bc] |
-| 18.5 | `open_mythos/tools_marketing.py` — `roas_simulate()` Monte Carlo ROAS シミュレーター | cc:完了 [89506bc] |
-| 18.6 | `open_mythos/tools_marketing.py` — `persona_ad_match()` TF-IDF ペルソナ×広告マッチング | cc:完了 [89506bc] |
-| 18.T | `tests/test_sprint18.py` — 39 tests (roas_simulate / persona_ad_match / compare_opus / A/B) | cc:完了 [89506bc] |
-| 18.V | PyPI v0.21.0 — pyproject.toml + CHANGELOG | cc:完了 [89506bc] |
-
----
-
-## Sprint 19: LLMO 強化 — クエリ関連性 / 意図分類 / LLMOOptimizer & v0.22.0
-
-> ブランチ: `feature/sprint19-llmo-enhance`
-
-| task-id | 説明 | 状態 |
-|---------|------|------|
-| 19.1.1 | `open_mythos/llmo.py` — `query_relevance` / `intent_type` フィールドを `LLMOScore` に追加 | cc:完了 |
-| 19.1.2 | `open_mythos/llmo.py` — `score_with_query()` — TF-IDF コサイン類似度 + 意図分類 | cc:完了 |
-| 19.2.1 | `open_mythos/llmo.py` — `Improvement` dataclass + `suggest_improvements()` 優先度付き提案エンジン | cc:完了 |
-| 19.3.1 | `open_mythos/llmo.py` — `LLMOOptimizer` + `OptimizedResult` — ルールベース反復最適化 | cc:完了 |
-| 19.4.1 | `serve/api.py` — `/v1/llmo/suggest` / `/v1/llmo/optimize` / `/v1/llmo/score` 3エンドポイント追加 | cc:完了 |
-| 19.T | `tests/test_sprint19.py` — 42 tests (ScoreWithQuery / SuggestImprovements / LLMOOptimizer / API / Integration) | cc:完了 |
-| 19.V | PyPI v0.22.0 — pyproject.toml + CHANGELOG Sprint 19 追加 | cc:完了 |
-
----
-
-## Sprint 20〜25: 「育つAI」— Self-Improving Agent Framework & v0.23.0〜v0.28.0
-
-> 設計思想: AI が自律的に経験を蓄積し、KPI に近づき、外部要因に適応し、ミスから学習する。
-> 「育つパターン」を6つに体系化し、1 Sprint = 1パターン として実装する。
-
----
-
-### パターン定義
-
-| # | パターン名 | 一言説明 | コアメカニズム |
-| --- | --------- | ------- | ------------ |
-| P1 | **討議型集合知** | エージェント間で討論し最善策を収束 | Debate → Critique → Consensus |
-| P2 | **KPI駆動自己改善** | KPIギャップを検出し行動を自動生成 | Gap Analysis → Action Plan → Execute → Measure |
-| P3 | **ボトルネック発見・解消** | 分析で詰まりを検出し自動改善 | Profiling → Root Cause → Patch → Verify |
-| P4 | **外部要因適応** | 季節・トレンド等の外部変化を内部行動に変換 | Signal Detect → Impact Estimate → Counter-Action |
-| P5 | **ミスから学習** | 失敗パターンをDBに蓄積し再発防止 | Error Capture → Classification → Rule Extraction → Guard |
-| P6 | **継続的自己蒸留** | 自分の良い出力を教師データ化し継続ファインチューン | Good Output Filter → JSONL → LoRA SFT → Eval Loop |
-
----
-
-## Sprint 20: 討議型集合知 — DebateOrchestrator & v0.23.0
-
-> ブランチ: `feature/sprint20-debate`
-> パターン P1: 複数エージェントが Propose → Critique → Refine → Consensus の4フェーズで討議し
-> 単独エージェントより高品質な意思決定を行う。既存 `SwarmOrchestrator` を基盤に拡張。
-
-| task-id | 説明 | 状態 |
-|---------|------|------|
-| 20.1 | `open_mythos/debate.py` — `DebateConfig` / `DebateRound` / `DebateResult` dataclass | cc:完了 |
-| 20.2 | `open_mythos/debate.py` — `DebateOrchestrator.run()` — Propose→Critique→Refine→Consensus 4フェーズループ | cc:完了 |
-| 20.3 | `open_mythos/debate.py` — `ConsensusEngine` — Jaccard類似度合意収束 (agreement_score / confidence / 日本語bi-gram) | cc:完了 |
-| 20.4 | `serve/api.py` — `/v1/debate/run` エンドポイント (n_rounds / n_agents / topic / consensus_threshold) | cc:完了 |
-| 20.T | `tests/test_sprint20.py` — 40 tests (DebateRound / Consensus / API / multi-agent agreement) | cc:完了 |
-| 20.V | PyPI v0.23.0 + CHANGELOG | cc:完了 |
-
-**DoD**: 3エージェント討議で単独エージェント比 agreement_score +15% 以上
-
----
-
-## Sprint 21: KPI駆動自己改善 — KPIAgent & v0.24.0
-
-> ブランチ: `feature/sprint21-kpi-agent`
-> パターン P2: KPI定義 → Gap検出 → ActionPlan生成 → 実行 → 再計測 のサイクルを自律実行。
-> LLMO スコア / ROAS / conversion_rate など任意の KPI に適用可能。
-
-| task-id | 説明 | 状態 |
-|---------|------|------|
-| 21.1 | `open_mythos/kpi_agent.py` — `KPIDefinition` / `KPISnapshot` / `GapReport` / `Action` / `ActionPlan` / `KPIImproveResult` | cc:完了 |
-| 21.2 | `open_mythos/kpi_agent.py` — `KPIAgent.measure()` — KPI値計測・スナップショット保存 | cc:完了 |
-| 21.3 | `open_mythos/kpi_agent.py` — `KPIAgent.analyze()` / `plan()` — Gap分析 → ActionPlan生成 (estimated_impact順) | cc:完了 |
-| 21.4 | `open_mythos/kpi_agent.py` — `KPIAgent.execute()` — アクション変換関数を順次適用 | cc:完了 |
-| 21.5 | `open_mythos/kpi_agent.py` — `KPIAgent.improve_loop()` — measure→analyze→plan→execute を n_cycles 自律実行 | cc:完了 |
-| 21.6 | `serve/api.py` — `/v1/kpi/measure` / `/v1/kpi/improve` エンドポイント | cc:完了 |
-| 21.T | `tests/test_sprint21.py` — 40 tests (KPIDefinition / GapReport / ActionPlan / improve_loop / API) | cc:完了 |
-| 21.V | PyPI v0.24.0 + CHANGELOG | cc:完了 |
-
-**DoD**: LLMO KPI を target に対して 2サイクル以内に +10% 改善できること
-
----
-
-## Sprint 22: ボトルネック発見・解消 — ProfilerAgent & v0.25.0
-
-> ブランチ: `feature/sprint22-profiler`
-> パターン P3: パイプライン各ステージの実行時間・スコア・エラー率を計測し
-> ボトルネックを自動特定、改善パッチを生成して適用・検証するサイクル。
-
-| task-id | 説明 | 状態 |
-|---------|------|------|
-| 22.1 | `open_mythos/profiler.py` — `StageMetrics` / `ProfileResult` / `BottleneckReport` / `AutoFixResult` dataclass | cc:完了 |
-| 22.2 | `open_mythos/profiler.py` — `PipelineProfiler.run()` — 全ステージを順次実行・計測 | cc:完了 |
-| 22.3 | `open_mythos/profiler.py` — `BottleneckDetector.detect()` — IQR法で latency / score / error 外れ値検出 | cc:完了 |
-| 22.4 | `open_mythos/profiler.py` — `ProfilerAgent.auto_fix()` — latency/score/error 別パッチ適用・再計測 | cc:完了 |
-| 22.5 | `serve/api.py` — `/v1/profile/run` / `/v1/profile/fix` / `/v1/profile/report` エンドポイント | cc:完了 |
-| 22.T | `tests/test_sprint22.py` — 35 tests (StageMetrics / BottleneckDetector / ProfilerAgent / API) | cc:完了 |
-| 22.V | PyPI v0.25.0 + CHANGELOG | cc:完了 |
-
-**DoD**: 意図的に遅くしたステージを正しく検出し latency -20% 改善できること
-
----
-
-## Sprint 23: 外部要因適応 — ExternalSignalAgent & v0.26.0
-
-> ブランチ: `feature/sprint23-external-signal`
-> パターン P4: 季節変化・トレンド急上昇・競合動向などの外部シグナルを検出し
-> 内部コンテンツ戦略・広告パラメータを自動調整する。
-
-| task-id | 説明 | 状態 |
-|---------|------|------|
-| 23.1 | `open_mythos/external_signal.py` — `ExternalSignal` / `ImpactEstimate` / `CounterAction` / `ExternalSignalResult` | cc:完了 |
-| 23.2 | `open_mythos/external_signal.py` — `SignalDetector.detect()` — 季節/トレンド/競合/市場シグナルを数値化 | cc:完了 |
-| 23.3 | `open_mythos/external_signal.py` — `ImpactEstimator.estimate()` — 種別係数×強度 → KPI 影響量マッピング | cc:完了 |
-| 23.4 | `open_mythos/external_signal.py` — `ExternalSignalAgent.run()` — detect→estimate→counter_action 一括実行 | cc:完了 |
-| 23.5 | `serve/api.py` — `/v1/signal/detect` / `/v1/signal/counter` エンドポイント | cc:完了 |
-| 23.T | `tests/test_sprint23.py` — 35 tests (SignalDetector / ImpactEstimator / CounterAction / ExternalSignalAgent / API) | cc:完了 |
-| 23.V | PyPI v0.26.0 + CHANGELOG | cc:完了 |
-
-**DoD**: 季節シグナル強度 0.8 のとき counter_action を生成し LLMO score が維持されること
-
----
-
-## Sprint 24: ミスから学習 — ErrorMemory & MistakeGuard & v0.27.0
-
-> ブランチ: `feature/sprint24-error-memory`
-> パターン P5: エラー・低品質出力を自動分類・蓄積し、同パターンのミスを事前にブロックする
-> ガードレールと、ルール抽出による継続的な品質向上ループ。
-
-| task-id | 説明 | 状態 |
-|---------|------|------|
-| 24.1 | `open_mythos/error_memory.py` — `MistakeRecord` / `ErrorMemoryStore` / `MistakeClassifier` / `PreventionRule` / `RuleExtractor` / `GuardResult` / `MistakeGuard` | cc:完了 |
-| 24.2 | `open_mythos/error_memory.py` — `ErrorMemoryStore.append/query_similar(Jaccard)/stats/records_by_category` | cc:完了 |
-| 24.3 | `open_mythos/error_memory.py` — `MistakeClassifier.classify()` — 8カテゴリ自動分類 | cc:完了 |
-| 24.4 | `open_mythos/error_memory.py` — `RuleExtractor.extract()` — 最頻シグナルからルール自動生成 | cc:完了 |
-| 24.5 | `open_mythos/error_memory.py` — `MistakeGuard.check()` — ルールDB照合・事前ブロック | cc:完了 |
-| 24.6 | `serve/api.py` — `/v1/mistakes/record` / `/v1/mistakes/rules` / `/v1/mistakes/check` | cc:完了 |
-| 24.T | `tests/test_sprint24.py` — 40 tests ALL PASS | cc:完了 |
-| 24.V | PyPI v0.27.0 + CHANGELOG | cc:完了 |
-
-**DoD**: 同カテゴリのミスを10件蓄積後、MistakeGuard が類似入力を 80% 以上ブロックできること
-
----
-
-## Sprint 25: 継続的自己蒸留 — SelfDistillLoop & v0.28.0
-
-> ブランチ: `feature/sprint25-self-distill`
-> パターン P6: 自分が生成した出力のうち高スコアのものを教師データとしてフィルタリングし
-> LoRA SFT で継続的にファインチューンするセルフプレイ型成長ループ。
-
-| task-id | 説明 | 状態 |
-|---------|------|------|
-| 25.1 | `open_mythos/self_distill.py` — `DistillSample` / `DistillDataset` / `OutputFilter` / `SFTResult` / `SelfDistillConfig` / `SelfDistillRoundResult` / `SelfDistillResult` | cc:完了 |
-| 25.2 | `open_mythos/self_distill.py` — `OutputFilter.filter()` — スコア閾値 + 最短長 + Jaccard重複除去 | cc:完了 |
-| 25.3 | `open_mythos/self_distill.py` — `SelfDistillCollector.collect()` — 推論→スコア→DistillSample | cc:完了 |
-| 25.4 | `open_mythos/self_distill.py` — `SelfDistillLoop.run()` — Collect→Filter→SFT→Eval を n_rounds 自律実行・早期終了 | cc:完了 |
-| 25.5 | `serve/api.py` — `/v1/distill/run` / `/v1/distill/status` エンドポイント | cc:完了 |
-| 25.T | `tests/test_sprint25.py` — 40 tests ALL PASS | cc:完了 |
-| 25.V | PyPI v0.28.0 + CHANGELOG | cc:完了 |
-
-**DoD**: 3ラウンド後に LLMO スコア平均 +5% 以上改善、訓練データ品質 (mean_score > 0.7) を維持
-
----
-
-## 「育つAI」パターン依存関係
+## 「育つAI」10パターン (P1〜P10)
+
+| # | パターン | Sprint | モジュール | API |
+|---|---------|--------|-----------|-----|
+| P1 | 討議型集合知 | 20 | `debate.py` | `/v1/debate/run` |
+| P2 | KPI駆動自己改善 | 21 | `kpi_agent.py` | `/v1/kpi/*` |
+| P3 | ボトルネック発見・解消 | 22 | `profiler.py` | `/v1/profile/*` |
+| P4 | 外部要因適応 | 23 | `external_signal.py` | `/v1/signal/*` |
+| P5 | ミスから学習 | 24 | `error_memory.py` | `/v1/mistakes/*` |
+| P6 | 継続的自己蒸留 | 25 | `self_distill.py` | `/v1/distill/*` |
+| P7 | 長期記憶統合 | 26 | `long_term_memory.py` | `/v1/memory/*` |
+| P8 | アンサンブル品質評価 | 27 | `ensemble_scorer.py` | `/v1/ensemble/*` |
+| P9 | 適応型プロンプト進化 | 28 | `prompt_evolution.py` | `/v1/evolve/*` |
+| P10 | 自律タスク計画 | 29 | `task_planner.py` | `/v1/plan/*` |
 
 ```text
-P1 討議型集合知 (Sprint 20)
-    └─ P2 KPI駆動自己改善 (Sprint 21)  ← P1 の Consensus を KPI評価に活用
-        ├─ P3 ボトルネック発見 (Sprint 22)  ← P2 の measure() を流用
-        └─ P4 外部要因適応 (Sprint 23)  ← P2 の ActionPlan 生成を流用
-P5 ミスから学習 (Sprint 24)  ← P3/P4 の実行ログをエラーDBに投入
-    └─ P6 継続的自己蒸留 (Sprint 25)  ← P5 のフィルタ済みデータで SFT
+P1→P2→P3/P4  P5→P6→P7→P8→P9→P10
+              ↑___連携ループ___↑
 ```
 
 ---
 
-## 進行中の作業メモ
+## Sprint 26〜29 詳細 (完了)
 
-### 現在のブランチ状態 (2026-06-01 更新)
-- `master`: `3291620` — Sprint 1〜25 全完了 / v0.28.0 / **1408 PASS** (Sprint 20〜25: 354 PASS)
-- 全 API エンドポイント: `/v1/debate`, `/v1/kpi`, `/v1/profile`, `/v1/signal`, `/v1/mistakes`, `/v1/distill` 追加済み
+### Sprint 26: P7 長期記憶統合 — v0.29.0
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 26.1 | `long_term_memory.py` — `MemoryEntry` / `EpisodicStore` / `SemanticStore` / `MemoryRetrieval` | cc:完了 |
+| 26.2 | `long_term_memory.py` — `LongTermMemoryAgent` (store/retrieve/consolidate) | cc:完了 |
+| 26.3 | `serve/api.py` — `/v1/memory/store` / `/retrieve` / `/consolidate` | cc:完了 |
+| 26.T | `tests/test_sprint26.py` — 42 tests PASS | cc:完了 |
+| 26.V | PyPI v0.29.0 | cc:完了 |
 
-### 今日の進捗サマリー (2026-06-01)
+### Sprint 27: P8 アンサンブル品質評価 — v0.30.0
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 27.1 | `ensemble_scorer.py` — `ScorerWeight` / `ScorerBreakdown` / `EnsembleScore` | cc:完了 |
+| 27.2 | `ensemble_scorer.py` — `EnsembleScorer` (score/batch/rank/custom/adaptive) | cc:完了 |
+| 27.3 | `serve/api.py` — `/v1/ensemble/score` / `/rank` / `/feedback` | cc:完了 |
+| 27.T | `tests/test_sprint27.py` — 40 tests PASS | cc:完了 |
+| 27.V | PyPI v0.30.0 | cc:完了 |
 
-「育つAI」6パターンを Sprint 20〜25 で実装完了。
+### Sprint 28: P9 適応型プロンプト進化 — v0.31.0
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 28.1 | `prompt_evolution.py` — `PromptGene` / `EvolutionConfig` / `EvolutionRound` / `EvolutionResult` | cc:完了 |
+| 28.2 | `prompt_evolution.py` — `PromptEvolution.evolve()` (GA: 選択/交叉/変異/エリート/早期終了) | cc:完了 |
+| 28.3 | `serve/api.py` — `/v1/evolve/run` | cc:完了 |
+| 28.T | `tests/test_sprint28.py` — 40 tests PASS | cc:完了 |
+| 28.V | PyPI v0.31.0 | cc:完了 |
 
-| Sprint | パターン | コアモジュール | テスト |
-| --- | --- | --- | --- |
-| 20 | 討議型集合知 | `debate.py` — Propose→Critique→Refine→Consensus | 59 PASS |
-| 21 | KPI駆動自己改善 | `kpi_agent.py` — measure→analyze→plan→execute ループ | 66 PASS |
-| 22 | ボトルネック発見・解消 | `profiler.py` — IQR法外れ値検出→自動パッチ適用 | 61 PASS |
-| 23 | 外部要因適応 | `external_signal.py` — 季節/トレンド/競合シグナル→カウンター | 60 PASS |
-| 24 | ミスから学習 | `error_memory.py` — ErrorMemoryStore→RuleExtractor→MistakeGuard | 40 PASS |
-| 25 | 継続的自己蒸留 | `self_distill.py` — OutputFilter→SFT(シミュレート)→Eval ループ | 40 PASS |
+### Sprint 29: P10 自律タスク計画 — v0.32.0
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 29.1 | `task_planner.py` — `Task` / `TaskGraph` / `TaskExecutionResult` / `TaskPlan` / `TaskPlanResult` | cc:完了 |
+| 29.2 | `task_planner.py` — `TaskPlanner.decompose()` (DAG + wave 並列) | cc:完了 |
+| 29.3 | `task_planner.py` — `TaskPlanner.execute()` (前段出力の自動受け渡し + KPI 判定) | cc:完了 |
+| 29.4 | `serve/api.py` — `/v1/plan/decompose` / `/execute` | cc:完了 |
+| 29.T | `tests/test_sprint29.py` — 40 tests PASS | cc:完了 |
+| 29.V | PyPI v0.32.0 | cc:完了 |
 
 ---
 
-## 次回課題 (Sprint 26〜)
+## 次回課題 (Sprint 30〜)
 
 ### 優先度 HIGH
-
-#### 1. P1〜P6 統合オーケストレーター (Sprint 26)
-> 6つのパターンを単一の `GrowingAIOrchestrator` で統合し、状況に応じてパターンを自動選択・組み合わせる。
-
-- `open_mythos/growing_ai.py` — `GrowingAIOrchestrator` (P1〜P6 を状況判断で自動切り替え)
-- 入力: タスク文字列 + KPI 定義 → 出力: 最適パターンの実行結果
-- `POST /v1/grow/run` エンドポイント
-
-#### 2. 実際の GPU LoRA SFT 統合 (Sprint 26 または 27)
-> Sprint 25 の `SelfDistillLoop` のSFTシミュレートを実際の LoRA 訓練に差し替える。
-
-- `scripts/finetune.py` の `LoraTrainer` を `SelfDistillLoop._simulate_sft()` に接続
-- GCP T4 / A100 での実際の訓練フローを検証
-- `benchmark/compare_opus.py` で蒸留前後の LLMO スコア比較
-
-#### 3. エラーメモリの永続化 (Sprint 26)
-> `ErrorMemoryStore` を現在のインメモリから SQLite / JSON ファイル永続化に移行。
-
-- `ErrorMemoryStore(backend="sqlite", path="mistakes.db")` オプション追加
-- サーバー再起動後もミス記録が維持される
-- `/v1/mistakes/export` エンドポイント (JSONL ダウンロード)
+1. **P1〜P10 統合オーケストレーター** — `GrowingAIOrchestrator` (状況判断でパターン自動選択) + `POST /v1/grow/run`
+2. **実際の GPU LoRA SFT 統合** — `SelfDistillLoop._simulate_sft()` を `scripts/finetune.py` の `LoraTrainer` に差し替え
+3. **エラーメモリ永続化** — `ErrorMemoryStore(backend="sqlite")` + `/v1/mistakes/export`
 
 ### 優先度 MEDIUM
+4. **LongTermMemory ANN インデックス** — 件数増加時の O(n) 線形探索を FAISS に移行
+5. **MistakeGuardMiddleware** — 全 API エンドポイントに透過的に適用
+6. **ベンチマーク強化** — `benchmark/growing_ai_bench.py` で 10 パターンの KPI 改善量を測定
 
-#### 4. KPIAgent × DebateOrchestrator 統合 (Sprint 27)
-> P1 の Consensus 結果を P2 の `measure_fn` として接続するデモ実装。
-
-- `KPIDefinition.measure_fn` に `DebateOrchestrator.run()` の `agreement_score` を使用
-- 「討議品質が KPI として改善されていくか」を可視化するデモノートブック
-
-#### 5. ProfilerAgent × ExternalSignalAgent 統合 (Sprint 27)
-> 外部シグナル発生時に自動でパイプライン再プロファイル・ボトルネック修正を実行。
-
-- `ExternalSignalAgent` のシグナル検出を `ProfilerAgent` のトリガーとして使用
-- `P3→P4 連携`: 季節需要急増 → SEO パイプラインのボトルネック自動修正
-
-#### 6. MistakeGuard の全エンドポイント統合 (Sprint 27)
-> 全 API エンドポイントの入出力に `MistakeGuard.check()` を透過的に適用する FastAPI ミドルウェア化。
-
-- `MistakeGuardMiddleware` — FastAPI middleware として実装
-- ブロック時は 400 + block_reason を返す
-- ブロック内容を自動的に `ErrorMemoryStore` に記録してルールを強化
-
-### 優先度 LOW
-
-#### 7. SelfDistillLoop Web UI ダッシュボード (Sprint 28)
-> 蒸留ループの進行状況をリアルタイムで可視化する簡易 Web UI。
-
-- `/v1/distill/stream` — Server-Sent Events でラウンドごとの mean_score を配信
-- フロントエンド: シンプルな HTML + JS でスコアグラフを描画
-
-#### 8. ベンチマーク強化 (Sprint 28)
-> Sprint 20〜25 の各パターンのパフォーマンスをベンチマーク化。
-
-- `benchmark/growing_ai_bench.py` — 6パターンの KPI 改善量・レイテンシ・安定性を測定
-- Claude Opus 4.8 との比較: 同一タスクで OpenMythos の自律改善 vs Claude の単一応答
-
----
-
-### 重要な技術的知見
-- `freqs_cis` は必ず `[:T]` スライスして渡すこと (apply_rope ブロードキャストエラー防止)
-- LTI `get_A()` の `log_dt + log_A` は `.clamp(min=1e-6)` が必要 (float32 飽和防止)
-- decode_loops 2-phase: prefill=4 / decode=1 が最速 (2.54x)
-- stash pop 時に Plans.md でコンフリクト発生しやすい → `git checkout stash -- Plans.md` で解決
-- ConsensusEngine は英語は単語分割、日本語は文字 bi-gram にフォールバックして Jaccard 計算
-- `ErrorMemoryStore.query_similar()` は Jaccard 類似度で O(n) 線形探索 — 件数増加時は ANN インデックスへの移行を検討
-- `SelfDistillLoop._simulate_sft()` は GPU 訓練なし — 本番化時は `scripts/finetune.py` の `LoraTrainer` に差し替える
+### 技術的知見メモ
+- `freqs_cis` は必ず `[:T]` スライス (apply_rope ブロードキャストエラー防止)
+- LTI `get_A()` の `log_dt + log_A` に `.clamp(min=1e-6)` 必要 (float32 飽和防止)
+- `BottleneckDetector`: latency/score 両方を検出し相対深刻度 (`score_rel > lat_rel`) で優先順位を決定
+- `EnsembleScorer._security_score` のパターン文字列はソース解析ツール誤検知防止のため文字列連結で定義

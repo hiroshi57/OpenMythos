@@ -127,6 +127,34 @@ from open_mythos.kpi_agent import (
     KPIImproveResult,
     KPIAgent,
 )
+from open_mythos.long_term_memory import (
+    MemoryEntry,
+    EpisodicStore,
+    SemanticStore,
+    MemoryRetrieval,
+    LongTermMemoryAgent,
+)
+from open_mythos.ensemble_scorer import (
+    ScorerWeight,
+    ScorerBreakdown,
+    EnsembleScore,
+    EnsembleScorer,
+)
+from open_mythos.prompt_evolution import (
+    PromptGene,
+    EvolutionConfig,
+    EvolutionRound,
+    EvolutionResult,
+    PromptEvolution,
+)
+from open_mythos.task_planner import (
+    Task,
+    TaskGraph,
+    TaskExecutionResult,
+    TaskPlan,
+    TaskPlanResult,
+    TaskPlanner,
+)
 from open_mythos.security import InputGuard, OutputGuard, SecurityCheckResult
 from open_mythos.swarm import (
     SwarmConfig,
@@ -193,6 +221,30 @@ __all__ = [
     "HyperloopBlock",
     "HyperloopMythos",
     "cli_main",
+    # Sprint 29: TaskPlanner (P10)
+    "Task",
+    "TaskGraph",
+    "TaskExecutionResult",
+    "TaskPlan",
+    "TaskPlanResult",
+    "TaskPlanner",
+    # Sprint 28: PromptEvolution (P9)
+    "PromptGene",
+    "EvolutionConfig",
+    "EvolutionRound",
+    "EvolutionResult",
+    "PromptEvolution",
+    # Sprint 27: EnsembleScorer (P8)
+    "ScorerWeight",
+    "ScorerBreakdown",
+    "EnsembleScore",
+    "EnsembleScorer",
+    # Sprint 26: LongTermMemoryAgent (P7)
+    "MemoryEntry",
+    "EpisodicStore",
+    "SemanticStore",
+    "MemoryRetrieval",
+    "LongTermMemoryAgent",
     # Sprint 25: Self Distill Loop
     "DistillSample",
     "DistillDataset",
