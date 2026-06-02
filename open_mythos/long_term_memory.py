@@ -1,5 +1,6 @@
 """
 LongTermMemoryAgent — 長期記憶統合 (Sprint 26 / P7パターン).
+ANN インデックス対応 (Sprint 33 / FAISS).
 
 エピソード記憶（過去の対話履歴）とセマンティック記憶（知識・ファクト）を
 統合管理し、類似クエリへの検索精度を継続的に向上させる。
@@ -50,6 +51,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 # ---------------------------------------------------------------------------
 # TF-IDF ユーティリティ (stdlib only)
 # ---------------------------------------------------------------------------
+# ANN ユーティリティ / FAISS ラッパー は後述 (ANNIndex クラス)
 
 
 def _tokenize(text: str) -> List[str]:
@@ -94,6 +96,181 @@ def _jaccard(a: str, b: str) -> float:
     if not sa and not sb:
         return 1.0
     return len(sa & sb) / max(len(sa | sb), 1)
+
+
+# ---------------------------------------------------------------------------
+# ANN ユーティリティ — ハッシュ TF-IDF ベクトル化 + FAISS ラッパー (Sprint 33)
+# ---------------------------------------------------------------------------
+
+ANN_DIM: int = 256   # ハッシュ TF-IDF ベクトルの固定次元数
+
+
+def _text_to_vector(text: str, dim: int = ANN_DIM) -> "np.ndarray":
+    """
+    テキストを固定次元 L2 正規化ベクトルに変換する (ハッシュ TF-IDF)。
+
+    トークンを hash(token) % dim でバケットに割り当て、TF を計算してから
+    L2 正規化する。語彙の事前定義不要で FAISS に直接 add できる。
+
+    Parameters
+    ----------
+    text : 変換対象テキスト
+    dim  : ベクトル次元数 (デフォルト ANN_DIM=256)
+    """
+    import numpy as np
+    tokens = _tokenize(text)
+    vec = np.zeros(dim, dtype=np.float32)
+    for t in tokens:
+        vec[hash(t) % dim] += 1.0
+    norm = float(np.linalg.norm(vec))
+    if norm > 1e-9:
+        vec /= norm
+    return vec
+
+
+class ANNIndex:
+    """
+    FAISS ANN インデックスのラッパー。
+
+    - ``backend="auto"``  : faiss が import できる場合 → faiss、できない場合 → linear
+    - ``backend="faiss"`` : faiss を強制使用 (import できなければ ImportError)
+    - ``backend="linear"``: 全 entry_id を返す線形フォールバック
+
+    検索精度:
+        ``faiss.IndexFlatIP`` (内積) を使用。ベクトルが L2 正規化済みなら
+        内積 == コサイン類似度であり、完全な正確度 (ANN ではなく厳密な NN)。
+
+    Parameters
+    ----------
+    dim     : ベクトル次元数 (EpisodicStore の ANN_DIM と一致させること)
+    backend : "auto" | "faiss" | "linear"
+    """
+
+    def __init__(self, dim: int = ANN_DIM, backend: str = "auto") -> None:
+        self.dim       = dim
+        self._backend  = self._resolve_backend(backend)
+        self._id_map: List[str] = []
+        self._faiss_idx = None
+
+        if self._backend == "faiss":
+            import faiss
+            self._faiss_idx = faiss.IndexFlatIP(dim)
+
+    # ------------------------------------------------------------------
+    # Class methods / properties
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _resolve_backend(backend: str) -> str:
+        if backend == "auto":
+            try:
+                import faiss  # noqa: F401
+                return "faiss"
+            except ImportError:
+                return "linear"
+        if backend == "faiss":
+            try:
+                import faiss  # noqa: F401
+            except ImportError:
+                raise ImportError(
+                    "faiss が見つかりません。pip install faiss-cpu でインストールしてください。"
+                )
+        return backend
+
+    @staticmethod
+    def faiss_available() -> bool:
+        """FAISS が利用可能かどうかを返す"""
+        try:
+            import faiss  # noqa: F401
+            return True
+        except ImportError:
+            return False
+
+    @property
+    def is_faiss(self) -> bool:
+        """FAISS バックエンドが有効かどうか"""
+        return self._backend == "faiss"
+
+    @property
+    def backend(self) -> str:
+        return self._backend
+
+    @property
+    def size(self) -> int:
+        return len(self._id_map)
+
+    # ------------------------------------------------------------------
+    # CRUD
+    # ------------------------------------------------------------------
+
+    def add(self, entry_id: str, vector: "np.ndarray") -> None:
+        """
+        1 エントリを追加する。
+
+        Parameters
+        ----------
+        entry_id : MemoryEntry.entry_id
+        vector   : _text_to_vector() で生成した L2 正規化ベクトル
+        """
+        self._id_map.append(entry_id)
+        if self._backend == "faiss":
+            import numpy as np
+            self._faiss_idx.add(vector.reshape(1, -1).astype(np.float32))
+
+    def search(
+        self,
+        query_vec: "np.ndarray",
+        top_k: int,
+    ) -> List[Tuple[str, float]]:
+        """
+        ANN 検索して ``(entry_id, score)`` のリストを返す。
+
+        linear backend では全 entry_id を score=0 で返す
+        (EpisodicStore が続けて TF-IDF で再スコアリングする)。
+        """
+        if not self._id_map:
+            return []
+        k = min(top_k, len(self._id_map))
+        if self._backend == "faiss":
+            import numpy as np
+            qvec = query_vec.reshape(1, -1).astype(np.float32)
+            scores, indices = self._faiss_idx.search(qvec, k)
+            return [
+                (self._id_map[int(i)], float(s))
+                for i, s in zip(indices[0], scores[0])
+                if i >= 0
+            ]
+        # linear fallback: 先頭 k 件を返す (EpisodicStore が TF-IDF で再スコアリング)
+        return [(eid, 0.0) for eid in self._id_map[:k]]
+
+    def rebuild(
+        self,
+        entry_ids: List[str],
+        vectors: "np.ndarray",
+    ) -> None:
+        """
+        全エントリで ANN インデックスを再構築する。
+
+        _evict() や consolidate() 後に呼ぶ。
+
+        Parameters
+        ----------
+        entry_ids : エントリ ID リスト (N,)
+        vectors   : 対応するベクトル行列 (N, dim)
+        """
+        self._id_map = list(entry_ids)
+        if self._backend == "faiss":
+            import faiss, numpy as np  # noqa: E401
+            self._faiss_idx = faiss.IndexFlatIP(self.dim)
+            if len(entry_ids) > 0:
+                self._faiss_idx.add(vectors.astype(np.float32))
+
+    def clear(self) -> None:
+        """インデックスを空にする。"""
+        self._id_map.clear()
+        if self._backend == "faiss":
+            import faiss
+            self._faiss_idx = faiss.IndexFlatIP(self.dim)
 
 
 # ---------------------------------------------------------------------------
@@ -204,6 +381,7 @@ class EpisodicStore:
         score_threshold: float = 0.5,
         dedup_threshold: float = 0.85,
         freshness_half_life_h: float = 17.0,
+        ann_backend: str = "auto",          # Sprint 33: "auto"|"faiss"|"linear"
     ) -> None:
         self.max_size = max_size
         self.score_threshold = score_threshold
@@ -211,6 +389,7 @@ class EpisodicStore:
         self.freshness_half_life_h = freshness_half_life_h
         self._entries: List[MemoryEntry] = []
         self._idf: Dict[str, float] = {}  # コーパスレベルの IDF
+        self._ann = ANNIndex(dim=ANN_DIM, backend=ann_backend)  # Sprint 33
 
     def _rebuild_idf(self) -> None:
         """全エントリからコーパスレベルの IDF を再計算する。"""
@@ -267,6 +446,10 @@ class EpisodicStore:
             freshness_half_life_h=self.freshness_half_life_h,
         )
         self._entries.append(entry)
+        # ANN インデックスに追加 (Sprint 33)
+        vec = _text_to_vector(entry.context + " " + entry.text, self._ann.dim)
+        self._ann.add(entry.entry_id, vec)
+
         if len(self._entries) > self.max_size:
             self._evict()
         # IDF は一定件数追加ごとに再計算 (毎回は高コスト)
@@ -283,18 +466,41 @@ class EpisodicStore:
         min_relevance: float = 0.0,
         category_filter: Optional[str] = None,
     ) -> List[Tuple[MemoryEntry, float]]:
-        """クエリに近いエントリを (entry, relevance) のリストで返す。"""
+        """
+        クエリに近いエントリを (entry, relevance) のリストで返す。
+
+        Sprint 33 ハイブリッド検索:
+            1. FAISS ANN で候補を top_k × 8 件に絞り込む (高速)
+            2. TF-IDF コサインで精密スコアリング → priority 降順
+        category_filter 指定時または線形バックエンド時は従来どおり全件 TF-IDF。
+        """
         candidates = [e for e in self._entries
                       if category_filter is None or e.category == category_filter]
         if not candidates:
             return []
+
+        # FAISS 候補絞り込み (category_filter なし かつ FAISS 使用 かつ十分な件数)
+        if (
+            self._ann.is_faiss
+            and category_filter is None
+            and len(candidates) > top_k * 2
+        ):
+            qvec      = _text_to_vector(query, self._ann.dim)
+            ann_k     = min(top_k * 8, len(candidates))
+            ann_hits  = self._ann.search(qvec, top_k=ann_k)
+            cand_ids  = {eid for eid, _ in ann_hits}
+            filtered  = [e for e in candidates if e.entry_id in cand_ids]
+            if filtered:  # ANN 結果が空でなければ候補を絞る
+                candidates = filtered
+
+        # TF-IDF 精密スコアリング
+        idf    = self._idf if self._idf else None
         scored: List[Tuple[MemoryEntry, float]] = []
-        idf = self._idf if self._idf else None  # IDF がある場合は使用
         for e in candidates:
             rel = _cosine_tfidf(query, e.context + " " + e.text, idf=idf)
             if rel >= min_relevance:
                 scored.append((e, rel))
-        # priority (relevance + score + freshness) で降順ソート
+
         scored.sort(key=lambda x: x[0].priority(x[1]), reverse=True)
         result = scored[:top_k]
         for e, _ in result:
@@ -304,26 +510,50 @@ class EpisodicStore:
     # ------------------------------------------------------------------ evict
 
     def _evict(self) -> None:
-        """score × freshness が最も低いエントリを削除。"""
+        """score × freshness が最も低いエントリを削除し、ANN インデックスを再構築。"""
         self._entries.sort(key=lambda e: e.score * e.freshness, reverse=True)
         self._entries = self._entries[: self.max_size]
+        self._rebuild_ann()  # Sprint 33: 削除後に ANN を再構築
+
+    # ------------------------------------------------------------------ ANN rebuild (Sprint 33)
+
+    def _rebuild_ann(self) -> None:
+        """全エントリから ANN インデックスを再構築する。"""
+        import numpy as np
+        entry_ids = [e.entry_id for e in self._entries]
+        if not entry_ids:
+            self._ann.clear()
+            return
+        vectors = np.stack([
+            _text_to_vector(e.context + " " + e.text, self._ann.dim)
+            for e in self._entries
+        ])
+        self._ann.rebuild(entry_ids, vectors)
 
     # ------------------------------------------------------------------ stats
 
     def stats(self) -> Dict[str, float]:
         if not self._entries:
-            return {"count": 0, "avg_score": 0.0, "avg_freshness": 0.0}
-        scores = [e.score for e in self._entries]
+            return {"count": 0, "avg_score": 0.0, "avg_freshness": 0.0,
+                    "ann_backend": self._ann.backend, "ann_size": 0}
+        scores    = [e.score for e in self._entries]
         freshness = [e.freshness for e in self._entries]
         return {
-            "count": len(self._entries),
-            "avg_score": sum(scores) / len(scores),
+            "count":        len(self._entries),
+            "avg_score":    sum(scores)    / len(scores),
             "avg_freshness": sum(freshness) / len(freshness),
+            "ann_backend":  self._ann.backend,   # Sprint 33
+            "ann_size":     self._ann.size,       # Sprint 33
         }
 
     @property
     def entries(self) -> List[MemoryEntry]:
         return list(self._entries)
+
+    @property
+    def ann(self) -> ANNIndex:
+        """ANN インデックスへの参照 (Sprint 33)"""
+        return self._ann
 
 
 # ---------------------------------------------------------------------------
@@ -449,11 +679,13 @@ class LongTermMemoryAgent:
         max_episodes: int = 500,
         max_knowledge: int = 1000,
         dedup_threshold: float = 0.85,
+        ann_backend: str = "auto",          # Sprint 33: "auto"|"faiss"|"linear"
     ) -> None:
         self.episodes = EpisodicStore(
             max_size=max_episodes,
             score_threshold=score_threshold,
             dedup_threshold=dedup_threshold,
+            ann_backend=ann_backend,
         )
         self.knowledge = SemanticStore(max_size=max_knowledge)
         self._score_threshold = score_threshold
@@ -605,6 +837,9 @@ class LongTermMemoryAgent:
             self.episodes._entries = self.episodes._entries[:thresh_idx]
         else:
             removed_stale = 0
+
+        # ANN インデックスを再構築 (Sprint 33: consolidate 後のエントリ変化に追従)
+        self.episodes._rebuild_ann()
 
         return {"removed_duplicates": removed_dups, "removed_stale": removed_stale}
 

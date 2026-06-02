@@ -128,11 +128,14 @@ from open_mythos.kpi_agent import (
     KPIAgent,
 )
 from open_mythos.long_term_memory import (
+    ANN_DIM,
+    ANNIndex,
     MemoryEntry,
     EpisodicStore,
     SemanticStore,
     MemoryRetrieval,
     LongTermMemoryAgent,
+    _text_to_vector,
 )
 from open_mythos.ensemble_scorer import (
     ScorerWeight,
