@@ -4,6 +4,49 @@ All notable changes to OpenMythos are documented here.
 
 ---
 
+## [0.38.0] — 2026-06-02
+
+### Sprint 35: Growing AI ベンチマーク強化
+
+#### `benchmark/growing_ai_bench.py` (新規)
+- `PatternBenchResult` — 1パターン結果データクラス (baseline/final/improvement/latency/success)
+- P1〜P10 個別ベンチマーク関数 (`bench_p1_debate` 〜 `bench_p10_planner`)
+  - P1: ConsensusEngine.score() で合意テキスト生成 → LLMO スコア比較
+  - P2: KPIAgent.improve_loop() で KPI 自律改善 → +61.6% 改善確認
+  - P3: ProfilerAgent でボトルネック検出 → latency_improvement_pct を記録
+  - P4: ExternalSignalAgent でシグナル対抗アクション → optimized_context LLMO 比較
+  - P5: MistakeGuard 精度 (precision × recall F1) → guard_score を KPI に反映
+  - P6: SelfDistillLoop (simulate) → mean_score_improvement 記録
+  - P7: LongTermMemoryAgent 5エピソード蓄積 → retrieval relevance 記録
+  - P8: EnsembleScorer 3テキスト → best ensemble_score を final KPI に
+  - P9: PromptEvolution GA 4世代 → fitness improvement 記録
+  - P10: TaskPlanner.execute() → success_rate + synthesized_output LLMO スコア
+- `GrowingAIBenchmark` — 全パターン一括実行クラス
+  - `run_all(verbose=True)` → `BenchmarkReport`
+  - `print_table()` — コンソール表示
+  - `format_summary()` — 1行サマリー
+  - `save() / load()` — JSON 保存・読み込み
+- `BenchmarkReport` — 集計レポート (avg_improvement / avg_latency / success_rate)
+
+#### CLI
+- `python benchmark/growing_ai_bench.py` — 全10パターン実行
+- `--patterns p2 p5 p8` — 指定パターンのみ
+- `--verbose` — 詳細ログ
+- `--output path/to/result.json` — 保存先指定
+
+#### 実測結果 (2026-06-02)
+```
+全10パターン成功: 10/10 (100%)
+平均 KPI 改善量: +0.0551 (+10.5%)
+合計レイテンシ: 60ms
+最大改善: P2 KPIAgent +61.6%
+```
+
+#### テスト: `tests/test_sprint35.py` — 45 tests PASS
+#### バージョン: v0.38.0
+
+---
+
 ## [0.37.0] — 2026-06-02
 
 ### Sprint 34: MistakeGuardMiddleware — 全 API エンドポイント透過チェック
