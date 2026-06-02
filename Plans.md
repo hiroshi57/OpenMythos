@@ -1,5 +1,5 @@
 # OpenMythos — Sprint Plans
-> 最終更新: 2026-06-02 | ブランチ規約: `feature/<sprint>-<topic>`
+> 最終更新: 2026-06-02 (Sprint 36 完了 / 次回: Sprint 37) | ブランチ規約: `feature/<sprint>-<topic>`
 > Sprint 36 完了: API ドキュメント整備 + CI ベンチマーク自動化 → v0.39.0
 > アーカイブ: Sprint 1〜9 → `docs/archive/sprint-plans-1-9.md`
 >            Sprint 10〜19 → `docs/archive/sprint-plans-10-19.md`
@@ -94,8 +94,34 @@
 
 ---
 
-## 次スプリント候補
+## Sprint 37 計画 (次回)
 
-- **API Swagger UI 動作確認** — `uvicorn serve.api:app --reload` → `http://localhost:8000/docs`
-- **ベンチマーク定期実行 CI 統合** — GitHub Actions で週次 `growing_ai_bench.py` 実行
-- **GPU 実機での LoRA SFT 検証** — CUDA 環境で `LoraTrainer._real_train()` 動作確認
+### Sprint 37: ベンチマーク結果可視化 + E2E 疎通テスト — v0.40.0
+
+**テーマ**: Sprint 35/36 で整備したベンチマーク基盤の「見える化」と、P1〜P10 全 API エンドポイントの結合テスト
+
+| task-id | 説明 | 優先 |
+|---------|------|------|
+| 37.1 | `benchmark/report.py` — `BenchmarkReport` を Markdown / HTML に出力する `ReportGenerator` クラス | 高 |
+| 37.2 | `benchmark/report.py` — `trend_table()`: 過去 N 回分の JSON を読み込んで改善率トレンド表を生成 | 中 |
+| 37.3 | `serve/api.py` — P1〜P10 全エンドポイント (`/v1/debate/*` 〜 `/v1/plan/*`) の `TestClient` 疎通テスト | 高 |
+| 37.4 | `.github/workflows/bench.yml` — `report.py --html` 出力を artifact に追加 (HTML レポートのアップロード) | 中 |
+| 37.T | `tests/test_sprint37.py` — 40 tests PASS (目標: 累計 1901) | 高 |
+| 37.V | PyPI v0.40.0 | — |
+
+**作業前チェックリスト**:
+- [ ] `feature/sprint37-bench-report-e2e` ブランチを切る
+- [ ] `benchmark/results/` に過去 JSON が 1 件以上あることを確認 (なければ `growing_ai_bench.py --output` でダミー生成)
+- [ ] `serve/api.py` の `TestClient` が `lifespan` を正しく mock できるか確認 (`pytest-asyncio` + `anyio` 設定)
+
+**依存関係**:
+- `benchmark/growing_ai_bench.py` (Sprint 35) — `BenchmarkReport.load()` を `report.py` が呼ぶ
+- `.github/workflows/bench.yml` (Sprint 36) — HTML artifact upload step を追記
+
+---
+
+## 将来スプリント候補
+
+- **Sprint 38**: GPU 実機 LoRA SFT 検証 — CUDA 環境で `LoraTrainer._real_train()` 動作確認 + `lora_trainer.py` に `CosineScheduler` 統合
+- **Sprint 39**: Prometheus / Grafana メトリクス統合 — `serve/monitor.py` に `/metrics` エンドポイント追加
+- **Sprint 40**: OpenAI 互換 Streaming 強化 — `/v1/chat/completions` の SSE テスト + `stream=true` オプション拡充
