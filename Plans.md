@@ -39,8 +39,9 @@
 | 29 | **P10** 自律タスク計画 — TaskPlanner | `task_planner.py` | 1570 | v0.32 |
 | 30 | **統合** P1〜P10 オーケストレーター — GrowingAIOrchestrator | `growing_ai_orchestrator.py` | 1617 | v0.33 |
 | 31 | GPU LoRA SFT 統合 — LoraTrainer / sft_backend | `lora_trainer.py` | 1657 | v0.34 |
+| 32 | エラーメモリ永続化 — SQLite backend / export | `error_memory.py` | 1697 | v0.35 |
 
-> **累計テスト数**: 1657 PASS (Sprint 31: +40)
+> **累計テスト数**: 1697 PASS (Sprint 32: +40)
 
 ---
 
@@ -104,6 +105,21 @@ P1→P2→P3/P4  P5→P6→P7→P8→P9→P10
 | 29.4 | `serve/api.py` — `/v1/plan/decompose` / `/execute` | cc:完了 |
 | 29.T | `tests/test_sprint29.py` — 40 tests PASS | cc:完了 |
 | 29.V | PyPI v0.32.0 | cc:完了 |
+
+---
+
+## Sprint 32 詳細 (完了)
+
+### Sprint 32: エラーメモリ永続化 — v0.35.0
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 32.1 | `error_memory.py` — `ErrorMemoryStore(backend="sqlite", db_path=...)` SQLite バックエンド | cc:完了 |
+| 32.2 | `error_memory.py` — `export_jsonl()` / `export_records()` / `save_jsonl()` / `import_jsonl()` | cc:完了 |
+| 32.3 | `error_memory.py` — `clear()` / `close()` / `total` (SQLite COUNT) | cc:完了 |
+| 32.4 | `serve/api.py` — `GET /v1/mistakes/export` (jsonl/json/category filter) + `DELETE /v1/mistakes/clear` | cc:完了 |
+| 32.5 | `serve/api.py` — `_get_mistake_store()` に `MISTAKES_BACKEND` / `MISTAKES_DB_PATH` 環境変数対応 | cc:完了 |
+| 32.T | `tests/test_sprint32.py` — 40 tests PASS | cc:完了 |
+| 32.V | PyPI v0.35.0 | cc:完了 |
 
 ---
 
