@@ -155,6 +155,14 @@ from open_mythos.task_planner import (
     TaskPlanResult,
     TaskPlanner,
 )
+from open_mythos.growing_ai_orchestrator import (
+    PatternType,
+    GrowthContext,
+    PatternResult,
+    OrchestratorResult,
+    PatternSelector,
+    GrowingAIOrchestrator,
+)
 from open_mythos.security import InputGuard, OutputGuard, SecurityCheckResult
 from open_mythos.swarm import (
     SwarmConfig,

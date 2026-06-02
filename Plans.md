@@ -37,8 +37,9 @@
 | 27 | **P8** アンサンブル品質評価 — EnsembleScorer | `ensemble_scorer.py` | 1490 | v0.30 |
 | 28 | **P9** 適応型プロンプト進化 — PromptEvolution | `prompt_evolution.py` | 1530 | v0.31 |
 | 29 | **P10** 自律タスク計画 — TaskPlanner | `task_planner.py` | 1570 | v0.32 |
+| 30 | **統合** P1〜P10 オーケストレーター — GrowingAIOrchestrator | `growing_ai_orchestrator.py` | 1617 | v0.33 |
 
-> **累計テスト数**: 1570 PASS (Sprint 26〜29: +162)
+> **累計テスト数**: 1617 PASS (Sprint 30: +47)
 
 ---
 
@@ -105,11 +106,24 @@ P1→P2→P3/P4  P5→P6→P7→P8→P9→P10
 
 ---
 
-## 次回課題 (Sprint 30〜)
+## Sprint 30 詳細 (完了)
+
+### Sprint 30: 統合 GrowingAIOrchestrator — v0.33.0
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 30.1 | `growing_ai_orchestrator.py` — `PatternType` / `GrowthContext` / `PatternResult` / `OrchestratorResult` | cc:完了 |
+| 30.2 | `growing_ai_orchestrator.py` — `PatternSelector` (キーワードベース選択) | cc:完了 |
+| 30.3 | `growing_ai_orchestrator.py` — `GrowingAIOrchestrator.run()` (選択・実行・統合) | cc:完了 |
+| 30.4 | `serve/api.py` — `POST /v1/grow/run` | cc:完了 |
+| 30.T | `tests/test_sprint30.py` — 47 tests PASS | cc:完了 |
+| 30.V | PyPI v0.33.0 | cc:完了 |
+
+---
+
+## 次回課題 (Sprint 31〜)
 
 ### 優先度 HIGH
-1. **P1〜P10 統合オーケストレーター** — `GrowingAIOrchestrator` (状況判断でパターン自動選択) + `POST /v1/grow/run`
-2. **実際の GPU LoRA SFT 統合** — `SelfDistillLoop._simulate_sft()` を `scripts/finetune.py` の `LoraTrainer` に差し替え
+1. **実際の GPU LoRA SFT 統合** — `SelfDistillLoop._simulate_sft()` を `scripts/finetune.py` の `LoraTrainer` に差し替え
 3. **エラーメモリ永続化** — `ErrorMemoryStore(backend="sqlite")` + `/v1/mistakes/export`
 
 ### 優先度 MEDIUM
