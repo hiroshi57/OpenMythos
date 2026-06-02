@@ -2466,3 +2466,299 @@ def ab_stats():
         _ab_stats.scores["openmythos"], _ab_stats.scores["existing_ml"]
     )
     return result
+
+
+# ===========================================================================
+# Sprint 26: LongTermMemoryAgent (P7) — /v1/memory/*
+# ===========================================================================
+
+from open_mythos.long_term_memory import (
+    LongTermMemoryAgent,
+    MemoryEntry,
+    MemoryRetrieval,
+)
+
+_memory_agent = LongTermMemoryAgent(score_threshold=0.5, max_episodes=2000)
+
+
+class MemoryStoreRequest(BaseModel):
+    context: str = Field(..., description="発火元クエリ")
+    text: str = Field(..., description="記憶本文 (応答またはファクト)")
+    score: float = Field(0.8, ge=0.0, le=1.0, description="品質スコア")
+    category: str = Field("episode", description="'episode' or 'knowledge'")
+    key: Optional[str] = Field(None, description="knowledge category 時のキー")
+    tags: list[str] = Field(default_factory=list, description="検索タグ")
+
+
+class MemoryRetrieveRequest(BaseModel):
+    query: str = Field(..., description="検索クエリ")
+    top_k: int = Field(5, ge=1, le=20)
+    min_relevance: float = Field(0.0, ge=0.0, le=1.0)
+    include_knowledge: bool = Field(True)
+    tags: Optional[list[str]] = None
+
+
+@app.post(
+    "/v1/memory/store",
+    tags=["memory"],
+    summary="長期記憶を保存 (P7)",
+    description="エピソード記憶またはセマンティック知識を LongTermMemoryAgent に格納する。",
+    dependencies=[Depends(verify_api_key)],
+)
+def memory_store(req: MemoryStoreRequest):
+    if req.category == "knowledge" and req.key:
+        entry = _memory_agent.store_knowledge(req.key, req.text, tags=req.tags, score=req.score)
+    else:
+        entry = _memory_agent.store_episode(req.context, req.text, score=req.score, tags=req.tags)
+    if entry is None:
+        return {"stored": False, "reason": "filtered (score < threshold or duplicate)"}
+    return {"stored": True, "entry_id": entry.entry_id, "category": entry.category}
+
+
+@app.post(
+    "/v1/memory/retrieve",
+    tags=["memory"],
+    summary="長期記憶を検索 (P7)",
+    description="クエリに関連するエピソード + セマンティック記憶を統合検索する。",
+    dependencies=[Depends(verify_api_key)],
+)
+def memory_retrieve(req: MemoryRetrieveRequest):
+    result = _memory_agent.retrieve(
+        req.query,
+        top_k=req.top_k,
+        min_relevance=req.min_relevance,
+        include_knowledge=req.include_knowledge,
+        tags=req.tags,
+    )
+    return {
+        "query": result.query,
+        "total_searched": result.total_searched,
+        "entries": [
+            {
+                "entry_id": e.entry_id,
+                "text": e.text,
+                "context": e.context,
+                "score": e.score,
+                "category": e.category,
+                "relevance": r,
+            }
+            for e, r in zip(result.entries, result.relevance_scores)
+        ],
+        "context_string": result.to_context_string(),
+    }
+
+
+@app.post(
+    "/v1/memory/consolidate",
+    tags=["memory"],
+    summary="記憶を整理・重複除去 (P7)",
+    dependencies=[Depends(verify_api_key)],
+)
+def memory_consolidate():
+    result = _memory_agent.consolidate()
+    stats = _memory_agent.stats()
+    return {"consolidation": result, "stats": stats}
+
+
+# ===========================================================================
+# Sprint 27: EnsembleScorer (P8) — /v1/ensemble/*
+# ===========================================================================
+
+from open_mythos.ensemble_scorer import EnsembleScorer as _EnsembleScorer
+
+_ensemble_scorer = _EnsembleScorer(adaptive=True)
+
+
+class EnsembleScoreRequest(BaseModel):
+    text: str = Field(..., description="評価対象テキスト")
+    query: Optional[str] = Field(None, description="検索クエリ")
+    context: Optional[str] = Field(None, description="追加コンテキスト")
+
+
+class EnsembleBatchRequest(BaseModel):
+    texts: list[str] = Field(..., description="評価するテキストのリスト")
+    query: Optional[str] = None
+
+
+class EnsembleFeedbackRequest(BaseModel):
+    text: str
+    human_score: float = Field(..., ge=0.0, le=1.0)
+
+
+@app.post(
+    "/v1/ensemble/score",
+    tags=["ensemble"],
+    summary="アンサンブル品質評価 (P8)",
+    description="LLMO + クエリ関連度 + セキュリティ + 構造スコアを重み付きで統合評価する。",
+    dependencies=[Depends(verify_api_key)],
+)
+def ensemble_score(req: EnsembleScoreRequest):
+    result = _ensemble_scorer.score(req.text, query=req.query, context=req.context)
+    return {
+        "ensemble_score": result.ensemble_score,
+        "high_confidence": result.high_confidence,
+        "variance": result.variance,
+        "breakdown": [
+            {"scorer": b.scorer_name, "score": b.raw_score, "weight": b.weight,
+             "contribution": b.contribution}
+            for b in result.breakdown
+        ],
+    }
+
+
+@app.post(
+    "/v1/ensemble/rank",
+    tags=["ensemble"],
+    summary="複数テキストをアンサンブルスコアでランキング (P8)",
+    dependencies=[Depends(verify_api_key)],
+)
+def ensemble_rank(req: EnsembleBatchRequest):
+    results = _ensemble_scorer.score_batch(req.texts, query=req.query)
+    return {
+        "ranked": [
+            {"text": r.text[:200], "ensemble_score": r.ensemble_score,
+             "high_confidence": r.high_confidence}
+            for r in results
+        ]
+    }
+
+
+@app.post(
+    "/v1/ensemble/feedback",
+    tags=["ensemble"],
+    summary="アンサンブル重みへのフィードバック (P8 adaptive)",
+    dependencies=[Depends(verify_api_key)],
+)
+def ensemble_feedback(req: EnsembleFeedbackRequest):
+    _ensemble_scorer.record_feedback(req.text, req.human_score)
+    return {"recorded": True, "weights": _ensemble_scorer.weights_summary}
+
+
+# ===========================================================================
+# Sprint 28: PromptEvolution (P9) — /v1/evolve/*
+# ===========================================================================
+
+from open_mythos.prompt_evolution import EvolutionConfig, PromptEvolution
+
+
+class PromptEvolveRequest(BaseModel):
+    seed_prompt: str = Field(..., description="進化の出発点となるプロンプト")
+    topic_keywords: list[str] = Field(default_factory=list)
+    templates: list[str] = Field(default_factory=list)
+    population_size: int = Field(6, ge=2, le=20)
+    n_generations: int = Field(4, ge=1, le=20)
+    mutation_rate: float = Field(0.3, ge=0.0, le=1.0)
+    crossover_rate: float = Field(0.7, ge=0.0, le=1.0)
+    elite_size: int = Field(2, ge=1, le=5)
+
+
+@app.post(
+    "/v1/evolve/run",
+    tags=["evolve"],
+    summary="遺伝的アルゴリズムでプロンプトを進化 (P9)",
+    description="LLMO スコアをフィットネスとして N 世代プロンプトを最適化する。",
+    dependencies=[Depends(verify_api_key)],
+)
+def evolve_run(req: PromptEvolveRequest):
+    cfg = EvolutionConfig(
+        population_size=req.population_size,
+        n_generations=req.n_generations,
+        mutation_rate=req.mutation_rate,
+        crossover_rate=req.crossover_rate,
+        elite_size=req.elite_size,
+    )
+    evo = PromptEvolution(config=cfg)
+    result = evo.evolve(
+        req.seed_prompt,
+        topic_keywords=req.topic_keywords or None,
+        templates=req.templates or None,
+    )
+    return {
+        "best_prompt": result.best_prompt,
+        "best_fitness": result.best_gene.fitness,
+        "improvement": result.improvement,
+        "n_generations_run": result.n_generations_run,
+        "converged": result.converged,
+        "fitness_history": result.fitness_history,
+        "rounds": [
+            {
+                "generation": r.generation,
+                "best_fitness": r.best_fitness,
+                "mean_fitness": r.mean_fitness,
+                "diversity": r.diversity,
+            }
+            for r in result.rounds
+        ],
+    }
+
+
+# ===========================================================================
+# Sprint 29: TaskPlanner (P10) — /v1/plan/*
+# ===========================================================================
+
+from open_mythos.task_planner import TaskPlanner as _TaskPlanner
+
+
+class TaskPlanRequest(BaseModel):
+    goal: str = Field(..., description="達成すべきゴール")
+    context: dict = Field(default_factory=dict, description="追加コンテキスト")
+    n_agents: int = Field(1, ge=1, le=8)
+    kpi_target: float = Field(0.7, ge=0.0, le=1.0)
+    max_parallel: int = Field(4, ge=1, le=10)
+
+
+@app.post(
+    "/v1/plan/decompose",
+    tags=["plan"],
+    summary="ゴールをサブタスクに分解 (P10)",
+    description="ゴール文字列をルールベースで階層的サブタスクに分解する。",
+    dependencies=[Depends(verify_api_key)],
+)
+def plan_decompose(req: TaskPlanRequest):
+    planner = _TaskPlanner(max_parallel=req.max_parallel, kpi_target=req.kpi_target)
+    plan = planner.decompose(req.goal, req.context)
+    return {
+        "plan_id": plan.plan_id,
+        "goal": plan.goal,
+        "total_tasks": plan.total_tasks,
+        "n_waves": plan.n_waves,
+        "tasks": [
+            {
+                "name": t.name, "goal": t.goal, "task_type": t.task_type,
+                "priority": t.priority, "depends_on": t.depends_on,
+            }
+            for t in plan.tasks
+        ],
+        "waves": [[t.name for t in w] for w in plan.waves],
+    }
+
+
+@app.post(
+    "/v1/plan/execute",
+    tags=["plan"],
+    summary="ゴールを分解・実行・統合 (P10)",
+    description="タスクを分解して実行し、結果を統合した最終アウトプットを返す。",
+    dependencies=[Depends(verify_api_key)],
+)
+def plan_execute(req: TaskPlanRequest):
+    planner = _TaskPlanner(max_parallel=req.max_parallel, kpi_target=req.kpi_target)
+    result = planner.execute(req.goal, context=req.context, n_agents=req.n_agents)
+    return {
+        "goal": result.plan.goal,
+        "synthesized_output": result.synthesized_output,
+        "total_score": result.total_score,
+        "kpi_achieved": result.kpi_achieved,
+        "success_rate": result.success_rate,
+        "total_latency_ms": result.total_latency_ms,
+        "subtasks": [
+            {
+                "name": r.task.name,
+                "task_type": r.task.task_type,
+                "output": r.output[:200],
+                "score": r.score,
+                "success": r.success,
+                "latency_ms": r.latency_ms,
+            }
+            for r in result.subtask_results
+        ],
+    }
