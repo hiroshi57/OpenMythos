@@ -1,5 +1,6 @@
 # OpenMythos — Sprint Plans
 > 最終更新: 2026-06-02 | ブランチ規約: `feature/<sprint>-<topic>`
+> Sprint 36 完了: API ドキュメント整備 + CI ベンチマーク自動化 → v0.39.0
 > アーカイブ: Sprint 1〜9 → `docs/archive/sprint-plans-1-9.md`
 >            Sprint 10〜19 → `docs/archive/sprint-plans-10-19.md`
 >            Sprint 20〜25 → `docs/archive/sprint-plans-20-25.md`
@@ -29,8 +30,9 @@
 | 33 | LongTermMemory FAISS ANN | `long_term_memory.py` | 1737 | v0.36 |
 | 34 | MistakeGuardMiddleware | `error_memory.py` | 1777 | v0.37 |
 | 35 | ベンチマーク強化 (10パターン KPI 計測) | `benchmark/growing_ai_bench.py` | 1822 | v0.38 |
+| 36 | **API ドキュメント整備 + CI ベンチ自動化** | `serve/api.py` `.github/workflows/bench.yml` | 1861 | v0.39 |
 
-> **累計テスト数**: 1822 PASS (Sprint 35: +45)
+> **累計テスト数**: 1861 PASS (Sprint 36: +39)
 
 ---
 
@@ -51,7 +53,18 @@
 
 ---
 
-## Sprint 35 詳細 (最新)
+## Sprint 36 詳細 (最新)
+
+### Sprint 36: API ドキュメント整備 + CI ベンチマーク自動化 — v0.39.0
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 36.1a | `serve/api.py` — `version="0.38.0"` 確認・旧バージョン除去 | cc:完了 |
+| 36.1b | `serve/api.py` — `openapi_tags` 全 23 タグ整備 (P1〜P10 + grow + guard) | cc:完了 |
+| 36.2a | `.github/workflows/bench.yml` — ファイル存在・YAML 構文 | cc:完了 |
+| 36.2b | `.github/workflows/bench.yml` — 週次 cron (月曜 09:00 JST) + workflow_dispatch (patterns/verbose 入力) | cc:完了 |
+| 36.2c | `.github/workflows/bench.yml` — jobs: checkout / setup-python / bench 実行 / artifact 保存 / GITHUB_STEP_SUMMARY | cc:完了 |
+| 36.T | `tests/test_sprint36.py` — 39 tests PASS | cc:完了 |
+| 36.V | PyPI v0.39.0 | cc:完了 |
 
 ### Sprint 35: ベンチマーク強化 — v0.38.0
 | task-id | 説明 | 状態 |
