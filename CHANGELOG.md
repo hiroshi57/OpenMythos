@@ -4,6 +4,41 @@ All notable changes to OpenMythos are documented here.
 
 ---
 
+## [0.37.0] — 2026-06-02
+
+### Sprint 34: MistakeGuardMiddleware — 全 API エンドポイント透過チェック
+
+#### `open_mythos/error_memory.py` 追加
+- `GuardMiddlewareConfig` — ミドルウェア設定データクラス
+  - `enabled` (default: True) — ミドルウェア全体の有効/無効
+  - `auto_record_blocked` (True) — ブロックテキストを自動記録
+  - `check_request` / `check_response` — リクエスト/レスポンスチェック制御
+  - `severity_threshold` ("medium") — このレベル以上のルールのみ適用
+  - `max_text_length` (10,000) — チェック対象テキストの最大長
+  - `refresh_interval` (100) — N リクエストごとにルール自動再抽出
+- `MistakeGuardMiddleware` — 透過的ガードミドルウェア
+  - `process(text) -> GuardResult` — ルール照合・自動記録・統計更新
+  - `add_rule(rule)` — ルール即時追加
+  - `refresh() -> int` — ルール手動再抽出
+  - `stats() -> dict` — total_requests / blocked / passed / block_rate / rule_count
+  - バグ修正: `store or ErrorMemoryStore()` が空ストアを falsyと判定して別インスタンスを生成する問題 → `is not None` チェックに修正
+
+#### `serve/api.py` 追加
+- `_MistakeGuardHTTPMiddleware(BaseHTTPMiddleware)` — FastAPI HTTP ミドルウェア
+  - POST / PUT リクエストボディを透過チェック
+  - ブロック時: HTTP 422 + `X-Guard-Blocked: true` / `X-Guard-Rule-Id: <rule_id>` ヘッダー
+  - 環境変数: `MISTAKE_GUARD_ENABLED` / `MISTAKE_GUARD_SEVERITY` / `MISTAKE_GUARD_REFRESH_INTERVAL`
+- `GET  /v1/guard/stats` — ガード統計 (total_requests / blocked / block_rate / rule_count)
+- `POST /v1/guard/refresh` — ルール手動再抽出
+
+#### `open_mythos/__init__.py`
+- `GuardMiddlewareConfig`, `MistakeGuardMiddleware` をエクスポートに追加
+
+#### テスト: `tests/test_sprint34.py` — 40 tests PASS
+#### バージョン: v0.37.0
+
+---
+
 ## [0.36.0] — 2026-06-02
 
 ### Sprint 33: LongTermMemory FAISS ANN インデックス

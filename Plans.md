@@ -41,8 +41,9 @@
 | 31 | GPU LoRA SFT 統合 — LoraTrainer / sft_backend | `lora_trainer.py` | 1657 | v0.34 |
 | 32 | エラーメモリ永続化 — SQLite backend / export | `error_memory.py` | 1697 | v0.35 |
 | 33 | LongTermMemory ANN インデックス — FAISS 移行 | `long_term_memory.py` | 1737 | v0.36 |
+| 34 | MistakeGuardMiddleware — 全 API 透過チェック | `error_memory.py` | 1777 | v0.37 |
 
-> **累計テスト数**: 1737 PASS (Sprint 33: +40)
+> **累計テスト数**: 1777 PASS (Sprint 34: +40)
 
 ---
 
@@ -106,6 +107,20 @@ P1→P2→P3/P4  P5→P6→P7→P8→P9→P10
 | 29.4 | `serve/api.py` — `/v1/plan/decompose` / `/execute` | cc:完了 |
 | 29.T | `tests/test_sprint29.py` — 40 tests PASS | cc:完了 |
 | 29.V | PyPI v0.32.0 | cc:完了 |
+
+---
+
+## Sprint 34 詳細 (完了)
+
+### Sprint 34: MistakeGuardMiddleware — v0.37.0
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 34.1 | `error_memory.py` — `GuardMiddlewareConfig` データクラス (enabled/auto_record/severity/refresh_interval) | cc:完了 |
+| 34.2 | `error_memory.py` — `MistakeGuardMiddleware` (process/add_rule/refresh/stats) + `is not None` バグ修正 | cc:完了 |
+| 34.3 | `serve/api.py` — `_MistakeGuardHTTPMiddleware(BaseHTTPMiddleware)` 全 POST/PUT 透過チェック | cc:完了 |
+| 34.4 | `serve/api.py` — `GET /v1/guard/stats` / `POST /v1/guard/refresh` エンドポイント | cc:完了 |
+| 34.T | `tests/test_sprint34.py` — 40 tests PASS | cc:完了 |
+| 34.V | PyPI v0.37.0 | cc:完了 |
 
 ---
 
@@ -174,8 +189,8 @@ P1→P2→P3/P4  P5→P6→P7→P8→P9→P10
 3. **エラーメモリ永続化** — `ErrorMemoryStore(backend="sqlite")` + `/v1/mistakes/export`
 
 ### 優先度 MEDIUM
-4. **LongTermMemory ANN インデックス** — 件数増加時の O(n) 線形探索を FAISS に移行
-5. **MistakeGuardMiddleware** — 全 API エンドポイントに透過的に適用
+4. ~~**LongTermMemory ANN インデックス**~~ → Sprint 33 完了
+5. ~~**MistakeGuardMiddleware**~~ → Sprint 34 完了
 6. **ベンチマーク強化** — `benchmark/growing_ai_bench.py` で 10 パターンの KPI 改善量を測定
 
 ### 技術的知見メモ

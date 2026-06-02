@@ -99,6 +99,8 @@ from open_mythos.error_memory import (
     RuleExtractor,
     GuardResult,
     MistakeGuard,
+    GuardMiddlewareConfig,
+    MistakeGuardMiddleware,
 )
 from open_mythos.external_signal import (
     ExternalSignal,
@@ -273,7 +275,7 @@ __all__ = [
     "SelfDistillResult",
     "SelfDistillCollector",
     "SelfDistillLoop",
-    # Sprint 24: Error Memory / Mistake Guard
+    # Sprint 24 / Sprint 34: Error Memory / Mistake Guard / Middleware
     "MistakeRecord",
     "ErrorMemoryStore",
     "MistakeClassifier",
@@ -281,6 +283,8 @@ __all__ = [
     "RuleExtractor",
     "GuardResult",
     "MistakeGuard",
+    "GuardMiddlewareConfig",
+    "MistakeGuardMiddleware",
     # Sprint 23: External Signal Agent
     "ExternalSignal",
     "ImpactEstimate",
