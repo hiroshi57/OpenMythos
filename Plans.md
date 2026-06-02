@@ -38,8 +38,9 @@
 | 28 | **P9** 適応型プロンプト進化 — PromptEvolution | `prompt_evolution.py` | 1530 | v0.31 |
 | 29 | **P10** 自律タスク計画 — TaskPlanner | `task_planner.py` | 1570 | v0.32 |
 | 30 | **統合** P1〜P10 オーケストレーター — GrowingAIOrchestrator | `growing_ai_orchestrator.py` | 1617 | v0.33 |
+| 31 | GPU LoRA SFT 統合 — LoraTrainer / sft_backend | `lora_trainer.py` | 1657 | v0.34 |
 
-> **累計テスト数**: 1617 PASS (Sprint 30: +47)
+> **累計テスト数**: 1657 PASS (Sprint 31: +40)
 
 ---
 
@@ -103,6 +104,20 @@ P1→P2→P3/P4  P5→P6→P7→P8→P9→P10
 | 29.4 | `serve/api.py` — `/v1/plan/decompose` / `/execute` | cc:完了 |
 | 29.T | `tests/test_sprint29.py` — 40 tests PASS | cc:完了 |
 | 29.V | PyPI v0.32.0 | cc:完了 |
+
+---
+
+## Sprint 31 詳細 (完了)
+
+### Sprint 31: GPU LoRA SFT 統合 — v0.34.0
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 31.1 | `lora_trainer.py` — `LoraTrainerConfig` / `DistillInMemoryDataset` / `collate_distill` | cc:完了 |
+| 31.2 | `lora_trainer.py` — `LoraTrainer.train()` (GPU: 実訓練 / CPU: シミュレーション自動選択) | cc:完了 |
+| 31.3 | `self_distill.py` — `SelfDistillConfig.sft_backend` / `SelfDistillResult.best_output` / `run()` 強化 | cc:完了 |
+| 31.4 | `growing_ai_orchestrator.py` — DISTILL パターンバグ修正 (`run([goal])` / `.output`) | cc:完了 |
+| 31.T | `tests/test_sprint31.py` — 40 tests PASS | cc:完了 |
+| 31.V | PyPI v0.34.0 | cc:完了 |
 
 ---
 

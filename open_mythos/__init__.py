@@ -155,6 +155,13 @@ from open_mythos.task_planner import (
     TaskPlanResult,
     TaskPlanner,
 )
+from open_mythos.lora_trainer import (
+    LoraTrainerConfig,
+    DistillInMemoryDataset,
+    collate_distill,
+    LoraTrainer,
+    _default_tokenize,
+)
 from open_mythos.growing_ai_orchestrator import (
     PatternType,
     GrowthContext,

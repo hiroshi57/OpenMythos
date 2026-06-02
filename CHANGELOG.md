@@ -4,6 +4,33 @@ All notable changes to OpenMythos are documented here.
 
 ---
 
+## [0.34.0] — 2026-06-02
+
+### Sprint 31: GPU LoRA SFT 統合 — LoraTrainer
+
+#### LoraTrainer (`open_mythos/lora_trainer.py`)
+- `LoraTrainerConfig`: lr / n_loops / batch_size / max_length / max_steps / min_samples / device / checkpoint_dir / save_checkpoints
+- `DistillInMemoryDataset`: `List[DistillSample]` → PyTorch Dataset (next-token prediction 形式)
+- `collate_distill`: 可変長シーケンスのパディング collate 関数
+- `LoraTrainer.train()`: GPU (CUDA) があれば実 LoRA 訓練、なければ自動シミュレーション
+- `LoraTrainer._real_train()`: `enable_lora_finetuning()` → スコア重み付き cross-entropy → `max_steps` 更新
+- `_default_tokenize()`: UTF-8 バイト列 → vocab_id (差し替え可能)
+
+#### SelfDistillLoop 強化 (`open_mythos/self_distill.py`)
+- `SelfDistillConfig.sft_backend`: `"simulate"` | `"lora"` (後方互換)
+- `SelfDistillResult.best_output`: データセット内最高スコアサンプルを返す property
+- `SelfDistillLoop.run()`: `str | List[str]` 両対応 + `n_iterations` ラウンド数上書き
+- `SelfDistillLoop.__init__()`: `lora_trainer` 外部注入 (None なら自動生成)
+
+#### バグ修正 (`open_mythos/growing_ai_orchestrator.py`)
+- DISTILL パターン: `run(goal, n_iterations=1)` → `run([goal], n_iterations=1)` 修正
+- `best.text` → `best.output` 修正 (DistillSample フィールド名)
+
+#### テスト: `tests/test_sprint31.py` — 40 tests PASS
+#### バージョン: v0.34.0
+
+---
+
 ## [0.33.0] — 2026-06-02
 
 ### Sprint 30: P1〜P10 統合オーケストレーター — GrowingAIOrchestrator

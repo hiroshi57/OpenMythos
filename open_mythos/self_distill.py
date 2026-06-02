@@ -28,7 +28,7 @@ import json
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Union
 
 
 # ---------------------------------------------------------------------------
@@ -240,6 +240,7 @@ class SelfDistillConfig:
     diversity_min_len: int = 10
     early_stop_score: float = 0.85
     sft_simulate: bool = True
+    sft_backend: str = "simulate"   # "simulate" | "lora"  (Sprint 31)
 
 
 # ---------------------------------------------------------------------------
@@ -280,6 +281,12 @@ class SelfDistillResult:
     @property
     def total_samples(self) -> int:
         return self.dataset.total
+
+    @property
+    def best_output(self) -> Optional["DistillSample"]:
+        """データセット内の最高スコアサンプルを返す (なければ None)"""
+        candidates = [s for s in self.dataset._samples if s.score > 0]
+        return max(candidates, key=lambda s: s.score) if candidates else None
 
 
 # ---------------------------------------------------------------------------
@@ -357,6 +364,7 @@ class SelfDistillLoop:
         cfg: Optional[SelfDistillConfig] = None,
         generate_fn: Optional[Callable[[str], str]] = None,
         score_fn: Optional[Callable[[str], float]] = None,
+        lora_trainer=None,  # Optional[LoraTrainer] — Sprint 31
     ) -> None:
         self.cfg = cfg or SelfDistillConfig()
         self._generate = generate_fn or self._default_generate
@@ -367,23 +375,35 @@ class SelfDistillLoop:
             diversity_min_len=self.cfg.diversity_min_len,
         )
         self._dataset = DistillDataset()
+        self._lora_trainer = lora_trainer  # Sprint 31: 外部注入 or 自動生成
 
-    def run(self, prompts: List[str]) -> SelfDistillResult:
+    def run(
+        self,
+        prompts: Union[str, List[str]],
+        n_iterations: Optional[int] = None,
+    ) -> SelfDistillResult:
         """
         n_rounds 回の蒸留サイクルを実行する。
 
         Args:
-            prompts: 蒸留に使うプロンプトリスト
+            prompts:      蒸留に使うプロンプト (文字列 or リスト)
+            n_iterations: ラウンド数を上書き (省略時は cfg.n_rounds)
 
         Returns:
             SelfDistillResult
         """
+        # str → List[str] 正規化 (Sprint 31)
+        if isinstance(prompts, str):
+            prompts = [prompts]
+
+        n_rounds = n_iterations if n_iterations is not None else self.cfg.n_rounds
+
         t_total = time.perf_counter()
         round_results: List[SelfDistillRoundResult] = []
         initial_score = self._estimate_score(prompts)
         early_stopped = False
 
-        for round_num in range(1, self.cfg.n_rounds + 1):
+        for round_num in range(1, n_rounds + 1):
             t_round = time.perf_counter()
 
             # Collect
@@ -400,10 +420,17 @@ class SelfDistillLoop:
                 if filtered else 0.0
             )
 
-            # SFT シミュレート
+            # SFT — lora or simulate (Sprint 31)
             sft_result = None
-            if self.cfg.sft_simulate and filtered:
-                sft_result = self._simulate_sft(filtered, round_num)
+            if filtered:
+                if self.cfg.sft_backend == "lora":
+                    trainer = self._lora_trainer
+                    if trainer is None:
+                        from open_mythos.lora_trainer import LoraTrainer
+                        trainer = LoraTrainer()
+                    sft_result = trainer.train(filtered, round_num)
+                elif self.cfg.sft_simulate:
+                    sft_result = self._simulate_sft(filtered, round_num)
 
             round_ms = (time.perf_counter() - t_round) * 1000
             round_results.append(SelfDistillRoundResult(
