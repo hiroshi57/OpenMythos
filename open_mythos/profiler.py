@@ -516,10 +516,15 @@ class ProfilerAgent:
         after_score = _avg_score(after)
         score_improvement = after_score - before_score
 
+        # B7 fix: ステージが after profile に存在しない場合の false positive を防ぐ。
+        # stage_name が after.stages に存在する場合のみ ok を確認する。
+        error_fixed = (
+            stage_name in after.stages and after.stages[stage_name].ok
+        )
         fixed = (
             (report.bottleneck_type == "latency" and lat_improvement_pct > 0)
             or (report.bottleneck_type == "score" and score_improvement > 0)
-            or (report.bottleneck_type == "error" and after.stages.get(stage_name, StageMetrics("", 0)).ok)
+            or (report.bottleneck_type == "error" and error_fixed)
         )
 
         return AutoFixResult(

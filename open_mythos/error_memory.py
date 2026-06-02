@@ -415,10 +415,16 @@ class MistakeGuard:
         t0 = time.perf_counter()
         matched: Optional[PreventionRule] = None
 
+        # 全ルールをスキャンし、最も重要度の高いルールを返す (B6 fix)
+        # 以前は最初にマッチしたルールのみ返しており、high severity ルールが
+        # medium ルールの後ろにある場合に見落とされるバグがあった。
+        _SEV_ORDER = {"high": 0, "medium": 1, "low": 2}
         for rule in self._rules:
             if rule.matches(text):
-                matched = rule
-                break
+                if matched is None:
+                    matched = rule
+                elif _SEV_ORDER.get(rule.severity, 2) < _SEV_ORDER.get(matched.severity, 2):
+                    matched = rule  # より重要度の高いルールで上書き
 
         similar: List[MistakeRecord] = []
         if self._store:

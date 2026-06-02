@@ -440,7 +440,10 @@ class PromptEvolution:
         elif op == "rephrase_start":
             starters = ["まず", "次に", "重要なのは", "具体的には", "まとめると"]
             starter = self._rng.choice(starters)
-            text = starter + "、" + text.lstrip("まず次に重要具体、")
+            # lstrip(chars) は文字集合を除去するため日本語テキストを破壊する可能性がある。
+            # re.sub で既存の導入句を除去してから新しい導入句を付与する。
+            cleaned = re.sub(r"^(?:まず|次に|重要なのは|具体的には|まとめると)[、,，]?\s*", "", text)
+            text = starter + "、" + (cleaned or text)
 
         return PromptGene(
             text=text or gene.text,

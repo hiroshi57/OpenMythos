@@ -230,9 +230,14 @@ class EpisodicStore:
         for e in self._entries[-50:]:  # 最近50件とのみ比較 (高速化)
             if _jaccard(e.text, text) >= self.dedup_threshold:
                 # 同一に近い内容が既存 → score が高い方を残す
+                # context・tags・created_at も新しい方で更新する (B5 fix)
                 if score > e.score:
                     e.score = score
                     e.text = text
+                    e.context = context
+                    if tags:
+                        e.tags = tags
+                    e.created_at = time.time()
                 return None
         entry = MemoryEntry(
             text=text,

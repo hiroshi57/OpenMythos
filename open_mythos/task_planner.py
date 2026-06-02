@@ -457,9 +457,11 @@ class TaskPlanner:
         t_total = time.perf_counter()
 
         for wave in plan.waves:
-            # wave 内を並列実行 (ThreadPoolExecutor の代わりに直列 + max_parallel制限)
-            wave_tasks = wave[: self.max_parallel]
-            for task in wave_tasks:
+            # wave 内を max_parallel 単位のバッチに分割して直列実行する。
+            # (ThreadPoolExecutor による真の並列化は将来課題)
+            # NOTE: 以前は wave[:max_parallel] でスライスしており残りのタスクが
+            #       永久に実行されないバグがあった。全タスクを処理するよう修正。
+            for task in wave:
                 # 前段タスクの出力を context に追加
                 dep_outputs = {d: results[d].output for d in task.depends_on if d in results}
                 task_ctx = dict(ctx)
