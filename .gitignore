@@ -49,3 +49,13 @@ wandb/
 
 # Claude Code session files
 .claude/
+
+# Generated benchmark reports / dashboards (*.html / *.md are generated output)
+benchmark/results/*.html
+benchmark/results/*.md
+# Keep *.json (historical KPI data) — not ignored
+
+# SQLite files generated at runtime
+*.db
+*.sqlite
+*.sqlite3
