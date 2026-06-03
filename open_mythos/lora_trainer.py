@@ -57,6 +57,9 @@ class LoraTrainerConfig:
     device           : "auto" | "cuda" | "cpu"
     checkpoint_dir   : チェックポイント保存ディレクトリ
     save_checkpoints : True でラウンドごとにチェックポイントを保存
+    warmup_steps     : 線形 warmup ステップ数 (0 で無効)
+    min_lr_ratio     : 最小 LR = lr × min_lr_ratio (CosineAnnealingLR eta_min)
+    use_scheduler    : False にすると CosineAnnealingLR を使わず固定 LR
     """
     lr:               float = 3e-4
     n_loops:          int   = 4
@@ -67,6 +70,10 @@ class LoraTrainerConfig:
     device:           str   = "auto"
     checkpoint_dir:   str   = "checkpoints/distill"
     save_checkpoints: bool  = False
+    # Sprint 38: Cosine LR スケジューラ
+    warmup_steps:     int   = 0
+    min_lr_ratio:     float = 0.0
+    use_scheduler:    bool  = True
 
 
 # ---------------------------------------------------------------------------
@@ -244,6 +251,16 @@ class LoraTrainer:
             weight_decay=0.01,
         )
 
+        # Sprint 38: Cosine LR スケジューラ (use_scheduler=False なら生成しない)
+        scheduler = None
+        if self.cfg.use_scheduler:
+            cosine_steps = max(self.cfg.max_steps - self.cfg.warmup_steps, 1)
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+                optimizer,
+                T_max=cosine_steps,
+                eta_min=self.cfg.lr * self.cfg.min_lr_ratio,
+            )
+
         t0 = time.perf_counter()
         total_loss = 0.0
         n_steps    = 0
@@ -252,6 +269,13 @@ class LoraTrainer:
         for batch in loader:
             if n_steps >= self.cfg.max_steps:
                 break
+
+            # 線形 warmup: lr を 0 → cfg.lr まで線形に増加
+            if self.cfg.warmup_steps > 0 and n_steps < self.cfg.warmup_steps:
+                warmup_lr = self.cfg.lr * (n_steps + 1) / self.cfg.warmup_steps
+                for pg in optimizer.param_groups:
+                    pg["lr"] = warmup_lr
+
             input_ids = batch["input_ids"].to(device)
             labels    = batch["labels"].to(device)
             weights   = batch["weights"].to(device)
@@ -275,6 +299,10 @@ class LoraTrainer:
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
+
+            # warmup 終了後にコサイン減衰を進める
+            if scheduler is not None and n_steps >= self.cfg.warmup_steps:
+                scheduler.step()
 
             total_loss += loss.item()
             n_steps    += 1
@@ -362,3 +390,12 @@ class LoraTrainer:
         if self.cfg.device == "auto":
             return "cuda" if torch.cuda.is_available() else "cpu"
         return self.cfg.device
+
+    def get_current_lr(self, optimizer: torch.optim.Optimizer) -> float:
+        """optimizer の最初のパラメータグループの現在の学習率を返す"""
+        return optimizer.param_groups[0]["lr"]
+
+    @staticmethod
+    def cosine_t_max(cfg: "LoraTrainerConfig") -> int:
+        """CosineAnnealingLR に渡す T_max を計算して返す (テスト用)"""
+        return max(cfg.max_steps - cfg.warmup_steps, 1)
