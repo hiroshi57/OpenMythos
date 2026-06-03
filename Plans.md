@@ -1,6 +1,6 @@
 # OpenMythos — Sprint Plans
-> 最終更新: 2026-06-03 (Sprint 37 完了 / 次回: Sprint 38) | ブランチ規約: `feature/<sprint>-<topic>`
-> Sprint 37 完了: ベンチマーク結果可視化 + E2E 疎通テスト → v0.40.0
+> 最終更新: 2026-06-03 (Sprint 38 完了 / 次回: Sprint 39) | ブランチ規約: `feature/<sprint>-<topic>`
+> Sprint 38 完了: GPU LoRA SFT CosineScheduler 統合 + 実機検証基盤 → v0.41.0
 > アーカイブ: Sprint 1〜9 → `docs/archive/sprint-plans-1-9.md`
 >            Sprint 10〜19 → `docs/archive/sprint-plans-10-19.md`
 >            Sprint 20〜25 → `docs/archive/sprint-plans-20-25.md`
@@ -32,8 +32,9 @@
 | 35 | ベンチマーク強化 (10パターン KPI 計測) | `benchmark/growing_ai_bench.py` | 1822 | v0.38 |
 | 36 | API ドキュメント整備 + CI ベンチ自動化 | `serve/api.py` `.github/workflows/bench.yml` | 1861 | v0.39 |
 | 37 | **ベンチマーク結果可視化 + E2E 疎通テスト** | `benchmark/report.py` | 1922 | v0.40 |
+| 38 | **GPU LoRA CosineScheduler 統合 + 実機検証基盤** | `open_mythos/lora_trainer.py` | 1963 | v0.41 |
 
-> **累計テスト数**: 1922 PASS (Sprint 37: +61)
+> **累計テスト数**: 1963 PASS (Sprint 38: +41)
 
 ---
 
@@ -54,7 +55,18 @@
 
 ---
 
-## Sprint 37 詳細 (最新)
+## Sprint 38 詳細 (最新)
+
+### Sprint 38: GPU LoRA SFT — CosineScheduler 統合 + 実機検証基盤 — v0.41.0
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 38.1 | `lora_trainer.py` — `LoraTrainerConfig` に `warmup_steps` / `min_lr_ratio` / `use_scheduler` 追加 | cc:完了 |
+| 38.2 | `lora_trainer.py` — `_real_train()` に `CosineAnnealingLR` + 線形 warmup 統合 | cc:完了 |
+| 38.3 | `lora_trainer.py` — `cosine_t_max()` / `get_current_lr()` ヘルパー追加 | cc:完了 |
+| 38.T | `tests/test_sprint38.py` — 41 tests PASS / 3 GPU-skip (累計 1963) | cc:完了 |
+| 38.V | PyPI v0.41.0 | cc:完了 |
+
+## Sprint 37 詳細 (完了)
 
 ### Sprint 37: ベンチマーク結果可視化 + E2E 疎通テスト — v0.40.0
 | task-id | 説明 | 状態 |

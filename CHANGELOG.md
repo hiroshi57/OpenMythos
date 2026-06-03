@@ -4,6 +4,42 @@ All notable changes to OpenMythos are documented here.
 
 ---
 
+## [0.41.0] — 2026-06-03
+
+### Sprint 38: GPU LoRA SFT — CosineScheduler 統合 + 実機検証基盤
+
+#### `open_mythos/lora_trainer.py` 更新
+
+- `LoraTrainerConfig` に 3 フィールドを追加
+  - `warmup_steps: int = 0` — 線形 warmup ステップ数 (0 で無効)
+  - `min_lr_ratio: float = 0.0` — 最小 LR = lr × min_lr_ratio (CosineAnnealingLR eta_min)
+  - `use_scheduler: bool = True` — False にすると固定 LR のまま (スケジューラを作らない)
+- `_real_train()` に `CosineAnnealingLR` を統合
+  - `use_scheduler=True` の時のみスケジューラを生成 (PyTorch init 時の step() 漏れを防止)
+  - warmup 期間中は `optimizer.param_groups["lr"]` を線形増加でオーバーライド
+  - warmup 終了後に `scheduler.step()` でコサイン減衰を開始
+- ヘルパーメソッド追加
+  - `cosine_t_max(cfg)` — `max(max_steps - warmup_steps, 1)` を返す静的メソッド
+  - `get_current_lr(optimizer)` — optimizer の現在 LR を返す
+
+#### `tests/test_sprint38.py` (新規, 41 tests / 3 GPU-skip)
+
+- `TestLoraTrainerConfigSprint38` (7 tests) — 新規フィールドのデフォルト値・カスタム値
+- `TestCosineSchedulerUnit` (8 tests) — T_max 計算・eta_min・LR 単調減少・フロア保証
+- `TestRealTrainSmoke` (8 tests) — CPU で _real_train() が SFTResult を返すことを確認
+- `TestWarmupBehavior` (6 tests) — 線形 warmup の LR 公式・単調増加・実行確認
+- `TestSchedulerToggle` (4 tests) — use_scheduler=False で step() 非呼び出しを mock 検証
+- `TestBackwardCompat` (8 tests) — 既存 simulate/dataset/collate インタフェース非破壊確認
+- `TestGPURealTrain` (3 tests, skipif) — CUDA 実機用テスト (GPU なし環境でスキップ)
+
+#### テスト統計
+
+- 新規: +41 tests (GPU スキップ含む / 実行 PASS: 41)
+- 累計: **1,963 PASS**
+- バージョン: v0.41.0
+
+---
+
 ## [0.40.0] — 2026-06-03
 
 ### Sprint 37: ベンチマーク結果可視化 + E2E 疎通テスト
