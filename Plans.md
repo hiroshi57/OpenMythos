@@ -1,6 +1,6 @@
 # OpenMythos — Sprint Plans
-> 最終更新: 2026-06-02 (Sprint 36 完了 / 次回: Sprint 37) | ブランチ規約: `feature/<sprint>-<topic>`
-> Sprint 36 完了: API ドキュメント整備 + CI ベンチマーク自動化 → v0.39.0
+> 最終更新: 2026-06-03 (Sprint 37 完了 / 次回: Sprint 38) | ブランチ規約: `feature/<sprint>-<topic>`
+> Sprint 37 完了: ベンチマーク結果可視化 + E2E 疎通テスト → v0.40.0
 > アーカイブ: Sprint 1〜9 → `docs/archive/sprint-plans-1-9.md`
 >            Sprint 10〜19 → `docs/archive/sprint-plans-10-19.md`
 >            Sprint 20〜25 → `docs/archive/sprint-plans-20-25.md`
@@ -30,9 +30,10 @@
 | 33 | LongTermMemory FAISS ANN | `long_term_memory.py` | 1737 | v0.36 |
 | 34 | MistakeGuardMiddleware | `error_memory.py` | 1777 | v0.37 |
 | 35 | ベンチマーク強化 (10パターン KPI 計測) | `benchmark/growing_ai_bench.py` | 1822 | v0.38 |
-| 36 | **API ドキュメント整備 + CI ベンチ自動化** | `serve/api.py` `.github/workflows/bench.yml` | 1861 | v0.39 |
+| 36 | API ドキュメント整備 + CI ベンチ自動化 | `serve/api.py` `.github/workflows/bench.yml` | 1861 | v0.39 |
+| 37 | **ベンチマーク結果可視化 + E2E 疎通テスト** | `benchmark/report.py` | 1922 | v0.40 |
 
-> **累計テスト数**: 1861 PASS (Sprint 36: +39)
+> **累計テスト数**: 1922 PASS (Sprint 37: +61)
 
 ---
 
@@ -53,7 +54,19 @@
 
 ---
 
-## Sprint 36 詳細 (最新)
+## Sprint 37 詳細 (最新)
+
+### Sprint 37: ベンチマーク結果可視化 + E2E 疎通テスト — v0.40.0
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 37.1 | `benchmark/report.py` — `ReportGenerator.to_markdown()` / `to_html()` / `save_*()` | cc:完了 |
+| 37.2 | `benchmark/report.py` — `load_reports()` / `trend_table(json_paths, n)` トレンド表生成 | cc:完了 |
+| 37.3 | `tests/test_sprint37.py` — P2〜P10 + guard + grow TestClient 疎通テスト (20 tests) | cc:完了 |
+| 37.4 | `.github/workflows/bench.yml` — HTML レポート生成ステップ + artifact upload (retention 90日) | cc:完了 |
+| 37.T | `tests/test_sprint37.py` — 61 tests PASS (累計 1922) | cc:完了 |
+| 37.V | PyPI v0.40.0 | cc:完了 |
+
+## Sprint 36 詳細 (完了)
 
 ### Sprint 36: API ドキュメント整備 + CI ベンチマーク自動化 — v0.39.0
 | task-id | 説明 | 状態 |

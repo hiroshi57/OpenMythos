@@ -53,6 +53,17 @@ jobs:
             --output benchmark/results/bench-$(date +%Y%m%d).json \
           | tee bench_output.txt
 
+      - name: Generate HTML report and dashboard
+        run: |
+          RESULT_JSON="benchmark/results/bench-$(date +%Y%m%d).json"
+          TREND_JSONS="$(ls benchmark/results/bench-*.json 2>/dev/null | tr '\n' ' ')"
+          python benchmark/report.py \
+            --input "$RESULT_JSON" \
+            --html benchmark/results/report-$(date +%Y%m%d).html \
+            --markdown benchmark/results/report-$(date +%Y%m%d).md \
+            --dashboard benchmark/results/dashboard-$(date +%Y%m%d).html \
+            ${TREND_JSONS:+--trend $TREND_JSONS}
+
       - name: Show summary
         run: |
           echo "## Benchmark Summary" >> $GITHUB_STEP_SUMMARY
@@ -65,6 +76,15 @@ jobs:
         with:
           name: benchmark-results-${{ github.run_id }}
           path: benchmark/results/
+          retention-days: 90
+
+      - name: Upload HTML report and dashboard
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-html-report-${{ github.run_id }}
+          path: |
+            benchmark/results/report-*.html
+            benchmark/results/dashboard-*.html
           retention-days: 90
 
       - name: Upload benchmark log
