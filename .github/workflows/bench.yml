@@ -1,0 +1,95 @@
+name: Benchmark (週次 Growing AI P1〜P10)
+
+on:
+  schedule:
+    # 毎週月曜 09:00 JST (= UTC 00:00) に自動実行
+    - cron: "0 0 * * 1"
+  workflow_dispatch:
+    inputs:
+      patterns:
+        description: "実行パターン (例: p1 p2 p5)  空白で全パターン"
+        required: false
+        default: ""
+      verbose:
+        description: "詳細ログを出力する"
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  benchmark:
+    name: Growing AI Benchmark
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -e .
+
+      - name: Run benchmark
+        id: bench
+        run: |
+          ARGS=""
+          if [ -n "${{ github.event.inputs.patterns }}" ]; then
+            ARGS="--patterns ${{ github.event.inputs.patterns }}"
+          fi
+          if [ "${{ github.event.inputs.verbose }}" = "true" ]; then
+            ARGS="$ARGS --verbose"
+          fi
+          mkdir -p benchmark/results
+          python benchmark/growing_ai_bench.py \
+            $ARGS \
+            --output benchmark/results/bench-$(date +%Y%m%d).json \
+          | tee bench_output.txt
+
+      - name: Generate HTML report and dashboard
+        run: |
+          RESULT_JSON="benchmark/results/bench-$(date +%Y%m%d).json"
+          TREND_JSONS="$(ls benchmark/results/bench-*.json 2>/dev/null | tr '\n' ' ')"
+          python benchmark/report.py \
+            --input "$RESULT_JSON" \
+            --html benchmark/results/report-$(date +%Y%m%d).html \
+            --markdown benchmark/results/report-$(date +%Y%m%d).md \
+            --dashboard benchmark/results/dashboard-$(date +%Y%m%d).html \
+            ${TREND_JSONS:+--trend $TREND_JSONS}
+
+      - name: Show summary
+        run: |
+          echo "## Benchmark Summary" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat bench_output.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-${{ github.run_id }}
+          path: benchmark/results/
+          retention-days: 90
+
+      - name: Upload HTML report and dashboard
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-html-report-${{ github.run_id }}
+          path: |
+            benchmark/results/report-*.html
+            benchmark/results/dashboard-*.html
+          retention-days: 90
+
+      - name: Upload benchmark log
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-log-${{ github.run_id }}
+          path: bench_output.txt
+          retention-days: 30

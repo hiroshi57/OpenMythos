@@ -4,6 +4,95 @@ All notable changes to OpenMythos are documented here.
 
 ---
 
+## [0.40.0] — 2026-06-03
+
+### Sprint 37: ベンチマーク結果可視化 + E2E 疎通テスト
+
+#### `benchmark/report.py` (新規)
+- `ReportGenerator` — BenchmarkReport を Markdown / HTML に変換するジェネレータークラス
+  - `to_markdown()` — ヘッダー・結果テーブル・パターン詳細・フッターを含む Markdown 文字列
+  - `to_html()` — self-contained HTML (スタイル埋め込み・✅/❌ 可視インジケーター)
+  - `save_markdown(path)` / `save_html(path)` — ファイル保存 (親ディレクトリ自動作成)
+  - `load_reports(json_paths)` — 複数 JSON からタイムスタンプ昇順ソートで読み込み
+  - `trend_table(json_paths, n)` — 過去 N 回分の KPI 改善率トレンド表 (Markdown)
+- CLI: `python benchmark/report.py --input X.json --html out.html --markdown out.md`
+- CLI: `python benchmark/report.py --trend *.json --trend-n 5` でトレンド表を stdout 出力
+
+#### `.github/workflows/bench.yml` 更新 (Sprint 37: 37.4)
+- `Generate HTML report` ステップを追加: `report.py --html` で HTML + Markdown を生成
+- `Upload HTML report` artifact ステップを追加 (retention: 90 日)
+  - artifact 名: `benchmark-html-report-<run_id>`
+
+#### `benchmark/report.py` 追加: `to_dashboard()` / `save_dashboard()`
+- Chart.js (CDN) を使ったインタラクティブ HTML ダッシュボード
+  - KPI サマリーカード 4枚 (成功率 / 平均改善率 / 平均レイテンシ / 合計実行時間)
+  - KPI 改善率 棒グラフ (正=緑 / 負=赤)
+  - Baseline vs Final グループ棒グラフ
+  - レイテンシ 横棒グラフ
+  - レーダーチャート (Baseline / Final スコア)
+  - トレンドライングラフ (trend_reports 2件以上で自動表示)
+- CLI: `--dashboard out.html` + `--trend *.json` 同時指定でトレンドを埋め込む
+
+#### `.github/workflows/bench.yml` 追加更新
+- `Generate HTML report and dashboard` に `--dashboard` 生成を追加
+- `Upload HTML report and dashboard` artifact に `dashboard-*.html` を追加
+
+#### `tests/test_sprint37.py` (新規) — 61 tests PASS
+- `TestToMarkdown` (8) — `to_markdown()` の構造・内容検証
+- `TestToHtml` (8) — `to_html()` の DOCTYPE / charset / テーブル / インジケーター検証
+- `TestSaveMethods` (4) — `save_markdown()` / `save_html()` のファイル保存検証
+- `TestTrend` (8) — `load_reports()` / `trend_table()` の時系列・フィルター検証
+- `TestDashboard` (8) — `to_dashboard()` / `save_dashboard()` / Chart.js / トレンド埋め込み検証
+- `TestP2KPISmoke` 〜 `TestGrowSmoke` (20) — P2〜P10 + guard + grow TestClient 疎通テスト
+- `TestBenchYmlHtmlArtifact` (5) — bench.yml の HTML ステップ構造検証
+
+#### バージョン: v0.40.0
+
+---
+
+## [0.38.0] — 2026-06-02
+
+### Sprint 35: Growing AI ベンチマーク強化
+
+#### `benchmark/growing_ai_bench.py` (新規)
+- `PatternBenchResult` — 1パターン結果データクラス (baseline/final/improvement/latency/success)
+- P1〜P10 個別ベンチマーク関数 (`bench_p1_debate` 〜 `bench_p10_planner`)
+  - P1: ConsensusEngine.score() で合意テキスト生成 → LLMO スコア比較
+  - P2: KPIAgent.improve_loop() で KPI 自律改善 → +61.6% 改善確認
+  - P3: ProfilerAgent でボトルネック検出 → latency_improvement_pct を記録
+  - P4: ExternalSignalAgent でシグナル対抗アクション → optimized_context LLMO 比較
+  - P5: MistakeGuard 精度 (precision × recall F1) → guard_score を KPI に反映
+  - P6: SelfDistillLoop (simulate) → mean_score_improvement 記録
+  - P7: LongTermMemoryAgent 5エピソード蓄積 → retrieval relevance 記録
+  - P8: EnsembleScorer 3テキスト → best ensemble_score を final KPI に
+  - P9: PromptEvolution GA 4世代 → fitness improvement 記録
+  - P10: TaskPlanner.execute() → success_rate + synthesized_output LLMO スコア
+- `GrowingAIBenchmark` — 全パターン一括実行クラス
+  - `run_all(verbose=True)` → `BenchmarkReport`
+  - `print_table()` — コンソール表示
+  - `format_summary()` — 1行サマリー
+  - `save() / load()` — JSON 保存・読み込み
+- `BenchmarkReport` — 集計レポート (avg_improvement / avg_latency / success_rate)
+
+#### CLI
+- `python benchmark/growing_ai_bench.py` — 全10パターン実行
+- `--patterns p2 p5 p8` — 指定パターンのみ
+- `--verbose` — 詳細ログ
+- `--output path/to/result.json` — 保存先指定
+
+#### 実測結果 (2026-06-02)
+```
+全10パターン成功: 10/10 (100%)
+平均 KPI 改善量: +0.0551 (+10.5%)
+合計レイテンシ: 60ms
+最大改善: P2 KPIAgent +61.6%
+```
+
+#### テスト: `tests/test_sprint35.py` — 45 tests PASS
+#### バージョン: v0.38.0
+
+---
+
 ## [0.37.0] — 2026-06-02
 
 ### Sprint 34: MistakeGuardMiddleware — 全 API エンドポイント透過チェック

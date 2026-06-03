@@ -145,10 +145,11 @@ app = FastAPI(
         "**認証**: `Authorization: Bearer <api-key>` ヘッダ必須 (環境変数 `API_KEY` 設定時)。\n\n"
         "**レート制限**: デフォルト 60 rpm (環境変数 `RATE_LIMIT_RPM` で変更可)。"
     ),
-    version="0.22.0",
+    version="0.38.0",
     lifespan=lifespan,
     dependencies=[Depends(verify_api_key)],
     openapi_tags=[
+        # ── 基盤 ──────────────────────────────────────────────────
         {"name": "health", "description": "ヘルスチェック・サーバ情報"},
         {"name": "infer", "description": "スコアリング・分類推論"},
         {"name": "generate", "description": "テキスト生成 (SEO / LLMO / 広告コピー)"},
@@ -160,6 +161,20 @@ app = FastAPI(
         {"name": "rag", "description": "RAG (Retrieval-Augmented Generation)"},
         {"name": "sessions", "description": "会話セッション管理"},
         {"name": "batch", "description": "バッチ推論"},
+        # ── 育つ AI P1〜P10 ────────────────────────────────────────
+        {"name": "debate", "description": "P1: 討議型集合知 — DebateOrchestrator / ConsensusEngine"},
+        {"name": "kpi", "description": "P2: KPI 駆動自己改善 — KPIAgent"},
+        {"name": "profiler", "description": "P3: ボトルネック発見・解消 — ProfilerAgent"},
+        {"name": "signal", "description": "P4: 外部要因適応 — ExternalSignalAgent"},
+        {"name": "mistakes", "description": "P5: ミスから学習 — MistakeGuard / ErrorMemory"},
+        {"name": "distill", "description": "P6: 継続的自己蒸留 — SelfDistillLoop"},
+        {"name": "memory", "description": "P7: 長期記憶統合 — LongTermMemoryAgent (FAISS ANN)"},
+        {"name": "ensemble", "description": "P8: アンサンブル品質評価 — EnsembleScorer"},
+        {"name": "evolve", "description": "P9: 適応型プロンプト進化 — PromptEvolution (GA)"},
+        {"name": "plan", "description": "P10: 自律タスク計画 — TaskPlanner"},
+        # ── 統合・ガード ───────────────────────────────────────────
+        {"name": "grow", "description": "統合オーケストレーター — GrowingAIOrchestrator (P1〜P10 連携)"},
+        {"name": "guard", "description": "MistakeGuardMiddleware — 全 API ミス透過チェック"},
     ],
 )
 
