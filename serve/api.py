@@ -29,7 +29,7 @@ import os
 import time
 import uuid
 from contextlib import asynccontextmanager
-from typing import Iterator, Literal, Optional
+from typing import Iterator, List, Literal, Optional
 
 import torch
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
@@ -639,6 +639,80 @@ def infer_raw(req: InferRequest):
 # OpenAI 互換 /v1/chat/completions
 # ---------------------------------------------------------------------------
 
+# ── Sprint 40: サンプリング共通ヘルパー ────────────────────────────────────
+
+
+def _apply_top_p(logits: "torch.Tensor", top_p: float) -> "torch.Tensor":
+    """Nucleus (top-p) フィルタリングを適用してマスク済み logits を返す。"""
+    if top_p >= 1.0:
+        return logits
+    sorted_logits, sorted_idx = torch.sort(logits, descending=True)
+    cum_probs = torch.cumsum(torch.softmax(sorted_logits, dim=-1), dim=-1)
+    mask = cum_probs - torch.softmax(sorted_logits, dim=-1) > top_p
+    sorted_logits[mask] = float("-inf")
+    return torch.full_like(logits, float("-inf")).scatter(0, sorted_idx, sorted_logits)
+
+
+def _apply_sampling_penalties(
+    logits: "torch.Tensor",
+    generated: List[int],
+    presence_penalty: float,
+    frequency_penalty: float,
+) -> "torch.Tensor":
+    """presence_penalty / frequency_penalty を logits に適用する。"""
+    if presence_penalty == 0.0 and frequency_penalty == 0.0:
+        return logits
+    logits = logits.clone()
+    token_counts: dict[int, int] = {}
+    for tok in generated:
+        token_counts[tok] = token_counts.get(tok, 0) + 1
+    for tok, count in token_counts.items():
+        if 0 <= tok < logits.shape[0]:
+            logits[tok] -= presence_penalty
+            logits[tok] -= frequency_penalty * count
+    return logits
+
+
+def _collect_logprobs(
+    logits: "torch.Tensor", chosen_token: int, top_k: int
+) -> Optional[dict]:
+    """chosen トークンの log prob と top_k logprobs を返す。top_k=0 なら None。"""
+    if top_k == 0:
+        return None
+    log_probs = torch.log_softmax(logits, dim=-1)
+    chosen_lp = float(log_probs[chosen_token].item())
+    if top_k > 0:
+        vals, idxs = torch.topk(log_probs, min(top_k, log_probs.shape[0]))
+        top = [
+            {"token": int(i.item()), "logprob": float(v.item())}
+            for v, i in zip(vals, idxs)
+        ]
+    else:
+        top = []
+    return {"token": chosen_token, "logprob": chosen_lp, "top_logprobs": top}
+
+
+def _check_stop(text: str, stop: Optional[List[str]]) -> Optional[str]:
+    """text の末尾にマッチする stop シーケンスを返す。なければ None。"""
+    if not stop:
+        return None
+    for s in stop:
+        if s and text.endswith(s):
+            return s
+    return None
+
+
+def _truncate_at_stop(text: str, stop: Optional[List[str]]) -> str:
+    """text 内で最初に出現する stop シーケンスの手前でカットする。"""
+    if not stop:
+        return text
+    best_pos = len(text)
+    for s in stop:
+        idx = text.find(s)
+        if idx != -1 and idx < best_pos:
+            best_pos = idx
+    return text[:best_pos]
+
 
 class ChatMessage(BaseModel):
     role: Literal["system", "user", "assistant"] = "user"
@@ -656,12 +730,20 @@ class ChatRequest(BaseModel):
     loops: int = Field(DEFAULT_LOOPS, ge=1, le=16)
     stream: bool = Field(False, description="Return Server-Sent Events stream")
     task: TaskType = Field("general")
+    # Sprint 40: 拡張フィールド
+    stop: Optional[List[str]] = Field(None, description="Stop sequences (up to 4)")
+    n: int = Field(1, ge=1, le=4, description="Number of completions to generate")
+    logprobs: bool = Field(False, description="Include token log probabilities")
+    top_logprobs: int = Field(0, ge=0, le=5, description="Top-K logprobs per token (0=disabled)")
+    presence_penalty: float = Field(0.0, ge=-2.0, le=2.0, description="Presence penalty")
+    frequency_penalty: float = Field(0.0, ge=-2.0, le=2.0, description="Frequency penalty")
 
 
 class ChatChoice(BaseModel):
     index: int
     message: ChatMessage
     finish_reason: str
+    logprobs: Optional[dict] = None
 
 
 class ChatUsage(BaseModel):
@@ -677,6 +759,7 @@ class ChatResponse(BaseModel):
     model: str
     choices: list[ChatChoice]
     usage: ChatUsage
+    system_fingerprint: str = "fp_openmythos"
 
 
 def _build_chat_prompt(messages: list[ChatMessage]) -> str:
@@ -697,7 +780,10 @@ def _build_chat_prompt(messages: list[ChatMessage]) -> str:
     "/v1/chat/completions",
     tags=["chat"],
     summary="OpenAI 互換チャット推論",
-    description="OpenAI `/v1/chat/completions` 互換。`stream=true` で SSE ストリーミング対応。",
+    description=(
+        "OpenAI `/v1/chat/completions` 互換。`stream=true` で SSE ストリーミング対応。\n\n"
+        "**Sprint 40 拡張**: `stop` / `n` / `logprobs` / `presence_penalty` / `frequency_penalty`"
+    ),
 )
 def chat_completions(req: ChatRequest):
     """OpenAI 互換チャット推論エンドポイント。
@@ -719,35 +805,33 @@ def chat_completions(req: ChatRequest):
     input_ids = enc["input_ids"].to(state.device)
     prompt_tokens = input_ids.shape[1]
 
+    # ── SSE ストリーミング ────────────────────────────────────────────────
     if req.stream:
-        # --- SSE ストリーミング ---
         def _event_stream():
             import json as _json
 
             completion_id = f"chatcmpl-{uuid.uuid4().hex[:8]}"
             generated: list[int] = []
+            decoded_so_far = ""
             cur_ids = input_ids
+            finish_reason = "length"  # default; overridden on EOS/stop
 
             for _ in range(req.max_tokens):
                 with torch.no_grad():
                     logits = state.model(cur_ids, n_loops=loops)
                 next_logits = logits[0, -1, :] / max(req.temperature, 1e-6)
-                if req.top_p < 1.0:
-                    sorted_logits, sorted_idx = torch.sort(next_logits, descending=True)
-                    cum_probs = torch.cumsum(
-                        torch.softmax(sorted_logits, dim=-1), dim=-1
-                    )
-                    mask = cum_probs - torch.softmax(sorted_logits, dim=-1) > req.top_p
-                    sorted_logits[mask] = float("-inf")
-                    next_logits = torch.full_like(next_logits, float("-inf")).scatter(
-                        0, sorted_idx, sorted_logits
-                    )
+                next_logits = _apply_sampling_penalties(
+                    next_logits, generated,
+                    req.presence_penalty, req.frequency_penalty,
+                )
+                next_logits = _apply_top_p(next_logits, req.top_p)
                 probs = torch.softmax(next_logits, dim=-1)
                 next_token = int(torch.multinomial(probs, 1).item())
                 generated.append(next_token)
                 token_text = state.tokenizer.decode(
                     [next_token], skip_special_tokens=True
                 )
+                decoded_so_far += token_text
                 cur_ids = torch.cat(
                     [cur_ids, torch.tensor([[next_token]], device=state.device)], dim=1
                 )
@@ -755,6 +839,7 @@ def chat_completions(req: ChatRequest):
                 chunk = {
                     "id": completion_id,
                     "object": "chat.completion.chunk",
+                    "model": "openmythos",
                     "choices": [
                         {
                             "delta": {"content": token_text},
@@ -766,53 +851,287 @@ def chat_completions(req: ChatRequest):
                 yield f"data: {_json.dumps(chunk)}\n\n"
 
                 if next_token == state.tokenizer.eos_token_id:
+                    finish_reason = "stop"
+                    break
+                if _check_stop(decoded_so_far, req.stop):
+                    finish_reason = "stop"
                     break
 
+            # final chunk with finish_reason + usage
             done_chunk = {
                 "id": completion_id,
                 "object": "chat.completion.chunk",
-                "choices": [{"delta": {}, "index": 0, "finish_reason": "stop"}],
+                "model": "openmythos",
+                "choices": [{"delta": {}, "index": 0, "finish_reason": finish_reason}],
+                "usage": {
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": len(generated),
+                    "total_tokens": prompt_tokens + len(generated),
+                },
             }
             yield f"data: {_json.dumps(done_chunk)}\n\n"
             yield "data: [DONE]\n\n"
 
         return StreamingResponse(_event_stream(), media_type="text/event-stream")
 
-    # --- 非ストリーミング: 一括生成 ---
-    generated_ids: list[int] = []
-    cur_ids = input_ids
+    # ── 非ストリーミング: n 候補一括生成 ────────────────────────────────
+    completion_id = f"chatcmpl-{uuid.uuid4().hex[:8]}"
+    choices: list[ChatChoice] = []
+    total_completion_tokens = 0
 
-    with torch.no_grad():
-        for _ in range(req.max_tokens):
-            logits = state.model(cur_ids, n_loops=loops)
-            next_logits = logits[0, -1, :] / max(req.temperature, 1e-6)
-            probs = torch.softmax(next_logits, dim=-1)
-            next_token = int(torch.multinomial(probs, 1).item())
-            generated_ids.append(next_token)
-            cur_ids = torch.cat(
-                [cur_ids, torch.tensor([[next_token]], device=state.device)], dim=1
+    for choice_idx in range(req.n):
+        generated_ids: list[int] = []
+        lp_list: list[dict] = []
+        cur_ids = input_ids
+        finish_reason = "length"
+
+        with torch.no_grad():
+            for _ in range(req.max_tokens):
+                logits = state.model(cur_ids, n_loops=loops)
+                next_logits = logits[0, -1, :] / max(req.temperature, 1e-6)
+                next_logits = _apply_sampling_penalties(
+                    next_logits, generated_ids,
+                    req.presence_penalty, req.frequency_penalty,
+                )
+                next_logits = _apply_top_p(next_logits, req.top_p)
+                probs = torch.softmax(next_logits, dim=-1)
+                next_token = int(torch.multinomial(probs, 1).item())
+
+                if req.logprobs or req.top_logprobs > 0:
+                    lp = _collect_logprobs(next_logits, next_token, req.top_logprobs)
+                    if lp:
+                        lp_list.append(lp)
+
+                generated_ids.append(next_token)
+                cur_ids = torch.cat(
+                    [cur_ids, torch.tensor([[next_token]], device=state.device)], dim=1
+                )
+
+                if next_token == state.tokenizer.eos_token_id:
+                    finish_reason = "stop"
+                    break
+
+        completion_text = state.tokenizer.decode(
+            generated_ids, skip_special_tokens=True
+        )
+        completion_text = _truncate_at_stop(completion_text, req.stop)
+        # re-evaluate finish_reason after stop truncation
+        if finish_reason == "length" and req.stop:
+            raw = state.tokenizer.decode(generated_ids, skip_special_tokens=True)
+            if raw != completion_text:
+                finish_reason = "stop"
+
+        total_completion_tokens += len(generated_ids)
+        choices.append(
+            ChatChoice(
+                index=choice_idx,
+                message=ChatMessage(role="assistant", content=completion_text),
+                finish_reason=finish_reason,
+                logprobs={"tokens": lp_list} if lp_list else None,
             )
-            if next_token == state.tokenizer.eos_token_id:
-                break
-
-    completion_text = state.tokenizer.decode(generated_ids, skip_special_tokens=True)
-    completion_tokens = len(generated_ids)
+        )
 
     return ChatResponse(
-        id=f"chatcmpl-{uuid.uuid4().hex[:8]}",
+        id=completion_id,
         created=int(time.time()),
         model="openmythos",
-        choices=[
-            ChatChoice(
-                index=0,
-                message=ChatMessage(role="assistant", content=completion_text),
-                finish_reason="stop",
-            )
-        ],
+        choices=choices,
         usage=ChatUsage(
             prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
-            total_tokens=prompt_tokens + completion_tokens,
+            completion_tokens=total_completion_tokens,
+            total_tokens=prompt_tokens + total_completion_tokens,
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Sprint 40: /v1/completions — テキスト補完 (OpenAI 互換)
+# ---------------------------------------------------------------------------
+
+
+class CompletionRequest(BaseModel):
+    model: str = Field("openmythos", description="Model identifier")
+    prompt: str = Field(..., description="Text prompt to complete")
+    max_tokens: int = Field(64, ge=1, le=512)
+    temperature: float = Field(1.0, ge=0.0, le=2.0)
+    top_p: float = Field(1.0, ge=0.0, le=1.0)
+    loops: int = Field(DEFAULT_LOOPS, ge=1, le=16)
+    stream: bool = Field(False, description="Return Server-Sent Events stream")
+    stop: Optional[List[str]] = Field(None, description="Stop sequences")
+    n: int = Field(1, ge=1, le=4, description="Number of completions")
+    logprobs: bool = Field(False)
+    top_logprobs: int = Field(0, ge=0, le=5)
+    presence_penalty: float = Field(0.0, ge=-2.0, le=2.0)
+    frequency_penalty: float = Field(0.0, ge=-2.0, le=2.0)
+    echo: bool = Field(False, description="Echo prompt in the returned text")
+
+
+class CompletionChoice(BaseModel):
+    index: int
+    text: str
+    finish_reason: str
+    logprobs: Optional[dict] = None
+
+
+class CompletionResponse(BaseModel):
+    id: str
+    object: str = "text_completion"
+    created: int
+    model: str
+    choices: list[CompletionChoice]
+    usage: ChatUsage
+    system_fingerprint: str = "fp_openmythos"
+
+
+@app.post(
+    "/v1/completions",
+    tags=["chat"],
+    summary="OpenAI 互換テキスト補完",
+    description=(
+        "OpenAI `/v1/completions` 互換。`stream=true` で SSE 対応。\n\n"
+        "チャット形式 (`messages`) ではなく平文 `prompt` を受け付ける。"
+    ),
+)
+def text_completions(req: CompletionRequest):
+    """OpenAI 互換テキスト補完エンドポイント。"""
+    loops = min(req.loops, MAX_LOOPS)
+    enc = state.tokenizer(
+        req.prompt,
+        return_tensors="pt",
+        truncation=True,
+        max_length=512,
+    )
+    input_ids = enc["input_ids"].to(state.device)
+    prompt_tokens = input_ids.shape[1]
+
+    # ── SSE ストリーミング ────────────────────────────────────────────────
+    if req.stream:
+        def _event_stream():
+            import json as _json
+
+            cid = f"cmpl-{uuid.uuid4().hex[:8]}"
+            generated: list[int] = []
+            decoded_so_far = req.prompt if req.echo else ""
+            cur_ids = input_ids
+            finish_reason = "length"
+
+            for _ in range(req.max_tokens):
+                with torch.no_grad():
+                    logits = state.model(cur_ids, n_loops=loops)
+                next_logits = logits[0, -1, :] / max(req.temperature, 1e-6)
+                next_logits = _apply_sampling_penalties(
+                    next_logits, generated,
+                    req.presence_penalty, req.frequency_penalty,
+                )
+                next_logits = _apply_top_p(next_logits, req.top_p)
+                probs = torch.softmax(next_logits, dim=-1)
+                next_token = int(torch.multinomial(probs, 1).item())
+                generated.append(next_token)
+                token_text = state.tokenizer.decode(
+                    [next_token], skip_special_tokens=True
+                )
+                decoded_so_far += token_text
+                cur_ids = torch.cat(
+                    [cur_ids, torch.tensor([[next_token]], device=state.device)], dim=1
+                )
+
+                chunk = {
+                    "id": cid,
+                    "object": "text_completion",
+                    "model": "openmythos",
+                    "choices": [
+                        {"text": token_text, "index": 0, "finish_reason": None}
+                    ],
+                }
+                yield f"data: {_json.dumps(chunk)}\n\n"
+
+                if next_token == state.tokenizer.eos_token_id:
+                    finish_reason = "stop"
+                    break
+                if _check_stop(decoded_so_far, req.stop):
+                    finish_reason = "stop"
+                    break
+
+            done_chunk = {
+                "id": cid,
+                "object": "text_completion",
+                "model": "openmythos",
+                "choices": [{"text": "", "index": 0, "finish_reason": finish_reason}],
+                "usage": {
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": len(generated),
+                    "total_tokens": prompt_tokens + len(generated),
+                },
+            }
+            yield f"data: {_json.dumps(done_chunk)}\n\n"
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(_event_stream(), media_type="text/event-stream")
+
+    # ── 非ストリーミング ──────────────────────────────────────────────────
+    cid = f"cmpl-{uuid.uuid4().hex[:8]}"
+    choices: list[CompletionChoice] = []
+    total_completion_tokens = 0
+
+    for choice_idx in range(req.n):
+        generated_ids: list[int] = []
+        lp_list: list[dict] = []
+        cur_ids = input_ids
+        finish_reason = "length"
+
+        with torch.no_grad():
+            for _ in range(req.max_tokens):
+                logits = state.model(cur_ids, n_loops=loops)
+                next_logits = logits[0, -1, :] / max(req.temperature, 1e-6)
+                next_logits = _apply_sampling_penalties(
+                    next_logits, generated_ids,
+                    req.presence_penalty, req.frequency_penalty,
+                )
+                next_logits = _apply_top_p(next_logits, req.top_p)
+                probs = torch.softmax(next_logits, dim=-1)
+                next_token = int(torch.multinomial(probs, 1).item())
+
+                if req.logprobs or req.top_logprobs > 0:
+                    lp = _collect_logprobs(next_logits, next_token, req.top_logprobs)
+                    if lp:
+                        lp_list.append(lp)
+
+                generated_ids.append(next_token)
+                cur_ids = torch.cat(
+                    [cur_ids, torch.tensor([[next_token]], device=state.device)], dim=1
+                )
+                if next_token == state.tokenizer.eos_token_id:
+                    finish_reason = "stop"
+                    break
+
+        text = state.tokenizer.decode(generated_ids, skip_special_tokens=True)
+        text = _truncate_at_stop(text, req.stop)
+        if finish_reason == "length" and req.stop:
+            raw = state.tokenizer.decode(generated_ids, skip_special_tokens=True)
+            if raw != text:
+                finish_reason = "stop"
+        if req.echo:
+            text = req.prompt + text
+
+        total_completion_tokens += len(generated_ids)
+        choices.append(
+            CompletionChoice(
+                index=choice_idx,
+                text=text,
+                finish_reason=finish_reason,
+                logprobs={"tokens": lp_list} if lp_list else None,
+            )
+        )
+
+    return CompletionResponse(
+        id=cid,
+        created=int(time.time()),
+        model="openmythos",
+        choices=choices,
+        usage=ChatUsage(
+            prompt_tokens=prompt_tokens,
+            completion_tokens=total_completion_tokens,
+            total_tokens=prompt_tokens + total_completion_tokens,
         ),
     )
 
