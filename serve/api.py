@@ -714,9 +714,84 @@ def _truncate_at_stop(text: str, stop: Optional[List[str]]) -> str:
     return text[:best_pos]
 
 
+# ── Sprint 41: Function Calling ヘルパー ────────────────────────────────────
+
+import re as _re
+_TOOL_CALL_RE = _re.compile(
+    r"<tool_call>\s*(\{.*?\})\s*</tool_call>",
+    _re.DOTALL,
+)
+
+_TOOL_SYSTEM_TEMPLATE = """\
+You have access to the following tools. To call a tool, output ONLY the tag below \
+on its own line (JSON must be valid):
+<tool_call>{{"name": "<tool_name>", "arguments": {{<json_arguments>}}}}</tool_call>
+
+Available tools:
+{tool_schema}
+
+If no tool call is needed, respond normally.
+"""
+
+
+def _build_tools_system_block(tools: List[dict]) -> str:
+    """tools[] 定義を system prompt 用テキストに変換する。"""
+    import json as _j
+    return _TOOL_SYSTEM_TEMPLATE.format(
+        tool_schema=_j.dumps(tools, ensure_ascii=False, indent=2)
+    )
+
+
+def _parse_tool_calls_from_text(text: str) -> Optional[List[dict]]:
+    """テキストから <tool_call>...</tool_call> を抽出して OpenAI 形式で返す。
+
+    見つからなければ None を返す。
+    """
+    import json as _j
+    matches = _TOOL_CALL_RE.findall(text)
+    if not matches:
+        return None
+    results: List[dict] = []
+    for i, raw in enumerate(matches):
+        try:
+            parsed = _j.loads(raw)
+        except _j.JSONDecodeError:
+            continue
+        name = parsed.get("name", "")
+        args = parsed.get("arguments", {})
+        results.append({
+            "id": f"call_{uuid.uuid4().hex[:8]}",
+            "type": "function",
+            "function": {
+                "name": name,
+                "arguments": _j.dumps(args, ensure_ascii=False),
+            },
+        })
+    return results if results else None
+
+
+def _inject_tools_into_prompt(
+    base_prompt: str,
+    tools: Optional[List[dict]],
+    tool_choice: Optional[str],
+) -> str:
+    """base_prompt の先頭に tool system block を注入する。
+
+    tool_choice == "none" の場合は注入しない。
+    """
+    if not tools or tool_choice == "none":
+        return base_prompt
+    block = _build_tools_system_block(tools)
+    return block + "\n\n" + base_prompt
+
+
 class ChatMessage(BaseModel):
-    role: Literal["system", "user", "assistant"] = "user"
-    content: str
+    # Sprint 41: "tool" ロール追加
+    role: Literal["system", "user", "assistant", "tool"] = "user"
+    content: str = ""
+    # Sprint 41: Function Calling 用フィールド
+    tool_call_id: Optional[str] = Field(None, description="tool ロール使用時の呼び出し ID")
+    tool_calls: Optional[List[dict]] = Field(None, description="assistant が要求する tool 呼び出し")
 
 
 class ChatRequest(BaseModel):
@@ -737,6 +812,12 @@ class ChatRequest(BaseModel):
     top_logprobs: int = Field(0, ge=0, le=5, description="Top-K logprobs per token (0=disabled)")
     presence_penalty: float = Field(0.0, ge=-2.0, le=2.0, description="Presence penalty")
     frequency_penalty: float = Field(0.0, ge=-2.0, le=2.0, description="Frequency penalty")
+    # Sprint 41: Function Calling
+    tools: Optional[List[dict]] = Field(None, description="OpenAI 互換 tools[] 定義")
+    tool_choice: Optional[str] = Field(
+        None,
+        description="'auto' | 'none' | 'required' — ツール選択方針",
+    )
 
 
 class ChatChoice(BaseModel):
@@ -744,6 +825,8 @@ class ChatChoice(BaseModel):
     message: ChatMessage
     finish_reason: str
     logprobs: Optional[dict] = None
+    # Sprint 41: tool_calls は message.tool_calls と同じ内容を最上位でも公開
+    tool_calls: Optional[List[dict]] = None
 
 
 class ChatUsage(BaseModel):
@@ -763,7 +846,11 @@ class ChatResponse(BaseModel):
 
 
 def _build_chat_prompt(messages: list[ChatMessage]) -> str:
-    """Convert chat messages to a flat prompt string."""
+    """Convert chat messages to a flat prompt string.
+
+    Sprint 41: tool / assistant(tool_calls) ロールに対応。
+    """
+    import json as _j
     parts = []
     for m in messages:
         if m.role == "system":
@@ -771,7 +858,22 @@ def _build_chat_prompt(messages: list[ChatMessage]) -> str:
         elif m.role == "user":
             parts.append(f"[User]: {m.content}")
         elif m.role == "assistant":
-            parts.append(f"[Assistant]: {m.content}")
+            if m.tool_calls:
+                # tool 呼び出しを要求した assistant ターン
+                for tc in m.tool_calls:
+                    fn = tc.get("function", {})
+                    parts.append(
+                        f"[Assistant]: <tool_call>"
+                        + _j.dumps(
+                            {"name": fn.get("name", ""), "arguments": fn.get("arguments", {})},
+                            ensure_ascii=False,
+                        )
+                        + "</tool_call>"
+                    )
+            else:
+                parts.append(f"[Assistant]: {m.content}")
+        elif m.role == "tool":
+            parts.append(f"[Tool({m.tool_call_id or ''})]: {m.content}")
     parts.append("[Assistant]:")
     return "\n".join(parts)
 
@@ -796,6 +898,8 @@ def chat_completions(req: ChatRequest):
         loops = TASK_LOOPS.get(req.task, loops)
 
     prompt = _build_chat_prompt(req.messages)
+    # Sprint 41: tools が指定されていれば system block を先頭に注入
+    prompt = _inject_tools_into_prompt(prompt, req.tools, req.tool_choice)
     enc = state.tokenizer(
         prompt,
         return_tensors="pt",
@@ -856,6 +960,23 @@ def chat_completions(req: ChatRequest):
                 if _check_stop(decoded_so_far, req.stop):
                     finish_reason = "stop"
                     break
+
+            # Sprint 41: tool_calls が検出された場合 finish_reason を上書き
+            tool_calls_parsed = _parse_tool_calls_from_text(decoded_so_far)
+            if tool_calls_parsed:
+                finish_reason = "tool_calls"
+                # tool_calls delta chunk を送出
+                tc_chunk = {
+                    "id": completion_id,
+                    "object": "chat.completion.chunk",
+                    "model": "openmythos",
+                    "choices": [{
+                        "delta": {"tool_calls": tool_calls_parsed},
+                        "index": 0,
+                        "finish_reason": None,
+                    }],
+                }
+                yield f"data: {_json.dumps(tc_chunk)}\n\n"
 
             # final chunk with finish_reason + usage
             done_chunk = {
@@ -921,13 +1042,25 @@ def chat_completions(req: ChatRequest):
             if raw != completion_text:
                 finish_reason = "stop"
 
+        # Sprint 41: tool_calls 検出
+        tool_calls_result = _parse_tool_calls_from_text(completion_text)
+        if tool_calls_result:
+            finish_reason = "tool_calls"
+            # tool call が含まれる場合 content は None 相当 (空文字)
+            completion_text = ""
+
         total_completion_tokens += len(generated_ids)
         choices.append(
             ChatChoice(
                 index=choice_idx,
-                message=ChatMessage(role="assistant", content=completion_text),
+                message=ChatMessage(
+                    role="assistant",
+                    content=completion_text,
+                    tool_calls=tool_calls_result,
+                ),
                 finish_reason=finish_reason,
                 logprobs={"tokens": lp_list} if lp_list else None,
+                tool_calls=tool_calls_result,
             )
         )
 
