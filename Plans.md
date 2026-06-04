@@ -1,6 +1,6 @@
 # OpenMythos — Sprint Plans
-> 最終更新: 2026-06-04 (Sprint 39 完了 / 次回: Sprint 40) | ブランチ規約: `feature/<sprint>-<topic>`
-> Sprint 39 完了: ショーケースダッシュボード + Prometheus メトリクス + GitHub Pages → v0.42.0
+> 最終更新: 2026-06-04 (Sprint 40 完了 / 次回: Sprint 41) | ブランチ規約: `feature/<sprint>-<topic>`
+> Sprint 40 完了: OpenAI 互換 Streaming 強化 + /v1/completions → v0.43.0
 > アーカイブ: Sprint 1〜9 → `docs/archive/sprint-plans-1-9.md`
 >            Sprint 10〜19 → `docs/archive/sprint-plans-10-19.md`
 >            Sprint 20〜25 → `docs/archive/sprint-plans-20-25.md`
@@ -34,8 +34,9 @@
 | 37 | **ベンチマーク結果可視化 + E2E 疎通テスト** | `benchmark/report.py` | 1922 | v0.40 |
 | 38 | **GPU LoRA CosineScheduler 統合 + 実機検証基盤** | `open_mythos/lora_trainer.py` | 1963 | v0.41 |
 | 39 | **ショーケースダッシュボード + Prometheus メトリクス + GitHub Pages** | `serve/dashboard.py` `serve/api.py` | 2012 | v0.42 |
+| 40 | **OpenAI 互換 Streaming 強化 + /v1/completions** | `serve/api.py` | 2077 | v0.43 |
 
-> **累計テスト数**: 2012 PASS (Sprint 39: +49)
+> **累計テスト数**: 2077 PASS (Sprint 40: +65)
 
 ---
 
@@ -56,7 +57,19 @@
 
 ---
 
-## Sprint 39 詳細 (最新)
+## Sprint 40 詳細 (最新)
+
+### Sprint 40: OpenAI 互換 Streaming 強化 + /v1/completions — v0.43.0
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 40.1 | `serve/api.py` — サンプリングヘルパー (`_apply_top_p` / `_apply_sampling_penalties` / `_collect_logprobs` / `_check_stop` / `_truncate_at_stop`) 追加 | cc:完了 |
+| 40.2 | `serve/api.py` — `ChatRequest` 拡張: `stop` / `n` / `logprobs` / `top_logprobs` / `presence_penalty` / `frequency_penalty` | cc:完了 |
+| 40.3 | `serve/api.py` — SSE ストリーミング強化: `stop` 対応 / `finish_reason:"length"` / 最終 usage chunk / `model` フィールド | cc:完了 |
+| 40.4 | `serve/api.py` — `/v1/completions` 新規追加 (`echo` / `stop` / `n` / `logprobs` / `stream` 対応) | cc:完了 |
+| 40.T | `tests/test_sprint40.py` — 65 tests PASS (累計 2077) | cc:完了 |
+| 40.V | PyPI v0.43.0 | cc:完了 |
+
+## Sprint 39 詳細 (完了)
 
 ### Sprint 39: ショーケースダッシュボード + Prometheus メトリクス + GitHub Pages — v0.42.0
 | task-id | 説明 | 状態 |
