@@ -1,6 +1,6 @@
 # OpenMythos — Sprint Plans
-> 最終更新: 2026-06-04 (Sprint 40 完了 / 次回: Sprint 41) | ブランチ規約: `feature/<sprint>-<topic>`
-> Sprint 40 完了: OpenAI 互換 Streaming 強化 + /v1/completions → v0.43.0
+> 最終更新: 2026-06-04 (Sprint 41 完了 / 次回: Sprint 42) | ブランチ規約: `feature/<sprint>-<topic>`
+> Sprint 41 完了: /v1/chat/completions Function Calling 統合 → v0.44.0
 > アーカイブ: Sprint 1〜9 → `docs/archive/sprint-plans-1-9.md`
 >            Sprint 10〜19 → `docs/archive/sprint-plans-10-19.md`
 >            Sprint 20〜25 → `docs/archive/sprint-plans-20-25.md`
@@ -35,8 +35,9 @@
 | 38 | **GPU LoRA CosineScheduler 統合 + 実機検証基盤** | `open_mythos/lora_trainer.py` | 1963 | v0.41 |
 | 39 | **ショーケースダッシュボード + Prometheus メトリクス + GitHub Pages** | `serve/dashboard.py` `serve/api.py` | 2012 | v0.42 |
 | 40 | **OpenAI 互換 Streaming 強化 + /v1/completions** | `serve/api.py` | 2077 | v0.43 |
+| 41 | **Function Calling 統合 (tools / tool_calls / tool ロール)** | `serve/api.py` | 2120 | v0.44 |
 
-> **累計テスト数**: 2077 PASS (Sprint 40: +65)
+> **累計テスト数**: 2120 PASS (Sprint 41: +43)
 
 ---
 
@@ -57,7 +58,19 @@
 
 ---
 
-## Sprint 40 詳細 (最新)
+## Sprint 41 詳細 (最新)
+
+### Sprint 41: /v1/chat/completions Function Calling 統合 — v0.44.0
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 41.1 | `serve/api.py` — `ChatMessage` に `tool` ロール / `tool_call_id` / `tool_calls` 追加 | cc:完了 |
+| 41.2 | `serve/api.py` — `ChatRequest` に `tools` / `tool_choice` 追加、`ChatChoice` に `tool_calls` 追加 | cc:完了 |
+| 41.3 | `serve/api.py` — `_build_tools_system_block` / `_parse_tool_calls_from_text` / `_inject_tools_into_prompt` ヘルパー追加 | cc:完了 |
+| 41.4 | `serve/api.py` — `_build_chat_prompt` を tool ロール対応に更新 + `chat_completions` に tool_calls フロー統合 | cc:完了 |
+| 41.T | `tests/test_sprint41.py` — 43 tests PASS (累計 2120) | cc:完了 |
+| 41.V | PyPI v0.44.0 | cc:完了 |
+
+## Sprint 40 詳細 (完了)
 
 ### Sprint 40: OpenAI 互換 Streaming 強化 + /v1/completions — v0.43.0
 | task-id | 説明 | 状態 |
