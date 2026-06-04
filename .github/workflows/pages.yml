@@ -1,0 +1,98 @@
+name: GitHub Pages — ショーケースダッシュボード公開
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "serve/dashboard.py"
+      - "benchmark/project_dashboard.py"
+      - "Plans.md"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+# GitHub Pages への書き込み権限
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同時デプロイは 1 件のみ
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    name: Build & Deploy Dashboards
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -e .
+
+      # ── ショーケースダッシュボード (/dashboard → index.html) ──────────
+      - name: Generate Showcase Dashboard
+        run: |
+          python serve/dashboard.py --output _site/index.html
+          echo "[pages] showcase: $(wc -c < _site/index.html) bytes"
+
+      # ── Sprint 全体プロジェクトダッシュボード ─────────────────────────
+      - name: Generate Project Dashboard
+        run: |
+          mkdir -p benchmark/results
+          python benchmark/project_dashboard.py \
+            --output _site/project.html \
+            --bench-dir benchmark/results
+          echo "[pages] project: $(wc -c < _site/project.html) bytes"
+
+      # ── サイトナビ index を補完 (存在しない場合のみ) ────────────────
+      - name: Create nav redirect
+        run: |
+          cat > _site/nav.html << 'NAVEOF'
+          <!DOCTYPE html>
+          <html lang="ja">
+          <head><meta charset="UTF-8"><title>OpenMythos Dashboards</title>
+          <style>body{background:#0f172a;color:#f1f5f9;font-family:system-ui;display:flex;
+          justify-content:center;align-items:center;min-height:100vh;margin:0;}
+          .box{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:2rem;
+          max-width:420px;width:100%;text-align:center;}
+          h1{font-size:1.5rem;margin-bottom:1rem;}
+          a{display:block;background:#6366f1;color:#fff;padding:.75rem;border-radius:8px;
+          margin:.5rem 0;text-decoration:none;font-weight:600;}
+          a:hover{background:#4f46e5;}</style></head>
+          <body><div class="box">
+          <h1>OpenMythos Dashboards</h1>
+          <a href="index.html">🚀 ショーケース</a>
+          <a href="project.html">📊 Sprint 1〜38 プロジェクト</a>
+          </div></body></html>
+          NAVEOF
+
+      # ── GitHub Pages 設定ファイル ─────────────────────────────────────
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      # ── artifact アップロード ─────────────────────────────────────────
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site/
+
+      # ── デプロイ ──────────────────────────────────────────────────────
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
