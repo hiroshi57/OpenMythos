@@ -1110,6 +1110,44 @@ class OpenMythos(nn.Module):
 
         return self.head(self.norm(x))
 
+    def encode(
+        self,
+        input_ids: torch.Tensor,
+        n_loops: Optional[int] = None,
+    ) -> torch.Tensor:
+        """隠れ状態 (埋め込み表現) を返す — head 投影前の norm 済み出力。
+
+        Args:
+            input_ids -- token indices of shape (B, T)
+            n_loops   -- recurrent loop depth; defaults to cfg.max_loop_iters
+
+        Returns:
+            Hidden states of shape (B, T, dim)
+        """
+        T = input_ids.shape[1]
+        device = input_ids.device
+
+        x = self.embed(input_ids)
+        freqs_cis = (
+            self.freqs_cis_mla if self.cfg.attn_type == "mla" else self.freqs_cis
+        )[0:T]
+        mask = (
+            self._causal_mask(T, device, x.dtype)
+            if T > 1
+            else None
+        )
+
+        for i, layer in enumerate(self.prelude):
+            x = layer(x, freqs_cis, mask, None, cache_key=f"prelude_{i}")
+
+        e = x
+        x = self.recurrent(x, e, freqs_cis, mask, n_loops, None)
+
+        for i, layer in enumerate(self.coda):
+            x = layer(x, freqs_cis, mask, None, cache_key=f"coda_{i}")
+
+        return self.norm(x)  # (B, T, dim)
+
     @staticmethod
     def _apply_repetition_penalty(
         logits: torch.Tensor,

@@ -168,6 +168,11 @@ class _SlidingWindow:
         with self._lock:
             self._buckets.pop(key, None)
 
+    def reset_all(self) -> None:
+        """テスト用: 全キーのカウントをリセットする。"""
+        with self._lock:
+            self._buckets.clear()
+
 
 # グローバルインスタンス（アプリ全体で共有）
 _rpm_limit = int(os.getenv("RATE_LIMIT_RPM", "60"))
