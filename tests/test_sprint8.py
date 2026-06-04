@@ -381,7 +381,8 @@ class TestChatCompletions:
             max_tokens=6,
         )
         resp = chat_completions(req)
-        assert resp.choices[0].finish_reason == "stop"
+        # Sprint 40: finish_reason は EOS 到達時 "stop"、max_tokens 到達時 "length"
+        assert resp.choices[0].finish_reason in ("stop", "length")
         assert isinstance(resp.choices[0].message.content, str)
 
     def test_chat_request_defaults(self):
