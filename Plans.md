@@ -1,10 +1,11 @@
 # OpenMythos — Sprint Plans
-> 最終更新: 2026-06-04 (Sprint 41 完了 / 次回: Sprint 42) | ブランチ規約: `feature/<sprint>-<topic>`
-> Sprint 41 完了: /v1/chat/completions Function Calling 統合 → v0.44.0
+> 最終更新: 2026-06-04 (Sprint 43 完了 / 次回: Sprint 44) | ブランチ規約: `feature/<sprint>-<topic>`
+> Sprint 43 完了: HermesOrchestrator Layer 2 Ultracode Mode → v0.46.0
 > アーカイブ: Sprint 1〜9 → `docs/archive/sprint-plans-1-9.md`
 >            Sprint 10〜19 → `docs/archive/sprint-plans-10-19.md`
 >            Sprint 20〜25 → `docs/archive/sprint-plans-20-25.md`
 >            Sprint 26〜35 → `docs/archive/sprint-plans-26-35.md`
+>            Sprint 36〜43 → `docs/archive/sprint-plans-36-42.md`
 
 ---
 
@@ -36,8 +37,10 @@
 | 39 | **ショーケースダッシュボード + Prometheus メトリクス + GitHub Pages** | `serve/dashboard.py` `serve/api.py` | 2012 | v0.42 |
 | 40 | **OpenAI 互換 Streaming 強化 + /v1/completions** | `serve/api.py` | 2077 | v0.43 |
 | 41 | **Function Calling 統合 (tools / tool_calls / tool ロール)** | `serve/api.py` | 2120 | v0.44 |
+| 42 | **/v1/embeddings + セマンティック検索** | `open_mythos/main.py` `serve/api.py` | 2166 | v0.45 |
+| 43 | **HermesOrchestrator: Layer 2 Ultracode Mode** | `open_mythos/hermes_orchestrator.py` `serve/api.py` | 2260 | v0.46 |
 
-> **累計テスト数**: 2120 PASS (Sprint 41: +43)
+> **累計テスト数**: 2260 PASS (Sprint 43: +94)
 
 ---
 
@@ -58,94 +61,18 @@
 
 ---
 
-## Sprint 41 詳細 (最新)
+## Sprint 43 詳細 (最新)
 
-### Sprint 41: /v1/chat/completions Function Calling 統合 — v0.44.0
+### Sprint 43: HermesOrchestrator — Layer 2 Ultracode Mode — v0.46.0
 | task-id | 説明 | 状態 |
 |---------|------|------|
-| 41.1 | `serve/api.py` — `ChatMessage` に `tool` ロール / `tool_call_id` / `tool_calls` 追加 | cc:完了 |
-| 41.2 | `serve/api.py` — `ChatRequest` に `tools` / `tool_choice` 追加、`ChatChoice` に `tool_calls` 追加 | cc:完了 |
-| 41.3 | `serve/api.py` — `_build_tools_system_block` / `_parse_tool_calls_from_text` / `_inject_tools_into_prompt` ヘルパー追加 | cc:完了 |
-| 41.4 | `serve/api.py` — `_build_chat_prompt` を tool ロール対応に更新 + `chat_completions` に tool_calls フロー統合 | cc:完了 |
-| 41.T | `tests/test_sprint41.py` — 43 tests PASS (累計 2120) | cc:完了 |
-| 41.V | PyPI v0.44.0 | cc:完了 |
-
-## Sprint 40 詳細 (完了)
-
-### Sprint 40: OpenAI 互換 Streaming 強化 + /v1/completions — v0.43.0
-| task-id | 説明 | 状態 |
-|---------|------|------|
-| 40.1 | `serve/api.py` — サンプリングヘルパー (`_apply_top_p` / `_apply_sampling_penalties` / `_collect_logprobs` / `_check_stop` / `_truncate_at_stop`) 追加 | cc:完了 |
-| 40.2 | `serve/api.py` — `ChatRequest` 拡張: `stop` / `n` / `logprobs` / `top_logprobs` / `presence_penalty` / `frequency_penalty` | cc:完了 |
-| 40.3 | `serve/api.py` — SSE ストリーミング強化: `stop` 対応 / `finish_reason:"length"` / 最終 usage chunk / `model` フィールド | cc:完了 |
-| 40.4 | `serve/api.py` — `/v1/completions` 新規追加 (`echo` / `stop` / `n` / `logprobs` / `stream` 対応) | cc:完了 |
-| 40.T | `tests/test_sprint40.py` — 65 tests PASS (累計 2077) | cc:完了 |
-| 40.V | PyPI v0.43.0 | cc:完了 |
-
-## Sprint 39 詳細 (完了)
-
-### Sprint 39: ショーケースダッシュボード + Prometheus メトリクス + GitHub Pages — v0.42.0
-| task-id | 説明 | 状態 |
-|---------|------|------|
-| 39.1 | `serve/dashboard.py` — `build_showcase_dashboard()` / `save_dashboard()` / FastAPI router (`/dashboard`) | cc:完了 |
-| 39.2 | `serve/api.py` — `/metrics` Prometheus エンドポイント + `prometheus_client` 統合 | cc:完了 |
-| 39.3 | `serve/monitor.py` — `build_monitor_dashboard_html()` HTML 化 + `/monitor/dashboard` HTMLResponse | cc:完了 |
-| 39.4 | `.github/workflows/pages.yml` — GitHub Pages 自動デプロイ (master push + workflow_dispatch) | cc:完了 |
-| 39.T | `tests/test_sprint39.py` — 49 tests PASS (累計 2012) | cc:完了 |
-| 39.V | PyPI v0.42.0 | cc:完了 |
-
-## Sprint 38 詳細 (完了)
-
-### Sprint 38: GPU LoRA SFT — CosineScheduler 統合 + 実機検証基盤 — v0.41.0
-| task-id | 説明 | 状態 |
-|---------|------|------|
-| 38.1 | `lora_trainer.py` — `LoraTrainerConfig` に `warmup_steps` / `min_lr_ratio` / `use_scheduler` 追加 | cc:完了 |
-| 38.2 | `lora_trainer.py` — `_real_train()` に `CosineAnnealingLR` + 線形 warmup 統合 | cc:完了 |
-| 38.3 | `lora_trainer.py` — `cosine_t_max()` / `get_current_lr()` ヘルパー追加 | cc:完了 |
-| 38.T | `tests/test_sprint38.py` — 41 tests PASS / 3 GPU-skip (累計 1963) | cc:完了 |
-| 38.V | PyPI v0.41.0 | cc:完了 |
-
-## Sprint 37 詳細 (完了)
-
-### Sprint 37: ベンチマーク結果可視化 + E2E 疎通テスト — v0.40.0
-| task-id | 説明 | 状態 |
-|---------|------|------|
-| 37.1 | `benchmark/report.py` — `ReportGenerator.to_markdown()` / `to_html()` / `save_*()` | cc:完了 |
-| 37.2 | `benchmark/report.py` — `load_reports()` / `trend_table(json_paths, n)` トレンド表生成 | cc:完了 |
-| 37.3 | `tests/test_sprint37.py` — P2〜P10 + guard + grow TestClient 疎通テスト (20 tests) | cc:完了 |
-| 37.4 | `.github/workflows/bench.yml` — HTML レポート生成ステップ + artifact upload (retention 90日) | cc:完了 |
-| 37.T | `tests/test_sprint37.py` — 61 tests PASS (累計 1922) | cc:完了 |
-| 37.V | PyPI v0.40.0 | cc:完了 |
-
-## Sprint 36 詳細 (完了)
-
-### Sprint 36: API ドキュメント整備 + CI ベンチマーク自動化 — v0.39.0
-| task-id | 説明 | 状態 |
-|---------|------|------|
-| 36.1a | `serve/api.py` — `version="0.38.0"` 確認・旧バージョン除去 | cc:完了 |
-| 36.1b | `serve/api.py` — `openapi_tags` 全 23 タグ整備 (P1〜P10 + grow + guard) | cc:完了 |
-| 36.2a | `.github/workflows/bench.yml` — ファイル存在・YAML 構文 | cc:完了 |
-| 36.2b | `.github/workflows/bench.yml` — 週次 cron (月曜 09:00 JST) + workflow_dispatch (patterns/verbose 入力) | cc:完了 |
-| 36.2c | `.github/workflows/bench.yml` — jobs: checkout / setup-python / bench 実行 / artifact 保存 / GITHUB_STEP_SUMMARY | cc:完了 |
-| 36.T | `tests/test_sprint36.py` — 39 tests PASS | cc:完了 |
-| 36.V | PyPI v0.39.0 | cc:完了 |
-
-### Sprint 35: ベンチマーク強化 — v0.38.0
-| task-id | 説明 | 状態 |
-|---------|------|------|
-| 35.1 | `benchmark/growing_ai_bench.py` — `PatternBenchResult` / P1〜P10 bench 関数 | cc:完了 |
-| 35.2 | `benchmark/growing_ai_bench.py` — `GrowingAIBenchmark` / `BenchmarkReport` (run_all/print_table/save/load) | cc:完了 |
-| 35.3 | CLI — `--patterns` / `--verbose` / `--output` / 実測: 10/10 成功・平均 +10.5% | cc:完了 |
-| 35.T | `tests/test_sprint35.py` — 45 tests PASS | cc:完了 |
-| 35.V | PyPI v0.38.0 | cc:完了 |
-
-### Sprint 34: MistakeGuardMiddleware — v0.37.0
-| task-id | 説明 | 状態 |
-|---------|------|------|
-| 34.1 | `error_memory.py` — `GuardMiddlewareConfig` / `MistakeGuardMiddleware` | cc:完了 |
-| 34.2 | `serve/api.py` — `_MistakeGuardHTTPMiddleware` + `/v1/guard/stats` / `/v1/guard/refresh` | cc:完了 |
-| 34.T | `tests/test_sprint34.py` — 40 tests PASS | cc:完了 |
-| 34.V | PyPI v0.37.0 | cc:完了 |
+| 43.1 | `open_mythos/hermes_orchestrator.py` — SubTask / SubAgentSpec / HermesAgentResult / VerificationResult / HermesReport | cc:完了 |
+| 43.2 | `open_mythos/hermes_orchestrator.py` — TaskDecomposer / AgentSpawner / ParallelExecutor / ResultVerifier / ReportBuilder | cc:完了 |
+| 43.3 | `open_mythos/hermes_orchestrator.py` — HermesOrchestrator (plan / spawn / verify / report / run / run_async) | cc:完了 |
+| 43.4 | `serve/api.py` — `/v1/hermes/run` + `/v1/hermes/plan` エンドポイント追加 | cc:完了 |
+| 43.5 | `open_mythos/__init__.py` — HermesOrchestrator 関連クラス全エクスポート追加 | cc:完了 |
+| 43.T | `tests/test_sprint43.py` — 94 tests PASS (累計 2260) | cc:完了 |
+| 43.V | PyPI v0.46.0 | cc:完了 |
 
 ---
 
@@ -155,37 +82,4 @@
 - LTI `get_A()` の `log_dt + log_A` に `.clamp(min=1e-6)` 必要 (float32 飽和防止)
 - `store or Store()` は空ストア (len=0→falsy) を別インスタンスに差し替える → `is not None` チェックを使う
 - `ConsensusEngine.score(texts)` が正しい API (build_consensus/compute_agreement は存在しない)
-
----
-
-## Sprint 37 計画 (次回)
-
-### Sprint 37: ベンチマーク結果可視化 + E2E 疎通テスト — v0.40.0
-
-**テーマ**: Sprint 35/36 で整備したベンチマーク基盤の「見える化」と、P1〜P10 全 API エンドポイントの結合テスト
-
-| task-id | 説明 | 優先 |
-|---------|------|------|
-| 37.1 | `benchmark/report.py` — `BenchmarkReport` を Markdown / HTML に出力する `ReportGenerator` クラス | 高 |
-| 37.2 | `benchmark/report.py` — `trend_table()`: 過去 N 回分の JSON を読み込んで改善率トレンド表を生成 | 中 |
-| 37.3 | `serve/api.py` — P1〜P10 全エンドポイント (`/v1/debate/*` 〜 `/v1/plan/*`) の `TestClient` 疎通テスト | 高 |
-| 37.4 | `.github/workflows/bench.yml` — `report.py --html` 出力を artifact に追加 (HTML レポートのアップロード) | 中 |
-| 37.T | `tests/test_sprint37.py` — 40 tests PASS (目標: 累計 1901) | 高 |
-| 37.V | PyPI v0.40.0 | — |
-
-**作業前チェックリスト**:
-- [ ] `feature/sprint37-bench-report-e2e` ブランチを切る
-- [ ] `benchmark/results/` に過去 JSON が 1 件以上あることを確認 (なければ `growing_ai_bench.py --output` でダミー生成)
-- [ ] `serve/api.py` の `TestClient` が `lifespan` を正しく mock できるか確認 (`pytest-asyncio` + `anyio` 設定)
-
-**依存関係**:
-- `benchmark/growing_ai_bench.py` (Sprint 35) — `BenchmarkReport.load()` を `report.py` が呼ぶ
-- `.github/workflows/bench.yml` (Sprint 36) — HTML artifact upload step を追記
-
----
-
-## 将来スプリント候補
-
-- **Sprint 38**: GPU 実機 LoRA SFT 検証 — CUDA 環境で `LoraTrainer._real_train()` 動作確認 + `lora_trainer.py` に `CosineScheduler` 統合
-- **Sprint 39**: Prometheus / Grafana メトリクス統合 — `serve/monitor.py` に `/metrics` エンドポイント追加
-- **Sprint 40**: OpenAI 互換 Streaming 強化 — `/v1/chat/completions` の SSE テスト + `stream=true` オプション拡充
+- テスト間レート制限干渉: `tests/conftest.py` の `reset_rate_limiter` fixture で全スイート実行時に自動リセット
