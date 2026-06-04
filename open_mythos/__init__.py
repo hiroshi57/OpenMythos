@@ -175,6 +175,20 @@ from open_mythos.growing_ai_orchestrator import (
     PatternSelector,
     GrowingAIOrchestrator,
 )
+from open_mythos.hermes_orchestrator import (
+    SubTask,
+    SubAgentSpec,
+    HermesAgentResult,
+    VerificationResult as HermesVerificationResult,
+    HermesReport,
+    TaskDecomposer,
+    AgentSpawner,
+    ParallelExecutor,
+    ResultVerifier,
+    ReportBuilder,
+    HermesOrchestrator,
+    CallFn as HermesCallFn,
+)
 from open_mythos.security import InputGuard, OutputGuard, SecurityCheckResult
 from open_mythos.swarm import (
     SwarmConfig,
@@ -205,6 +219,19 @@ from open_mythos.variants import (
 )
 
 __all__ = [
+    # Sprint 43: Hermes Orchestrator (Layer 2 Ultracode)
+    "SubTask",
+    "SubAgentSpec",
+    "HermesAgentResult",
+    "HermesVerificationResult",
+    "HermesReport",
+    "TaskDecomposer",
+    "AgentSpawner",
+    "ParallelExecutor",
+    "ResultVerifier",
+    "ReportBuilder",
+    "HermesOrchestrator",
+    "HermesCallFn",
     "TrainLogger",
     "OpenMythosLLM",
     "MythosAgent",

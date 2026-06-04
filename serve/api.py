@@ -198,6 +198,7 @@ app = FastAPI(
         # ── 統合・ガード ───────────────────────────────────────────
         {"name": "grow", "description": "統合オーケストレーター — GrowingAIOrchestrator (P1〜P10 連携)"},
         {"name": "guard", "description": "MistakeGuardMiddleware — 全 API ミス透過チェック"},
+        {"name": "hermes", "description": "Layer 2 Ultracode Orchestrator — Plan→Spawn→Parallel→Verify→Report (Sprint 43)"},
     ],
 )
 
@@ -1074,6 +1075,167 @@ def chat_completions(req: ChatRequest):
             completion_tokens=total_completion_tokens,
             total_tokens=prompt_tokens + total_completion_tokens,
         ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Sprint 42: /v1/embeddings + /v1/semantic-search (OpenAI 互換)
+# ---------------------------------------------------------------------------
+
+import base64 as _base64
+import struct as _struct
+
+
+class EmbeddingRequest(BaseModel):
+    """OpenAI /v1/embeddings 互換リクエスト。"""
+    model: str = Field("openmythos", description="Model identifier")
+    input: "str | List[str]" = Field(..., description="テキスト or テキストリスト")
+    encoding_format: Literal["float", "base64"] = Field(
+        "float", description="'float' → list[float] / 'base64' → base64 エンコード済みバイト列"
+    )
+    n_loops: int = Field(1, ge=1, le=4, description="ループ深度 (1=高速)")
+    dimensions: Optional[int] = Field(
+        None, ge=1, description="返す次元数 (None = モデル次元全体)"
+    )
+
+
+class EmbeddingData(BaseModel):
+    object: str = "embedding"
+    index: int
+    embedding: "List[float] | str"  # float モードはリスト、base64 モードは文字列
+
+
+class EmbeddingUsage(BaseModel):
+    prompt_tokens: int
+    total_tokens: int
+
+
+class EmbeddingResponse(BaseModel):
+    object: str = "list"
+    data: List[EmbeddingData]
+    model: str
+    usage: EmbeddingUsage
+
+
+def _encode_text(text: str, n_loops: int, dimensions: Optional[int]) -> List[float]:
+    """テキストを埋め込みベクトルに変換して mean-pool + L2 正規化して返す。"""
+    enc = state.tokenizer(
+        text, return_tensors="pt", truncation=True, max_length=512,
+    )
+    input_ids = enc["input_ids"].to(state.device)
+    with torch.no_grad():
+        hidden = state.model.encode(input_ids, n_loops=n_loops)  # (1, T, dim)
+    # 最終トークンではなく全トークンの mean pooling
+    vec = hidden[0].mean(dim=0)  # (dim,)
+    # L2 正規化
+    norm = vec.norm(p=2)
+    if norm > 0:
+        vec = vec / norm
+    # 次元数を制限
+    if dimensions is not None:
+        vec = vec[:dimensions]
+    return vec.cpu().tolist()
+
+
+def _vec_to_base64(vec: List[float]) -> str:
+    """float32 ベクトルを base64 エンコードする。"""
+    packed = _struct.pack(f"{len(vec)}f", *vec)
+    return _base64.b64encode(packed).decode("ascii")
+
+
+@app.post(
+    "/v1/embeddings",
+    tags=["embeddings"],
+    summary="テキスト埋め込み (OpenAI 互換)",
+    description=(
+        "OpenAI `/v1/embeddings` 互換。テキストを dense vector に変換する。\n\n"
+        "返却ベクトルは L2 正規化済み。`encoding_format=base64` で float32 バイナリを Base64 エンコードして返す。"
+    ),
+)
+def create_embeddings(req: EmbeddingRequest):
+    """テキスト埋め込みを返す。"""
+    texts: List[str] = [req.input] if isinstance(req.input, str) else list(req.input)
+    if not texts:
+        raise HTTPException(status_code=422, detail="input must be non-empty")
+
+    data: List[EmbeddingData] = []
+    total_tokens = 0
+
+    for i, text in enumerate(texts):
+        # token 数を推定
+        enc = state.tokenizer(text, return_tensors="pt", truncation=True, max_length=512)
+        n_tok = enc["input_ids"].shape[1]
+        total_tokens += n_tok
+
+        vec = _encode_text(text, req.n_loops, req.dimensions)
+        if req.encoding_format == "base64":
+            embedding_val: "List[float] | str" = _vec_to_base64(vec)
+        else:
+            embedding_val = vec
+
+        data.append(EmbeddingData(index=i, embedding=embedding_val))
+
+    return EmbeddingResponse(
+        data=data,
+        model="openmythos",
+        usage=EmbeddingUsage(
+            prompt_tokens=total_tokens,
+            total_tokens=total_tokens,
+        ),
+    )
+
+
+# ── セマンティック検索 ────────────────────────────────────────────────────
+
+class SemanticSearchRequest(BaseModel):
+    query: str = Field(..., description="検索クエリ")
+    documents: List[str] = Field(..., min_length=1, description="検索対象ドキュメントリスト")
+    top_k: int = Field(3, ge=1, le=50, description="上位 K 件を返す")
+    n_loops: int = Field(1, ge=1, le=4)
+
+
+class SemanticSearchResult(BaseModel):
+    index: int
+    document: str
+    score: float  # コサイン類似度 [-1.0, 1.0]
+
+
+class SemanticSearchResponse(BaseModel):
+    query: str
+    results: List[SemanticSearchResult]
+    total_documents: int
+
+
+def _cosine_similarity(a: List[float], b: List[float]) -> float:
+    """L2 正規化済みベクトル同士のコサイン類似度 (= ドット積)。"""
+    if len(a) != len(b) or not a:
+        return 0.0
+    return float(sum(x * y for x, y in zip(a, b)))
+
+
+@app.post(
+    "/v1/semantic-search",
+    tags=["embeddings"],
+    summary="セマンティック検索",
+    description=(
+        "クエリと複数ドキュメントを埋め込みに変換し、コサイン類似度でランキングして返す。\n\n"
+        "内部で `/v1/embeddings` と同じ埋め込み計算を使用。"
+    ),
+)
+def semantic_search(req: SemanticSearchRequest):
+    """クエリに最も近いドキュメントを top_k 件返す。"""
+    query_vec = _encode_text(req.query, req.n_loops, None)
+    results = []
+    for i, doc in enumerate(req.documents):
+        doc_vec = _encode_text(doc, req.n_loops, None)
+        score = _cosine_similarity(query_vec, doc_vec)
+        results.append(SemanticSearchResult(index=i, document=doc, score=score))
+
+    results.sort(key=lambda r: r.score, reverse=True)
+    return SemanticSearchResponse(
+        query=req.query,
+        results=results[: req.top_k],
+        total_documents=len(req.documents),
     )
 
 
@@ -3453,6 +3615,11 @@ from open_mythos.growing_ai_orchestrator import (
     GrowingAIOrchestrator as _GrowingAIOrchestrator,
 )
 
+# Sprint 43: HermesOrchestrator — /v1/hermes/*
+from open_mythos.hermes_orchestrator import (
+    HermesOrchestrator as _HermesOrchestrator,
+)
+
 
 class GrowRunRequest(BaseModel):
     goal: str = Field(..., description="達成したい目標・質問・タスク記述")
@@ -3485,5 +3652,122 @@ def grow_run(req: GrowRunRequest):
                 "error":      r.error,
             }
             for r in result.results
+        ],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Sprint 43: HermesOrchestrator — /v1/hermes/*
+# Plan → Spawn → Parallel Execute → Verify → Report
+# ---------------------------------------------------------------------------
+
+
+class HermesRunRequest(BaseModel):
+    goal: str = Field(..., description="達成したいゴール・タスク記述")
+    context: dict = Field(default_factory=dict, description="付加コンテキスト情報")
+    max_subtasks: int = Field(4, ge=1, le=8, description="最大サブタスク数")
+    max_concurrent: int = Field(3, ge=1, le=8, description="並列エージェント数上限")
+    max_new_tokens: int = Field(256, ge=1, le=1024, description="エージェントあたりの生成トークン上限")
+
+
+class HermesPlanRequest(BaseModel):
+    goal: str = Field(..., description="タスク分解したいゴール")
+    context: dict = Field(default_factory=dict, description="付加コンテキスト情報")
+    max_subtasks: int = Field(4, ge=1, le=8, description="最大サブタスク数")
+
+
+def _build_hermes_orch(req_max_subtasks: int, req_max_concurrent: int, req_max_new_tokens: int) -> _HermesOrchestrator:
+    """HermesOrchestrator インスタンスを構築する (Layer 1 API を自己呼び出し)。
+    本番では HERMES_BASE_URL 環境変数でターゲットを指定可能。"""
+    base_url = os.getenv("HERMES_BASE_URL", "http://localhost:8000")
+    return _HermesOrchestrator(
+        base_url=base_url,
+        max_subtasks=req_max_subtasks,
+        max_concurrent=req_max_concurrent,
+        max_new_tokens=req_max_new_tokens,
+    )
+
+
+@app.post(
+    "/v1/hermes/run",
+    tags=["hermes"],
+    summary="Hermes Layer 2 Ultracode フルパイプライン実行 (Sprint 43)",
+    description=(
+        "Plan → Spawn → Parallel Execute → Verify → Report の 5 フェーズを"
+        "asyncio で実行し、統合レポートを返す。"
+    ),
+    dependencies=[Depends(verify_api_key)],
+)
+async def hermes_run(req: HermesRunRequest):
+    """Hermes Ultracode Mode — フルパイプライン非同期実行"""
+    orch = _build_hermes_orch(req.max_subtasks, req.max_concurrent, req.max_new_tokens)
+    rpt = await orch.run_async(req.goal, req.context or None)
+    return {
+        "run_id":       rpt.run_id,
+        "goal":         rpt.goal,
+        "subtask_count": len(rpt.subtasks),
+        "subtasks": [
+            {
+                "task_id":     st.task_id,
+                "name":        st.name,
+                "description": st.description,
+                "priority":    st.priority,
+                "depends_on":  st.depends_on,
+            }
+            for st in rpt.subtasks
+        ],
+        "agent_results": [
+            {
+                "agent_id":   ar.agent_id,
+                "task_id":    ar.task_id,
+                "task_name":  ar.task_name,
+                "success":    ar.success,
+                "latency_ms": ar.latency_ms,
+                "error":      ar.error,
+            }
+            for ar in rpt.agent_results
+        ],
+        "verification_results": [
+            {
+                "agent_id":        vr.agent_id,
+                "task_id":         vr.task_id,
+                "task_name":       vr.task_name,
+                "passed":          vr.passed,
+                "score":           vr.score,
+                "issues":          vr.issues,
+            }
+            for vr in rpt.verification_results
+        ],
+        "final_output":     rpt.final_output,
+        "overall_score":    rpt.overall_score,
+        "success_rate":     rpt.success_rate,
+        "total_latency_ms": rpt.total_latency_ms,
+        "phase_timings":    rpt.phase_timings,
+    }
+
+
+@app.post(
+    "/v1/hermes/plan",
+    tags=["hermes"],
+    summary="Hermes Phase 1 — タスク分解のみ実行 (Sprint 43)",
+    description="ゴールをサブタスクリストに分解して返す。実行は行わない。",
+    dependencies=[Depends(verify_api_key)],
+)
+def hermes_plan(req: HermesPlanRequest):
+    """Hermes Phase 1 (Plan) — タスク分解のみ"""
+    orch = _build_hermes_orch(req.max_subtasks, 1, 256)
+    subtasks = orch.plan(req.goal, req.context or None)
+    return {
+        "goal":         req.goal,
+        "subtask_count": len(subtasks),
+        "subtasks": [
+            {
+                "task_id":     st.task_id,
+                "name":        st.name,
+                "description": st.description,
+                "priority":    st.priority,
+                "depends_on":  st.depends_on,
+            }
+            for st in subtasks
         ],
     }
