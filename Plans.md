@@ -1,6 +1,6 @@
 # OpenMythos — Sprint Plans
-> 最終更新: 2026-06-03 (Sprint 38 完了 / 次回: Sprint 39) | ブランチ規約: `feature/<sprint>-<topic>`
-> Sprint 38 完了: GPU LoRA SFT CosineScheduler 統合 + 実機検証基盤 → v0.41.0
+> 最終更新: 2026-06-04 (Sprint 39 完了 / 次回: Sprint 40) | ブランチ規約: `feature/<sprint>-<topic>`
+> Sprint 39 完了: ショーケースダッシュボード + Prometheus メトリクス + GitHub Pages → v0.42.0
 > アーカイブ: Sprint 1〜9 → `docs/archive/sprint-plans-1-9.md`
 >            Sprint 10〜19 → `docs/archive/sprint-plans-10-19.md`
 >            Sprint 20〜25 → `docs/archive/sprint-plans-20-25.md`
@@ -33,8 +33,9 @@
 | 36 | API ドキュメント整備 + CI ベンチ自動化 | `serve/api.py` `.github/workflows/bench.yml` | 1861 | v0.39 |
 | 37 | **ベンチマーク結果可視化 + E2E 疎通テスト** | `benchmark/report.py` | 1922 | v0.40 |
 | 38 | **GPU LoRA CosineScheduler 統合 + 実機検証基盤** | `open_mythos/lora_trainer.py` | 1963 | v0.41 |
+| 39 | **ショーケースダッシュボード + Prometheus メトリクス + GitHub Pages** | `serve/dashboard.py` `serve/api.py` | 2012 | v0.42 |
 
-> **累計テスト数**: 1963 PASS (Sprint 38: +41)
+> **累計テスト数**: 2012 PASS (Sprint 39: +49)
 
 ---
 
@@ -55,7 +56,19 @@
 
 ---
 
-## Sprint 38 詳細 (最新)
+## Sprint 39 詳細 (最新)
+
+### Sprint 39: ショーケースダッシュボード + Prometheus メトリクス + GitHub Pages — v0.42.0
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 39.1 | `serve/dashboard.py` — `build_showcase_dashboard()` / `save_dashboard()` / FastAPI router (`/dashboard`) | cc:完了 |
+| 39.2 | `serve/api.py` — `/metrics` Prometheus エンドポイント + `prometheus_client` 統合 | cc:完了 |
+| 39.3 | `serve/monitor.py` — `build_monitor_dashboard_html()` HTML 化 + `/monitor/dashboard` HTMLResponse | cc:完了 |
+| 39.4 | `.github/workflows/pages.yml` — GitHub Pages 自動デプロイ (master push + workflow_dispatch) | cc:完了 |
+| 39.T | `tests/test_sprint39.py` — 49 tests PASS (累計 2012) | cc:完了 |
+| 39.V | PyPI v0.42.0 | cc:完了 |
+
+## Sprint 38 詳細 (完了)
 
 ### Sprint 38: GPU LoRA SFT — CosineScheduler 統合 + 実機検証基盤 — v0.41.0
 | task-id | 説明 | 状態 |
