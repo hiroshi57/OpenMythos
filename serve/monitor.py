@@ -24,6 +24,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 DB_PATH = Path("data/monitor.db")
@@ -302,14 +303,105 @@ def drift(task: str):
     return check_drift(task)
 
 
-@monitor_app.get("/monitor/dashboard")
-def dashboard():
-    """全タスクのドリフト状況 + 直近24時間メトリクスを一括返す。"""
+def build_monitor_dashboard_html() -> str:
+    """監視ダッシュボードの HTML 文字列を返す"""
     tasks = ["content_quality", "ad_performance", "persona_segment", "market_research"]
-    return {
-        "drift": {t: check_drift(t) for t in tasks},
-        "metrics": get_metrics(hours=24),
-    }
+    drift_data = {t: check_drift(t) for t in tasks}
+    metrics_data = get_metrics(hours=24)
+
+    # drift カードの HTML
+    drift_cards = ""
+    for task, d in drift_data.items():
+        status = d.get("status", "no_data")
+        status_color = "#22c55e" if status == "healthy" else "#ef4444" if status == "alert" else "#94a3b8"
+        alerts_html = ""
+        for alert in d.get("alerts", []):
+            level_color = "#ef4444" if alert["level"] == "critical" else "#f59e0b"
+            alerts_html += (
+                '<div style="font-size:.78rem;color:' + level_color + ';margin-top:.4rem;">'
+                "⚠ " + alert["msg"] + "</div>"
+            )
+        drift_cards += (
+            '<div style="background:#1e293b;border:1px solid #334155;border-radius:10px;padding:1.2rem;">'
+            '<div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.8rem;">'
+            '<span style="width:10px;height:10px;border-radius:50%;background:' + status_color + ';display:inline-block;"></span>'
+            '<strong style="font-size:.95rem;">' + task + "</strong>"
+            '<span style="font-size:.75rem;color:#94a3b8;margin-left:auto;">' + status + "</span>"
+            "</div>"
+            '<div style="font-size:.82rem;color:#94a3b8;">'
+            "直近件数: " + str(d.get("n_recent", "—")) + " / "
+            "PSI: " + str(d.get("psi", "—")) + " / "
+            "精度: " + str(d.get("current_accuracy", "—"))
+            + "</div>"
+            + alerts_html
+            + "</div>"
+        )
+
+    # metrics テーブル行 HTML
+    metrics_rows = ""
+    if isinstance(metrics_data, dict) and "metrics" in metrics_data:
+        for key, s in metrics_data["metrics"].items():
+            metrics_rows += (
+                "<tr>"
+                "<td>" + key + "</td>"
+                "<td>" + str(s.get("requests", "—")) + "</td>"
+                "<td>" + str(s.get("avg_latency_ms", "—")) + " ms</td>"
+                "<td>" + str(s.get("p95_latency_ms", "—")) + " ms</td>"
+                "<td>" + str(s.get("avg_score", "—")) + "</td>"
+                "<td>" + str(s.get("accuracy", "—")) + "</td>"
+                "</tr>"
+            )
+    if not metrics_rows:
+        metrics_rows = '<tr><td colspan="6" style="text-align:center;color:#94a3b8;">データなし</td></tr>'
+
+    return (
+        "<!DOCTYPE html>\n"
+        '<html lang="ja"><head><meta charset="UTF-8">'
+        '<meta name="viewport" content="width=device-width,initial-scale=1.0">'
+        "<title>OpenMythos Monitor</title>"
+        '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>'
+        "<style>"
+        "body{background:#0f172a;color:#f1f5f9;font-family:system-ui,sans-serif;margin:0;padding:0;}"
+        ".header{background:#1e293b;border-bottom:1px solid #334155;padding:1.2rem 2rem;"
+        "display:flex;align-items:center;justify-content:space-between;}"
+        ".header h1{font-size:1.3rem;font-weight:700;}"
+        ".header a{color:#a5b4fc;font-size:.85rem;text-decoration:none;}"
+        ".main{max-width:1100px;margin:0 auto;padding:2rem;}"
+        ".section{margin-bottom:2.5rem;}"
+        ".section h2{font-size:1.1rem;font-weight:700;margin-bottom:1rem;color:#e2e8f0;"
+        "border-left:3px solid #6366f1;padding-left:.75rem;}"
+        ".drift-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:1rem;}"
+        "table{width:100%;border-collapse:collapse;font-size:.85rem;}"
+        "th{text-align:left;padding:.6rem 1rem;background:#1e293b;color:#94a3b8;border-bottom:1px solid #334155;}"
+        "td{padding:.6rem 1rem;border-bottom:1px solid #1e293b;}"
+        "tr:hover td{background:#1e293b;}"
+        ".chart-box{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:1.5rem;"
+        "margin-bottom:1.5rem;}"
+        "</style></head><body>"
+        '<div class="header"><h1>🔍 OpenMythos Monitor</h1>'
+        '<a href="/dashboard">← ショーケース</a></div>'
+        '<div class="main">'
+        '<div class="section"><h2>ドリフト検知 — 全タスク</h2>'
+        '<div class="drift-grid">' + drift_cards + "</div></div>"
+        '<div class="section"><h2>直近24時間 メトリクス</h2>'
+        "<table><thead><tr>"
+        "<th>タスク/モデル</th><th>リクエスト数</th><th>平均レイテンシ</th>"
+        "<th>P95レイテンシ</th><th>平均スコア</th><th>精度</th>"
+        "</tr></thead><tbody>"
+        + metrics_rows +
+        "</tbody></table></div>"
+        '<div style="font-size:.8rem;color:#94a3b8;margin-top:2rem;">'
+        '<a href="/monitor/health" style="color:#a5b4fc;">ヘルスチェック</a> · '
+        '<a href="/metrics" style="color:#a5b4fc;">Prometheus Metrics</a>'
+        "</div></div>"
+        "</body></html>"
+    )
+
+
+@monitor_app.get("/monitor/dashboard", response_class=HTMLResponse)
+def dashboard():
+    """監視ダッシュボード — ブラウザで開ける HTML 形式。"""
+    return HTMLResponse(content=build_monitor_dashboard_html())
 
 
 class BaselineRequest(BaseModel):

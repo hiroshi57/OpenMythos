@@ -42,6 +42,29 @@ from transformers import AutoTokenizer
 from open_mythos.main import MythosConfig, OpenMythos
 from open_mythos.agents import MythosAgent, OpenMythosLLM
 from serve.auth import RateLimitMiddleware, verify_api_key
+from serve.dashboard import router as _dashboard_router
+
+try:
+    from prometheus_client import (
+        Counter as _PCounter,
+        Histogram as _PHistogram,
+        CollectorRegistry as _PRegistry,
+        generate_latest as _prom_latest,
+        CONTENT_TYPE_LATEST as _PROM_CT,
+    )
+    _PROM_REGISTRY = _PRegistry()
+    _REQ_COUNT = _PCounter(
+        "openmythos_requests_total", "Total HTTP requests",
+        ["endpoint", "method", "status"], registry=_PROM_REGISTRY,
+    )
+    _REQ_LATENCY = _PHistogram(
+        "openmythos_request_duration_seconds", "Request duration",
+        ["endpoint"], buckets=[0.01, 0.05, 0.1, 0.5, 1.0, 5.0],
+        registry=_PROM_REGISTRY,
+    )
+    _PROM_OK = True
+except Exception:  # noqa: BLE001
+    _PROM_OK = False
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -185,6 +208,25 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Sprint 39: ショーケースダッシュボード + Prometheus
+app.include_router(_dashboard_router)
+
+
+@app.get(
+    "/metrics",
+    tags=["health"],
+    summary="Prometheus メトリクス",
+    description="Prometheus スクレイプ用テキスト形式のメトリクスを返す。",
+    include_in_schema=True,
+)
+def prometheus_metrics():
+    if not _PROM_OK:
+        return Response("# prometheus_client not installed\n", media_type="text/plain")
+    return Response(
+        content=_prom_latest(_PROM_REGISTRY),
+        media_type=_PROM_CT,
+    )
 
 
 # ---------------------------------------------------------------------------
