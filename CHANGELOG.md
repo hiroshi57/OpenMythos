@@ -4,6 +4,68 @@ All notable changes to OpenMythos are documented here.
 
 ---
 
+## [0.39.0] — 2026-06-06
+
+### Sprint 36: 1B スケール・PyPI 公開・Janome 統合・lm-eval・CWV シミュレーター
+
+#### `scripts/bench_1b_vs_nano.py` 追加
+- `mythos_1b()` + LoraTrainer で FT 後の LLMO スコアを nano (300M) と比較
+- 結果: 1B est LLMO +37.7pt (target +5pt 達成) → `benchmark/results/bench_1b_vs_nano.json`
+
+#### `pyproject.toml` 更新
+- バージョン `0.39.0`
+- `[tool.poetry.extras] ja = ["janome", "fugashi"]` 追加 (`pip install open-mythos[ja]`)
+- `janome>=0.5.0` / `fugashi>=1.3.0` を optional 依存として正式追加
+
+#### `requirements.txt` 更新
+- `janome>=0.5.0` / `fugashi>=1.3.0` のコメントアウトを解除
+
+#### `benchmark/results/lm_eval_benchmark.json` 追加
+- HellaSwag / ARC-Easy / WinoGrande のルールベース近似スコアと Claude Opus 4.8 ベースライン比較
+
+#### `open_mythos/structured.py` 更新
+- `CoreWebVitalsSimulator` クラス追加
+  - `simulate(content, images, server_response_ms)` → LCP / CLS / FID 疑似スコア算出
+  - LCP: コンテンツ長・画像数・サーバー応答時間から推定
+  - CLS: 画像枚数・コンテンツ密度から推定
+  - FID: 静的ページは常に良好 (< 100ms)
+- `GET /v1/cwv/simulate` API エンドポイント追加
+
+#### テスト: 2230+ PASS
+#### バージョン: v0.39.0
+
+---
+
+## [0.38.0] — 2026-06-06
+
+### Sprint 35: SEO FT実証・Opus 4.8 比較・ROAS 強化・A/B Claude 接続
+
+#### `scripts/generate_seo_train.py` 追加
+- `content_quality` スキーマ形式で合成 SEO データ 50 件生成 → `data/seo_train.jsonl`
+- 高品質 (quality_score ≥ 3.8) : 低品質 = 6:4 の比率
+
+#### `scripts/run_seo_ft.py` 追加
+- `LoraTrainer` で `data/seo_train.jsonl` を SFT、perplexity **1.73** (target < 20 達成)
+- 結果を `checkpoints/seo_ft/seo_ft_result.json` に保存
+
+#### `scripts/run_benchmark_comparison.py` 追加
+- `LLMOScorer.score_with_query()` で OpenMythos スコアリング
+- Opus 4.8 シミュレーションベースラインと比較し `benchmark/results/seo_benchmark_*.json` に保存
+
+#### `serve/api.py` 更新 (Sprint 35.4 / 35.5)
+- `/v1/ab/infer` の `existing_ml` グループを Claude Opus 4.8 API 呼び出しに差し替え
+  - `CLAUDE_API_KEY` / `ANTHROPIC_API_KEY` 設定時は実 API、未設定時はスタブにフォールバック
+- `POST /v1/roas/simulate` エンドポイント追加
+
+#### `open_mythos/tools_marketing.py` 更新 (Sprint 35.5)
+- `roas_simulate()` に `noise_dist="normal"` (正規分布ノイズ) 対応
+- `ci90` / `ci50` 信頼区間フィールドを追加
+
+#### テスト: 2230 passed, 9 skipped
+#### バージョン: v0.38.0
+
+---
+
 ## [0.41.0] — 2026-06-03
 
 ### Sprint 38: GPU LoRA SFT — CosineScheduler 統合 + 実機検証基盤

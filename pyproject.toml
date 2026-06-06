@@ -5,7 +5,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "open-mythos"
-version = "0.41.0"
+version = "0.39.0"
 description = "OpenMythos — open-source theoretical reconstruction of the Claude Mythos Recurrent-Depth Transformer architecture"
 license = "MIT"
 authors = ["Kye Gomez <kye@swarms.world>"]
@@ -47,9 +47,18 @@ mythos = "open_mythos.cli:main"
 
 [tool.poetry.extras]
 flash = ["flash-attn"]
+ja = ["janome", "fugashi"]
 
 [tool.poetry.dependencies.flash-attn]
 version = ">=2.8.3"
+optional = true
+
+[tool.poetry.dependencies.janome]
+version = ">=0.5.0"
+optional = true
+
+[tool.poetry.dependencies.fugashi]
+version = ">=1.3.0"
 optional = true
 
 

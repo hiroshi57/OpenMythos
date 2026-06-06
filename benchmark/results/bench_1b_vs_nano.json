@@ -1,0 +1,9 @@
+{
+  "sprint": "Sprint 36.1",
+  "nano_avg_llmo": 0.3869,
+  "model_1b_eval_score": 0.7072,
+  "model_1b_est_llmo": 0.7638,
+  "delta_pt": 37.69,
+  "target_plus5pt_met": true,
+  "n_eval_samples": 20
+}

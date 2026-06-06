@@ -576,3 +576,147 @@ def _complete_json(text: str) -> str:
     text += "}" * max(0, brace)
 
     return text
+
+
+# ---------------------------------------------------------------------------
+# Sprint 36.5: Core Web Vitals シミュレーター
+# ---------------------------------------------------------------------------
+
+
+class CWVResult:
+    """Core Web Vitals シミュレーション結果。"""
+
+    # Google 推奨閾値
+    _LCP_GOOD = 2500    # ms
+    _LCP_POOR = 4000    # ms
+    _CLS_GOOD = 0.1
+    _CLS_POOR = 0.25
+    _FID_GOOD = 100     # ms
+    _FID_POOR = 300     # ms
+
+    def __init__(self, lcp_ms: float, cls: float, fid_ms: float) -> None:
+        self.lcp_ms = round(lcp_ms, 1)
+        self.cls = round(cls, 3)
+        self.fid_ms = round(fid_ms, 1)
+
+    def _rating(self, val: float, good: float, poor: float) -> str:
+        if val <= good:
+            return "good"
+        if val <= poor:
+            return "needs_improvement"
+        return "poor"
+
+    @property
+    def lcp_rating(self) -> str:
+        return self._rating(self.lcp_ms, self._LCP_GOOD, self._LCP_POOR)
+
+    @property
+    def cls_rating(self) -> str:
+        return self._rating(self.cls, self._CLS_GOOD, self._CLS_POOR)
+
+    @property
+    def fid_rating(self) -> str:
+        return self._rating(self.fid_ms, self._FID_GOOD, self._FID_POOR)
+
+    @property
+    def overall(self) -> str:
+        ratings = [self.lcp_rating, self.cls_rating, self.fid_rating]
+        if all(r == "good" for r in ratings):
+            return "good"
+        if any(r == "poor" for r in ratings):
+            return "poor"
+        return "needs_improvement"
+
+    def to_dict(self) -> dict:
+        return {
+            "lcp": {
+                "value_ms": self.lcp_ms,
+                "rating": self.lcp_rating,
+                "threshold_good_ms": self._LCP_GOOD,
+                "threshold_poor_ms": self._LCP_POOR,
+            },
+            "cls": {
+                "value": self.cls,
+                "rating": self.cls_rating,
+                "threshold_good": self._CLS_GOOD,
+                "threshold_poor": self._CLS_POOR,
+            },
+            "fid": {
+                "value_ms": self.fid_ms,
+                "rating": self.fid_rating,
+                "threshold_good_ms": self._FID_GOOD,
+                "threshold_poor_ms": self._FID_POOR,
+            },
+            "overall": self.overall,
+        }
+
+
+class CoreWebVitalsSimulator:
+    """
+    コンテンツ属性から Core Web Vitals (LCP / CLS / FID) を疑似推定する。
+
+    外部ブラウザ計測なしにコンテンツ改善の方向性を示すことが目的。
+    実際の計測値ではないため、本番では PageSpeed Insights API での検証を推奨。
+
+    推定モデル
+    ----------
+    LCP = base_server_ms + word_penalty_ms + image_penalty_ms
+        - word_penalty  : 1000 字あたり +50ms (テキスト量が多いほどレンダリング遅延)
+        - image_penalty : 画像1枚あたり +200ms (非最適化画像を仮定)
+
+    CLS = image_cls + density_cls
+        - image_cls     : 画像1枚あたり +0.02 (サイズ未指定画像によるズレを仮定)
+        - density_cls   : コンテンツ密度 (字数/行数) が高いほど微増
+
+    FID = 100ms 固定 (静的ページ想定、JS ヘビーなページには適用外)
+    """
+
+    # チューニング定数
+    _BASE_LCP_MS: float = 800.0
+    _WORD_PENALTY_PER_1000: float = 50.0
+    _IMAGE_PENALTY_MS: float = 200.0
+    _IMAGE_CLS: float = 0.02
+    _DENSITY_CLS_SCALE: float = 0.001
+    _FID_MS: float = 100.0
+
+    def simulate(
+        self,
+        content: str,
+        n_images: int = 0,
+        server_response_ms: float = 200.0,
+    ) -> CWVResult:
+        """
+        コンテンツからCWVを推定する。
+
+        Parameters
+        ----------
+        content : str
+            ページ本文テキスト。
+        n_images : int
+            ページ内の画像数（非最適化画像を想定）。
+        server_response_ms : float
+            サーバー初期応答時間 (ms)。デフォルト 200ms。
+
+        Returns
+        -------
+        CWVResult
+        """
+        word_count = len(content)
+        line_count = max(content.count("\n") + 1, 1)
+
+        # LCP 推定
+        lcp = (
+            server_response_ms
+            + self._BASE_LCP_MS
+            + (word_count / 1000.0) * self._WORD_PENALTY_PER_1000
+            + n_images * self._IMAGE_PENALTY_MS
+        )
+
+        # CLS 推定
+        density = word_count / line_count
+        cls = min(
+            n_images * self._IMAGE_CLS + density * self._DENSITY_CLS_SCALE,
+            1.0,
+        )
+
+        return CWVResult(lcp_ms=lcp, cls=cls, fid_ms=self._FID_MS)

@@ -3672,6 +3672,37 @@ def guard_refresh():
     return {"refreshed": True, "rule_count": n_rules}
 
 
+# ---------------------------------------------------------------------------
+# Sprint 36.5: Core Web Vitals シミュレーター
+# ---------------------------------------------------------------------------
+
+
+class CWVSimulateRequest(BaseModel):
+    content: str = Field(..., description="ページ本文テキスト")
+    n_images: int = Field(0, ge=0, description="ページ内の画像数")
+    server_response_ms: float = Field(200.0, ge=0.0, description="サーバー初期応答時間 (ms)")
+
+
+@app.post(
+    "/v1/cwv/simulate",
+    tags=["seo"],
+    summary="Core Web Vitals シミュレーション (Sprint 36)",
+    description=(
+        "コンテンツ長・画像数・サーバー応答時間から LCP / CLS / FID を疑似推定する。"
+        "実ブラウザ計測の代替ではなく、コンテンツ改善の方向性確認に使用する。"
+    ),
+)
+def cwv_simulate(req: CWVSimulateRequest):
+    from open_mythos.structured import CoreWebVitalsSimulator
+    sim = CoreWebVitalsSimulator()
+    result = sim.simulate(
+        content=req.content,
+        n_images=req.n_images,
+        server_response_ms=req.server_response_ms,
+    )
+    return result.to_dict()
+
+
 # Sprint 30: GrowingAIOrchestrator — /v1/grow/run
 from open_mythos.growing_ai_orchestrator import (
     GrowingAIOrchestrator as _GrowingAIOrchestrator,
