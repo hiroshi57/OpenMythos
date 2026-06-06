@@ -1,0 +1,478 @@
+{
+  "generated_at": "2026-06-06T05:04:15.043637+00:00",
+  "sprint": "Sprint 35",
+  "version": "v0.38.0-dev",
+  "task": "content_quality / LLMO scoring",
+  "n_samples": 20,
+  "summary": {
+    "openmythos_avg_llmo": 0.3869,
+    "opus48_avg_llmo": 0.5778,
+    "avg_delta": -0.191,
+    "openmythos_win_count": 6,
+    "openmythos_win_rate_pct": 30.0,
+    "verdict": "Opus 4.8 ベースライン優位（GPUで再FT後に再評価）",
+    "note": "Opus 4.8 スコアはシミュレーションベースライン（実API未呼び出し）"
+  },
+  "details": [
+    {
+      "record_id": "cq_20260606_0005",
+      "keyword": "競合調査 SEO",
+      "quality_score": 4.3,
+      "openmythos": {
+        "llmo_total": 0.19,
+        "entity_density": 0.034,
+        "answer_directness": 0.3,
+        "citability": 0.2,
+        "query_relevance": 0.685,
+        "intent_type": "informational",
+        "source": "openmythos_v0.37"
+      },
+      "opus48_baseline": {
+        "llmo_total": 0.745,
+        "entity_density": 0.602,
+        "answer_directness": 0.583,
+        "citability": 0.513,
+        "source": "simulated_opus48_baseline"
+      },
+      "delta": -0.555,
+      "openmythos_wins": false
+    },
+    {
+      "record_id": "cq_20260606_0041",
+      "keyword": "メタディスクリプション 書き方",
+      "quality_score": 2.3,
+      "openmythos": {
+        "llmo_total": 0.444,
+        "entity_density": 1.0,
+        "answer_directness": 0.3,
+        "citability": 0.08,
+        "query_relevance": 0.482,
+        "intent_type": "informational",
+        "source": "openmythos_v0.37"
+      },
+      "opus48_baseline": {
+        "llmo_total": 0.415,
+        "entity_density": 0.416,
+        "answer_directness": 0.401,
+        "citability": 0.263,
+        "source": "simulated_opus48_baseline"
+      },
+      "delta": 0.029,
+      "openmythos_wins": true
+    },
+    {
+      "record_id": "cq_20260606_0045",
+      "keyword": "E-E-A-T 対策",
+      "quality_score": 1.5,
+      "openmythos": {
+        "llmo_total": 0.154,
+        "entity_density": 0.034,
+        "answer_directness": 0.3,
+        "citability": 0.08,
+        "query_relevance": 0.3,
+        "intent_type": "informational",
+        "source": "openmythos_v0.37"
+      },
+      "opus48_baseline": {
+        "llmo_total": 0.247,
+        "entity_density": 0.2,
+        "answer_directness": 0.189,
+        "citability": 0.198,
+        "source": "simulated_opus48_baseline"
+      },
+      "delta": -0.093,
+      "openmythos_wins": false
+    },
+    {
+      "record_id": "cq_20260606_0035",
+      "keyword": "ローカルSEO 対策",
+      "quality_score": 1.9,
+      "openmythos": {
+        "llmo_total": 0.444,
+        "entity_density": 1.0,
+        "answer_directness": 0.3,
+        "citability": 0.08,
+        "query_relevance": 0.588,
+        "intent_type": "informational",
+        "source": "openmythos_v0.37"
+      },
+      "opus48_baseline": {
+        "llmo_total": 0.276,
+        "entity_density": 0.237,
+        "answer_directness": 0.247,
+        "citability": 0.225,
+        "source": "simulated_opus48_baseline"
+      },
+      "delta": 0.168,
+      "openmythos_wins": true
+    },
+    {
+      "record_id": "cq_20260606_0040",
+      "keyword": "構造化データ 実装",
+      "quality_score": 2.1,
+      "openmythos": {
+        "llmo_total": 0.444,
+        "entity_density": 1.0,
+        "answer_directness": 0.3,
+        "citability": 0.08,
+        "query_relevance": 0.482,
+        "intent_type": "informational",
+        "source": "openmythos_v0.37"
+      },
+      "opus48_baseline": {
+        "llmo_total": 0.329,
+        "entity_density": 0.321,
+        "answer_directness": 0.31,
+        "citability": 0.198,
+        "source": "simulated_opus48_baseline"
+      },
+      "delta": 0.115,
+      "openmythos_wins": true
+    },
+    {
+      "record_id": "cq_20260606_0019",
+      "keyword": "Core Web Vitals 改善",
+      "quality_score": 4.9,
+      "openmythos": {
+        "llmo_total": 0.48,
+        "entity_density": 1.0,
+        "answer_directness": 0.3,
+        "citability": 0.2,
+        "query_relevance": 0.489,
+        "intent_type": "informational",
+        "source": "openmythos_v0.37"
+      },
+      "opus48_baseline": {
+        "llmo_total": 0.864,
+        "entity_density": 0.872,
+        "answer_directness": 0.693,
+        "citability": 0.572,
+        "source": "simulated_opus48_baseline"
+      },
+      "delta": -0.384,
+      "openmythos_wins": false
+    },
+    {
+      "record_id": "cq_20260606_0015",
+      "keyword": "SEO対策 やり方",
+      "quality_score": 3.9,
+      "openmythos": {
+        "llmo_total": 0.444,
+        "entity_density": 1.0,
+        "answer_directness": 0.3,
+        "citability": 0.08,
+        "query_relevance": 0.598,
+        "intent_type": "informational",
+        "source": "openmythos_v0.37"
+      },
+      "opus48_baseline": {
+        "llmo_total": 0.709,
+        "entity_density": 0.639,
+        "answer_directness": 0.516,
+        "citability": 0.453,
+        "source": "simulated_opus48_baseline"
+      },
+      "delta": -0.265,
+      "openmythos_wins": false
+    },
+    {
+      "record_id": "cq_20260606_0049",
+      "keyword": "キーワード 選定方法",
+      "quality_score": 1.6,
+      "openmythos": {
+        "llmo_total": 0.444,
+        "entity_density": 1.0,
+        "answer_directness": 0.3,
+        "citability": 0.08,
+        "query_relevance": 0.3,
+        "intent_type": "informational",
+        "source": "openmythos_v0.37"
+      },
+      "opus48_baseline": {
+        "llmo_total": 0.307,
+        "entity_density": 0.301,
+        "answer_directness": 0.289,
+        "citability": 0.274,
+        "source": "simulated_opus48_baseline"
+      },
+      "delta": 0.137,
+      "openmythos_wins": true
+    },
+    {
+      "record_id": "cq_20260606_0010",
+      "keyword": "被リンク 獲得方法",
+      "quality_score": 4.7,
+      "openmythos": {
+        "llmo_total": 0.444,
+        "entity_density": 1.0,
+        "answer_directness": 0.3,
+        "citability": 0.08,
+        "query_relevance": 0.454,
+        "intent_type": "informational",
+        "source": "openmythos_v0.37"
+      },
+      "opus48_baseline": {
+        "llmo_total": 0.803,
+        "entity_density": 0.876,
+        "answer_directness": 0.653,
+        "citability": 0.659,
+        "source": "simulated_opus48_baseline"
+      },
+      "delta": -0.359,
+      "openmythos_wins": false
+    },
+    {
+      "record_id": "cq_20260606_0028",
+      "keyword": "被リンク 獲得方法",
+      "quality_score": 4.8,
+      "openmythos": {
+        "llmo_total": 0.415,
+        "entity_density": 0.902,
+        "answer_directness": 0.3,
+        "citability": 0.08,
+        "query_relevance": 0.423,
+        "intent_type": "informational",
+        "source": "openmythos_v0.37"
+      },
+      "opus48_baseline": {
+        "llmo_total": 0.849,
+        "entity_density": 0.837,
+        "answer_directness": 0.814,
+        "citability": 0.705,
+        "source": "simulated_opus48_baseline"
+      },
+      "delta": -0.434,
+      "openmythos_wins": false
+    },
+    {
+      "record_id": "cq_20260606_0039",
+      "keyword": "キーワード 選定方法",
+      "quality_score": 2.5,
+      "openmythos": {
+        "llmo_total": 0.444,
+        "entity_density": 1.0,
+        "answer_directness": 0.3,
+        "citability": 0.08,
+        "query_relevance": 0.3,
+        "intent_type": "informational",
+        "source": "openmythos_v0.37"
+      },
+      "opus48_baseline": {
+        "llmo_total": 0.445,
+        "entity_density": 0.362,
+        "answer_directness": 0.342,
+        "citability": 0.319,
+        "source": "simulated_opus48_baseline"
+      },
+      "delta": -0.001,
+      "openmythos_wins": false
+    },
+    {
+      "record_id": "cq_20260606_0031",
+      "keyword": "検索意図 分析",
+      "quality_score": 1.2,
+      "openmythos": {
+        "llmo_total": 0.154,
+        "entity_density": 0.034,
+        "answer_directness": 0.3,
+        "citability": 0.08,
+        "query_relevance": 0.58,
+        "intent_type": "informational",
+        "source": "openmythos_v0.37"
+      },
+      "opus48_baseline": {
+        "llmo_total": 0.162,
+        "entity_density": 0.141,
+        "answer_directness": 0.118,
+        "citability": 0.115,
+        "source": "simulated_opus48_baseline"
+      },
+      "delta": -0.008,
+      "openmythos_wins": false
+    },
+    {
+      "record_id": "cq_20260606_0004",
+      "keyword": "ローカルSEO 対策",
+      "quality_score": 4.5,
+      "openmythos": {
+        "llmo_total": 0.48,
+        "entity_density": 1.0,
+        "answer_directness": 0.3,
+        "citability": 0.2,
+        "query_relevance": 0.444,
+        "intent_type": "informational",
+        "source": "openmythos_v0.37"
+      },
+      "opus48_baseline": {
+        "llmo_total": 0.779,
+        "entity_density": 0.708,
+        "answer_directness": 0.631,
+        "citability": 0.532,
+        "source": "simulated_opus48_baseline"
+      },
+      "delta": -0.299,
+      "openmythos_wins": false
+    },
+    {
+      "record_id": "cq_20260606_0013",
+      "keyword": "モバイルSEO 最適化",
+      "quality_score": 4.0,
+      "openmythos": {
+        "llmo_total": 0.443,
+        "entity_density": 0.998,
+        "answer_directness": 0.3,
+        "citability": 0.08,
+        "query_relevance": 0.476,
+        "intent_type": "informational",
+        "source": "openmythos_v0.37"
+      },
+      "opus48_baseline": {
+        "llmo_total": 0.657,
+        "entity_density": 0.71,
+        "answer_directness": 0.587,
+        "citability": 0.554,
+        "source": "simulated_opus48_baseline"
+      },
+      "delta": -0.214,
+      "openmythos_wins": false
+    },
+    {
+      "record_id": "cq_20260606_0024",
+      "keyword": "被リンク 獲得方法",
+      "quality_score": 4.6,
+      "openmythos": {
+        "llmo_total": 0.443,
+        "entity_density": 0.998,
+        "answer_directness": 0.3,
+        "citability": 0.08,
+        "query_relevance": 0.405,
+        "intent_type": "informational",
+        "source": "openmythos_v0.37"
+      },
+      "opus48_baseline": {
+        "llmo_total": 0.749,
+        "entity_density": 0.763,
+        "answer_directness": 0.561,
+        "citability": 0.563,
+        "source": "simulated_opus48_baseline"
+      },
+      "delta": -0.306,
+      "openmythos_wins": false
+    },
+    {
+      "record_id": "cq_20260606_0042",
+      "keyword": "Googleサーチコンソール 使い方",
+      "quality_score": 1.9,
+      "openmythos": {
+        "llmo_total": 0.442,
+        "entity_density": 0.993,
+        "answer_directness": 0.3,
+        "citability": 0.08,
+        "query_relevance": 0.588,
+        "intent_type": "informational",
+        "source": "openmythos_v0.37"
+      },
+      "opus48_baseline": {
+        "llmo_total": 0.372,
+        "entity_density": 0.369,
+        "answer_directness": 0.323,
+        "citability": 0.325,
+        "source": "simulated_opus48_baseline"
+      },
+      "delta": 0.07,
+      "openmythos_wins": true
+    },
+    {
+      "record_id": "cq_20260606_0033",
+      "keyword": "AIコンテンツ SEO",
+      "quality_score": 2.3,
+      "openmythos": {
+        "llmo_total": 0.444,
+        "entity_density": 1.0,
+        "answer_directness": 0.3,
+        "citability": 0.08,
+        "query_relevance": 0.76,
+        "intent_type": "informational",
+        "source": "openmythos_v0.37"
+      },
+      "opus48_baseline": {
+        "llmo_total": 0.425,
+        "entity_density": 0.439,
+        "answer_directness": 0.327,
+        "citability": 0.261,
+        "source": "simulated_opus48_baseline"
+      },
+      "delta": 0.019,
+      "openmythos_wins": true
+    },
+    {
+      "record_id": "cq_20260606_0008",
+      "keyword": "ローカルSEO 対策",
+      "quality_score": 4.7,
+      "openmythos": {
+        "llmo_total": 0.386,
+        "entity_density": 0.807,
+        "answer_directness": 0.3,
+        "citability": 0.08,
+        "query_relevance": 0.632,
+        "intent_type": "informational",
+        "source": "openmythos_v0.37"
+      },
+      "opus48_baseline": {
+        "llmo_total": 0.781,
+        "entity_density": 0.687,
+        "answer_directness": 0.596,
+        "citability": 0.763,
+        "source": "simulated_opus48_baseline"
+      },
+      "delta": -0.395,
+      "openmythos_wins": false
+    },
+    {
+      "record_id": "cq_20260606_0003",
+      "keyword": "生成AI SEO",
+      "quality_score": 4.9,
+      "openmythos": {
+        "llmo_total": 0.154,
+        "entity_density": 0.034,
+        "answer_directness": 0.3,
+        "citability": 0.08,
+        "query_relevance": 0.765,
+        "intent_type": "informational",
+        "source": "openmythos_v0.37"
+      },
+      "opus48_baseline": {
+        "llmo_total": 0.871,
+        "entity_density": 0.779,
+        "answer_directness": 0.781,
+        "citability": 0.66,
+        "source": "simulated_opus48_baseline"
+      },
+      "delta": -0.717,
+      "openmythos_wins": false
+    },
+    {
+      "record_id": "cq_20260606_0007",
+      "keyword": "コンテンツマーケティング 効果",
+      "quality_score": 4.3,
+      "openmythos": {
+        "llmo_total": 0.444,
+        "entity_density": 1.0,
+        "answer_directness": 0.3,
+        "citability": 0.08,
+        "query_relevance": 0.549,
+        "intent_type": "informational",
+        "source": "openmythos_v0.37"
+      },
+      "opus48_baseline": {
+        "llmo_total": 0.772,
+        "entity_density": 0.724,
+        "answer_directness": 0.602,
+        "citability": 0.54,
+        "source": "simulated_opus48_baseline"
+      },
+      "delta": -0.328,
+      "openmythos_wins": false
+    }
+  ]
+}

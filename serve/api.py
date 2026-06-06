@@ -2553,11 +2553,34 @@ def ab_infer(req: ABInferRequest):
         label = 1 if score >= 0.5 else 0
         model_id = "openmythos-rdt"
     else:
-        # 既存 ML スタブ: user_id ハッシュから決定論的スコアを生成
-        h = int(hashlib.md5(req.user_id.encode()).hexdigest(), 16)
-        score = 0.5 + (h % 500) / 1000.0  # 0.5–1.0 の決定論的スコア
-        label = 1 if score >= 0.5 else 0
-        model_id = "existing-ml-stub"
+        # Claude API (Opus 4.8) — CLAUDE_API_KEY があれば実 API、なければスタブ
+        claude_api_key = os.getenv("CLAUDE_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
+        if claude_api_key:
+            try:
+                import anthropic as _anthropic
+                _client = _anthropic.Anthropic(api_key=claude_api_key)
+                _msg = _client.messages.create(
+                    model="claude-opus-4-8",
+                    max_tokens=64,
+                    messages=[{"role": "user", "content": req.text[:500]}],
+                )
+                _response_text = _msg.content[0].text if _msg.content else ""
+                # レスポンス長をスコアの代理指標として使用
+                score = min(len(_response_text) / 200.0, 1.0)
+                label = 1 if score >= 0.5 else 0
+                model_id = "claude-opus-4-8"
+            except Exception:
+                # API エラー時はスタブにフォールバック
+                h = int(hashlib.md5(req.user_id.encode()).hexdigest(), 16)
+                score = 0.5 + (h % 500) / 1000.0
+                label = 1 if score >= 0.5 else 0
+                model_id = "claude-api-error-stub"
+        else:
+            # API キー未設定: 決定論的スタブ
+            h = int(hashlib.md5(req.user_id.encode()).hexdigest(), 16)
+            score = 0.5 + (h % 500) / 1000.0
+            label = 1 if score >= 0.5 else 0
+            model_id = "claude-stub-no-key"
 
     latency_ms = (time.perf_counter() - t0) * 1000
 
@@ -2577,6 +2600,45 @@ def ab_infer(req: ABInferRequest):
         traffic_pct=(
             AB_OPENMYTHOS_PCT if group == "openmythos" else 100 - AB_OPENMYTHOS_PCT
         ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Sprint 35: ROAS Monte Carlo シミュレーター API
+# ---------------------------------------------------------------------------
+
+
+class RoasSimulateRequest(BaseModel):
+    ad_spend: float = Field(..., gt=0, description="広告費 (USD)")
+    ctr: float = Field(..., gt=0, description="期待クリック率 (clicks per USD)")
+    cvr: float = Field(..., gt=0, le=1.0, description="期待成約率 (0〜1)")
+    aov: float = Field(..., gt=0, description="平均注文金額 (USD)")
+    n: int = Field(1000, ge=100, le=100000, description="シミュレーション回数")
+    noise: float = Field(0.20, ge=0.0, le=1.0, description="ノイズ幅 (デフォルト: ±20%)")
+    noise_dist: str = Field("uniform", description="ノイズ分布: 'uniform' or 'normal'")
+    seed: Optional[int] = Field(None, description="乱数シード (再現性用)")
+
+
+@app.post(
+    "/v1/roas/simulate",
+    tags=["marketing"],
+    summary="ROAS モンテカルロシミュレーション",
+    description=(
+        "広告費・CTR・CVR・AOV に対してモンテカルロ法で ROAS 分布を推定し、"
+        "90%/50% 信頼区間・収益確率・期待収益を返す。"
+    ),
+)
+def roas_simulate_endpoint(req: RoasSimulateRequest):
+    from open_mythos.tools_marketing import roas_simulate
+    return roas_simulate(
+        ad_spend=req.ad_spend,
+        ctr=req.ctr,
+        cvr=req.cvr,
+        aov=req.aov,
+        n=req.n,
+        noise=req.noise,
+        seed=req.seed,
+        noise_dist=req.noise_dist,
     )
 
 
