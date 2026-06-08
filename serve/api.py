@@ -4709,6 +4709,177 @@ def clip_encode_image(req: _CLIPEncodeImageRequest):
     }
 
 
+# ============================================================================
+# Sprint 49 — 訓練最適化統合 API
+# ============================================================================
+
+from open_mythos.skills.training_optimization import (  # noqa: E402
+    LightningTrainerConfig as _LightningConfig,
+    LightningTrainer as _LightningTrainer,
+    FSDPConfig as _FSDPConfig,
+    FSDPWrapper as _FSDPWrapper,
+    SimPOConfig as _SimPOConfig,
+    SimPOTrainer as _SimPOTrainer,
+    SAEConfig as _SAEConfig,
+    SparseAutoencoder as _SparseAutoencoder,
+)
+
+# ── リクエストモデル ────────────────────────────────────────────────────────────
+
+class _LightningFitRequest(BaseModel):
+    max_epochs: int = 3
+    accelerator: str = "auto"
+    precision: str = "32-true"
+    gradient_clip_val: float = 1.0
+
+
+class _FSDPEstimateRequest(BaseModel):
+    total_params: int
+    world_size: int = 1
+    sharding_strategy: str = "FULL_SHARD"
+
+
+class _SimPOLossRequest(BaseModel):
+    chosen_logprobs: List[float]
+    rejected_logprobs: List[float]
+    beta: float = 2.0
+    gamma: float = 0.5
+
+
+class _SAEForwardRequest(BaseModel):
+    activations: List[List[float]]
+    d_in: int = 512
+    d_sae: int = 2048
+    k: int = 32
+
+
+class _SAEEstimateRequest(BaseModel):
+    model_dim: int
+    expansion: int = 4
+
+
+# ── エンドポイント ─────────────────────────────────────────────────────────────
+
+@app.post(
+    "/v1/training/lightning/fit",
+    tags=["training"],
+    summary="PyTorch Lightning — 訓練実行 (Sprint 49)",
+    dependencies=[Depends(verify_api_key)],
+)
+def lightning_fit(req: _LightningFitRequest):
+    """Lightning トレーナーでモデルを訓練する (fallback)。"""
+    cfg = _LightningConfig(
+        max_epochs=req.max_epochs,
+        accelerator=req.accelerator,
+        precision=req.precision,
+        gradient_clip_val=req.gradient_clip_val,
+    )
+    tr = _LightningTrainer(cfg)
+    result = tr.fit(model=None)
+    return {
+        "final_loss":     result.final_loss,
+        "epochs_trained": result.epochs_trained,
+        "best_val_loss":  result.best_val_loss,
+        "train_time_s":   result.train_time_s,
+    }
+
+
+@app.post(
+    "/v1/training/lightning/config",
+    tags=["training"],
+    summary="PyTorch Lightning — 設定取得 (Sprint 49)",
+    dependencies=[Depends(verify_api_key)],
+)
+def lightning_config(req: _LightningFitRequest):
+    """Lightning トレーナー設定辞書を返す。"""
+    cfg = _LightningConfig(
+        max_epochs=req.max_epochs,
+        accelerator=req.accelerator,
+        precision=req.precision,
+    )
+    return _LightningTrainer(cfg).build_config_dict()
+
+
+@app.post(
+    "/v1/training/fsdp/estimate",
+    tags=["training"],
+    summary="FSDP — メモリ使用量推定 (Sprint 49)",
+    dependencies=[Depends(verify_api_key)],
+)
+def fsdp_estimate(req: _FSDPEstimateRequest):
+    """FSDP シャーディング時のメモリ使用量を推定する。"""
+    cfg = _FSDPConfig(sharding_strategy=req.sharding_strategy)
+    fw = _FSDPWrapper(cfg)
+    info = fw.estimate_memory(req.total_params, world_size=req.world_size)
+    return {
+        "shard_count":          info.shard_count,
+        "local_params":         info.local_params,
+        "total_params":         info.total_params,
+        "memory_per_shard_mb":  info.memory_per_shard_mb,
+    }
+
+
+@app.post(
+    "/v1/training/simpo/compute-loss",
+    tags=["training"],
+    summary="SimPO — 損失計算 (Sprint 49)",
+    dependencies=[Depends(verify_api_key)],
+)
+def simpo_compute_loss(req: _SimPOLossRequest):
+    """SimPO 損失を計算する。"""
+    cfg = _SimPOConfig(beta=req.beta, gamma=req.gamma)
+    tr = _SimPOTrainer(cfg)
+    loss = tr.compute_loss(req.chosen_logprobs, req.rejected_logprobs)
+    return {"loss": loss, "beta": req.beta, "gamma": req.gamma}
+
+
+@app.post(
+    "/v1/training/simpo/train-step",
+    tags=["training"],
+    summary="SimPO — 1 ステップ訓練 (Sprint 49)",
+    dependencies=[Depends(verify_api_key)],
+)
+def simpo_train_step(req: _SimPOLossRequest):
+    """SimPO の 1 ステップを実行し、報酬統計を返す。"""
+    cfg = _SimPOConfig(beta=req.beta, gamma=req.gamma)
+    tr = _SimPOTrainer(cfg)
+    result = tr.train_step(req.chosen_logprobs, req.rejected_logprobs)
+    return result
+
+
+@app.post(
+    "/v1/training/sae/forward",
+    tags=["training"],
+    summary="Sparse Autoencoder — forward pass (Sprint 49)",
+    dependencies=[Depends(verify_api_key)],
+)
+def sae_forward(req: _SAEForwardRequest):
+    """SAE の forward を実行し、再構成損失とスパース度を返す。"""
+    import torch as _torch
+    cfg = _SAEConfig(d_in=req.d_in, d_sae=req.d_sae, k=req.k)
+    sae = _SparseAutoencoder(cfg)
+    x = _torch.tensor(req.activations, dtype=_torch.float32)
+    result = sae.forward(x)
+    return {
+        "recon_loss":       result.get("recon_loss", 0.0),
+        "l0_sparsity":      result.get("l0_sparsity", 0.0),
+        "l1_sparsity":      result.get("l1_sparsity", 0.0),
+    }
+
+
+@app.post(
+    "/v1/training/sae/estimate-config",
+    tags=["training"],
+    summary="Sparse Autoencoder — 推奨設定生成 (Sprint 49)",
+    dependencies=[Depends(verify_api_key)],
+)
+def sae_estimate_config(req: _SAEEstimateRequest):
+    """モデル次元から SAE 推奨設定を生成する。"""
+    sae = _SparseAutoencoder(_SAEConfig())
+    cfg = sae.estimate_config(req.model_dim, expansion=req.expansion)
+    return {"d_in": cfg.d_in, "d_sae": cfg.d_sae, "k": cfg.k}
+
+
 @app.post(
     "/v1/clip/classify",
     tags=["multimodal"],

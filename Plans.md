@@ -1,6 +1,6 @@
 # OpenMythos — Sprint Plans
-> 最終更新: 2026-06-08 (Sprint 48 完了 / 次回: Sprint 49) | ブランチ規約: `feature/<sprint>-<topic>`
-> Sprint 48 完了: マルチモーダル統合 → v0.51.0
+> 最終更新: 2026-06-08 (Sprint 49 完了 / 次回: Sprint 50) | ブランチ規約: `feature/<sprint>-<topic>`
+> Sprint 49 完了: 訓練最適化統合 → v0.52.0
 > アーカイブ: Sprint 1〜9 → `docs/archive/sprint-plans-1-9.md`
 >            Sprint 10〜19 → `docs/archive/sprint-plans-10-19.md`
 >            Sprint 20〜25 → `docs/archive/sprint-plans-20-25.md`
@@ -44,8 +44,9 @@
 | 46 | **推論バックエンド統合** | `open_mythos/skills/inference_backends.py` `serve/api.py` | 2439 | v0.49 |
 | 47 | **研究ツール統合** | `open_mythos/skills/research_tools.py` `serve/api.py` | 2486 | v0.50 |
 | 48 | **マルチモーダル統合** | `open_mythos/skills/multimodal.py` `serve/api.py` | 2534 | v0.51 |
+| 49 | **訓練最適化統合** | `open_mythos/skills/training_optimization.py` `serve/api.py` | 2583 | v0.52 |
 
-> **累計テスト数**: 2534 PASS (Sprint 48: +48)
+> **累計テスト数**: 2583 PASS (Sprint 49: +49)
 
 ---
 
@@ -66,7 +67,22 @@
 
 ---
 
-## Sprint 48 詳細 (最新)
+## Sprint 49 詳細 (最新)
+
+### Sprint 49: 訓練最適化統合 — v0.52.0
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 49.1 | `open_mythos/skills/training_optimization.py` — LightningTrainerConfig / LightningTrainResult / LightningTrainer | cc:完了 |
+| 49.2 | `open_mythos/skills/training_optimization.py` — FSDPConfig / FSDPModelInfo / FSDPWrapper | cc:完了 |
+| 49.3 | `open_mythos/skills/training_optimization.py` — SimPOConfig / SimPOTrainResult / SimPOTrainer | cc:完了 |
+| 49.4 | `open_mythos/skills/training_optimization.py` — SAEConfig / SparseAutoencoder | cc:完了 |
+| 49.5 | `serve/api.py` — `/v1/training/lightning/*` `/v1/training/fsdp/*` `/v1/training/simpo/*` `/v1/training/sae/*` | cc:完了 |
+| 49.T | `tests/test_sprint49.py` — 49 tests PASS (累計 2583) | cc:完了 |
+| 49.V | PyPI v0.52.0 | cc:完了 |
+
+---
+
+## Sprint 48 詳細
 
 ### Sprint 48: マルチモーダル統合 — v0.51.0
 | task-id | 説明 | 状態 |
