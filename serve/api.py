@@ -5243,3 +5243,230 @@ def agent_cli_run(req: _CLIRunRequest):
             for r in results
         ]
     }
+
+
+# ============================================================================
+# Sprint 51 — データ・検索ツール統合 API
+# ============================================================================
+
+from typing import Any  # noqa: E402 (Any not yet imported at module level)
+
+from open_mythos.skills.data_tools import (  # noqa: E402
+    SearXNGSearcher as _SearXNGSearcher,
+    DomainIntelligence as _DomainIntelligence,
+    NemoCurator as _NemoCurator,
+    CurationRule as _CurationRule,
+    CodeWikiGenerator as _CodeWikiGenerator,
+    APIDebugger as _APIDebugger,
+)
+
+# ── リクエストモデル ────────────────────────────────────────────────────────────
+
+
+class _SearXNGRequest(BaseModel):
+    query: str
+    categories: Optional[List[str]] = None
+    engines: Optional[List[str]] = None
+    max_results: int = 10
+    base_url: str = "https://searxng.org"
+
+
+class _DomainLookupRequest(BaseModel):
+    domain: str
+    check_ssl: bool = False
+
+
+class _CurationRuleItem(BaseModel):
+    name: str
+    description: str
+    field: str = "text"
+    min_length: int = 10
+    max_length: int = 100_000
+    deduplicate: bool = False
+    language: str = ""
+
+
+class _DataCurateRequest(BaseModel):
+    documents: List[Dict[str, Any]]
+    rules: List[_CurationRuleItem] = []
+
+
+class _CodeWikiRequest(BaseModel):
+    source_code: str
+    module_name: str = "module"
+    title: str = "Code Reference"
+
+
+class _APIRestRequest(BaseModel):
+    url: str
+    method: str = "GET"
+    headers: Dict[str, str] = {}
+    body: Optional[str] = None
+    timeout_s: float = 10.0
+
+
+class _APIGraphQLRequest(BaseModel):
+    url: str
+    query: str
+    variables: Dict[str, Any] = {}
+    headers: Dict[str, str] = {}
+    timeout_s: float = 10.0
+
+
+# ── エンドポイント ─────────────────────────────────────────────────────────────
+
+
+@app.post(
+    "/v1/search/searxng",
+    tags=["data"],
+    summary="SearXNG — プライバシー重視メタ検索 (Sprint 51)",
+    dependencies=[Depends(verify_api_key)],
+)
+def searxng_search(req: _SearXNGRequest):
+    """SearXNG を使ってプライバシー重視の検索を行う。"""
+    searcher = _SearXNGSearcher(base_url=req.base_url)
+    results = searcher.search(
+        req.query,
+        categories=req.categories,
+        engines=req.engines,
+        max_results=req.max_results,
+    )
+    return {
+        "query": req.query,
+        "results": [
+            {"title": r.title, "url": r.url, "content": r.content,
+             "engine": r.engine, "score": r.score}
+            for r in results
+        ],
+        "total": len(results),
+    }
+
+
+@app.post(
+    "/v1/domain/lookup",
+    tags=["data"],
+    summary="ドメインインテリジェンス — WHOIS/DNS/SSL 収集 (Sprint 51)",
+    dependencies=[Depends(verify_api_key)],
+)
+def domain_lookup(req: _DomainLookupRequest):
+    """ドメインの IP / NS / MX 情報を収集する。"""
+    di = _DomainIntelligence()
+    info = di.lookup(req.domain)
+    result = {
+        "domain": info.domain,
+        "ip": info.ip,
+        "ns_records": info.ns_records,
+        "mx_records": info.mx_records,
+    }
+    if req.check_ssl:
+        ssl_info = di.check_ssl(req.domain)
+        result["ssl"] = ssl_info
+    return result
+
+
+@app.post(
+    "/v1/data/curate",
+    tags=["data"],
+    summary="NeMo Curator — データキュレーション (Sprint 51)",
+    dependencies=[Depends(verify_api_key)],
+)
+def data_curate(req: _DataCurateRequest):
+    """ドキュメントリストにキュレーションルールを適用する。"""
+    rules = [
+        _CurationRule(
+            name=r.name,
+            description=r.description,
+            field=r.field,
+            min_length=r.min_length,
+            max_length=r.max_length,
+            deduplicate=r.deduplicate,
+            language=r.language,
+        )
+        for r in req.rules
+    ]
+    curator = _NemoCurator(rules=rules)
+    kept, result = curator.curate(req.documents)
+    return {
+        "total_input": result.total_input,
+        "total_output": result.total_output,
+        "removed_count": result.removed_count,
+        "duplicate_count": result.duplicate_count,
+        "rule_stats": result.rule_stats,
+        "kept_documents": kept,
+    }
+
+
+@app.post(
+    "/v1/code/wiki",
+    tags=["data"],
+    summary="Code Wiki — ソースコード解析・Markdown 生成 (Sprint 51)",
+    dependencies=[Depends(verify_api_key)],
+)
+def code_wiki(req: _CodeWikiRequest):
+    """Python ソースコードを解析して Markdown リファレンスを生成する。"""
+    gen = _CodeWikiGenerator()
+    symbols = gen.analyze_source(req.source_code, module_name=req.module_name)
+    wiki = gen.generate(symbols, title=req.title)
+    return {
+        "title": wiki.title,
+        "markdown": wiki.markdown,
+        "n_symbols": wiki.n_symbols,
+        "symbols": [
+            {"name": s.name, "kind": s.kind, "module": s.module,
+             "signature": s.signature, "line": s.line}
+            for s in wiki.symbols
+        ],
+    }
+
+
+@app.post(
+    "/v1/api/rest",
+    tags=["data"],
+    summary="API デバッガー — REST リクエスト実行 (Sprint 51)",
+    dependencies=[Depends(verify_api_key)],
+)
+def api_rest(req: _APIRestRequest):
+    """REST API を実行してレスポンスを解析する。"""
+    dbg = _APIDebugger(timeout=req.timeout_s)
+    result = dbg.call_rest(
+        url=req.url,
+        method=req.method,
+        headers=req.headers,
+        body=req.body,
+    )
+    analysis = dbg.inspect_response(result)
+    return {
+        "url": result.url,
+        "method": result.method,
+        "status_code": result.status_code,
+        "success": result.success,
+        "duration_ms": result.duration_ms,
+        "valid_json": analysis.get("valid_json", False),
+        "body_length": analysis.get("body_length", 0),
+    }
+
+
+@app.post(
+    "/v1/api/graphql",
+    tags=["data"],
+    summary="API デバッガー — GraphQL クエリ実行 (Sprint 51)",
+    dependencies=[Depends(verify_api_key)],
+)
+def api_graphql(req: _APIGraphQLRequest):
+    """GraphQL エンドポイントにクエリを送信してレスポンスを解析する。"""
+    dbg = _APIDebugger(timeout=req.timeout_s)
+    result = dbg.call_graphql(
+        url=req.url,
+        query=req.query,
+        variables=req.variables,
+        headers=req.headers,
+    )
+    analysis = dbg.inspect_response(result)
+    return {
+        "url": result.url,
+        "status_code": result.status_code,
+        "success": result.success,
+        "duration_ms": result.duration_ms,
+        "valid_json": analysis.get("valid_json", False),
+        "body_length": analysis.get("body_length", 0),
+    }

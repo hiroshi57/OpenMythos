@@ -1,6 +1,6 @@
 # OpenMythos — Sprint Plans
-> 最終更新: 2026-06-08 (Sprint 50 完了 / 次回: Sprint 51) | ブランチ規約: `feature/<sprint>-<topic>`
-> Sprint 50 完了: エージェントフレームワーク強化 → v0.53.0
+> 最終更新: 2026-06-08 (Sprint 51 完了 / 次回: Sprint 52) | ブランチ規約: `feature/<sprint>-<topic>`
+> Sprint 51 完了: データ・検索ツール統合 → v0.54.0
 > アーカイブ: Sprint 1〜9 → `docs/archive/sprint-plans-1-9.md`
 >            Sprint 10〜19 → `docs/archive/sprint-plans-10-19.md`
 >            Sprint 20〜25 → `docs/archive/sprint-plans-20-25.md`
@@ -46,8 +46,9 @@
 | 48 | **マルチモーダル統合** | `open_mythos/skills/multimodal.py` `serve/api.py` | 2534 | v0.51 |
 | 49 | **訓練最適化統合** | `open_mythos/skills/training_optimization.py` `serve/api.py` | 2583 | v0.52 |
 | 50 | **エージェントフレームワーク強化** | `open_mythos/skills/agent_framework.py` `serve/api.py` | 2655 | v0.53 |
+| 51 | **データ・検索ツール統合** | `open_mythos/skills/data_tools.py` `serve/api.py` | 2708 | v0.54 |
 
-> **累計テスト数**: 2655 PASS (Sprint 50: +72)
+> **累計テスト数**: 2708 PASS (Sprint 51: +53)
 
 ---
 
@@ -68,7 +69,23 @@
 
 ---
 
-## Sprint 50 詳細 (最新)
+## Sprint 51 詳細 (最新)
+
+### Sprint 51: データ・検索ツール統合 — v0.54.0
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 51.1 | `open_mythos/skills/data_tools.py` — SearXNGResult / SearXNGSearcher | cc:完了 |
+| 51.2 | `open_mythos/skills/data_tools.py` — DomainInfo / DomainIntelligence | cc:完了 |
+| 51.3 | `open_mythos/skills/data_tools.py` — CurationRule / CurationResult / NemoCurator | cc:完了 |
+| 51.4 | `open_mythos/skills/data_tools.py` — CodeSymbol / CodeWiki / CodeWikiGenerator | cc:完了 |
+| 51.5 | `open_mythos/skills/data_tools.py` — APICallResult / APIDebugger | cc:完了 |
+| 51.6 | `serve/api.py` — `/v1/search/searxng` `/v1/domain/lookup` `/v1/data/curate` `/v1/code/wiki` `/v1/api/rest` `/v1/api/graphql` | cc:完了 |
+| 51.T | `tests/test_sprint51.py` — 53 tests PASS (累計 2708) | cc:完了 |
+| 51.V | PyPI v0.54.0 | cc:完了 |
+
+---
+
+## Sprint 50 詳細
 
 ### Sprint 50: エージェントフレームワーク強化 — v0.53.0
 | task-id | 説明 | 状態 |
