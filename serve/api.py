@@ -4413,3 +4413,198 @@ def whisper_detect_language(req: _WhisperTranscribeRequest):
     w = _WhisperTranscriber(model_name=req.model)
     probs = w.detect_language(req.audio_path)
     return {"probabilities": probs, "audio_path": req.audio_path}
+
+
+# ============================================================================
+# Sprint 47 — 研究ツール統合 API
+# ============================================================================
+
+from open_mythos.skills.research_tools import (  # noqa: E402
+    ArxivSearcher as _ArxivSearcher,
+    DSPySignature as _DSPySignature,
+    DSPyOptimizer as _DSPyOptimizer,
+    WebSearcher as _WebSearcher,
+    JupyterKernelClient as _JupyterKernelClient,
+)
+
+# ── リクエストモデル ────────────────────────────────────────────────────────────
+
+class _ArxivSearchRequest(BaseModel):
+    query: str
+    max_results: int = 10
+    category: str = ""
+
+
+class _DSPyPredictRequest(BaseModel):
+    signature_name: str
+    inputs: dict
+    outputs: dict
+    instructions: str = ""
+
+
+class _WebSearchRequest(BaseModel):
+    query: str
+    max_results: int = 10
+    region: str = "wt-wt"
+
+
+class _JupyterExecuteRequest(BaseModel):
+    code: str
+    timeout: float = 30.0
+
+
+# ── エンドポイント ─────────────────────────────────────────────────────────────
+
+@app.post(
+    "/v1/arxiv/search",
+    tags=["research"],
+    summary="arXiv — 論文検索 (Sprint 47)",
+    dependencies=[Depends(verify_api_key)],
+)
+def arxiv_search(req: _ArxivSearchRequest):
+    """キーワードで arXiv 論文を検索する。"""
+    searcher = _ArxivSearcher(max_results=req.max_results)
+    papers = searcher.search(req.query, max_results=req.max_results, category=req.category)
+    return {
+        "papers": [
+            {
+                "arxiv_id":   p.arxiv_id,
+                "title":      p.title,
+                "authors":    p.authors,
+                "abstract":   p.abstract,
+                "categories": p.categories,
+                "published":  p.published,
+                "url":        p.url,
+            }
+            for p in papers
+        ],
+        "query": req.query,
+        "count": len(papers),
+    }
+
+
+@app.get(
+    "/v1/arxiv/paper/{arxiv_id:path}",
+    tags=["research"],
+    summary="arXiv — ID 指定で論文取得 (Sprint 47)",
+    dependencies=[Depends(verify_api_key)],
+)
+def arxiv_get_paper(arxiv_id: str):
+    """arXiv ID から論文情報を取得する。"""
+    searcher = _ArxivSearcher()
+    paper = searcher.get_by_id(arxiv_id)
+    if paper is None:
+        return {"paper": None, "arxiv_id": arxiv_id}
+    return {
+        "paper": {
+            "arxiv_id":   paper.arxiv_id,
+            "title":      paper.title,
+            "authors":    paper.authors,
+            "abstract":   paper.abstract,
+            "url":        paper.url,
+        },
+        "arxiv_id": arxiv_id,
+    }
+
+
+@app.post(
+    "/v1/dspy/predict",
+    tags=["dspy"],
+    summary="DSPy — プログラマブルプロンプト予測 (Sprint 47)",
+    dependencies=[Depends(verify_api_key)],
+)
+def dspy_predict(req: _DSPyPredictRequest):
+    """DSPy シグネチャに従って予測を実行する。"""
+    sig = _DSPySignature(
+        name=req.signature_name,
+        inputs={k: str(v) for k, v in req.inputs.items()},
+        outputs={k: str(v) for k, v in req.outputs.items()},
+        instructions=req.instructions,
+    )
+    opt = _DSPyOptimizer()
+    pred = opt.predict(sig, req.inputs)
+    return {
+        "outputs": pred.outputs,
+        "rationale": pred.rationale,
+        "success": pred.success,
+    }
+
+
+@app.post(
+    "/v1/dspy/chain-of-thought",
+    tags=["dspy"],
+    summary="DSPy — Chain-of-Thought プロンプト生成 (Sprint 47)",
+    dependencies=[Depends(verify_api_key)],
+)
+def dspy_chain_of_thought(req: _DSPyPredictRequest):
+    """シグネチャから Chain-of-Thought プロンプトを生成する。"""
+    sig = _DSPySignature(
+        name=req.signature_name,
+        inputs={k: str(v) for k, v in req.inputs.items()},
+        outputs={k: str(v) for k, v in req.outputs.items()},
+        instructions=req.instructions,
+    )
+    opt = _DSPyOptimizer()
+    prompt = opt.build_chain_of_thought(sig)
+    return {"prompt": prompt, "signature_name": req.signature_name}
+
+
+@app.post(
+    "/v1/search/web",
+    tags=["search"],
+    summary="Web 検索 (DuckDuckGo fallback) (Sprint 47)",
+    dependencies=[Depends(verify_api_key)],
+)
+def search_web(req: _WebSearchRequest):
+    """Web を検索し、結果リストを返す。"""
+    searcher = _WebSearcher(max_results=req.max_results)
+    results = searcher.search(req.query, region=req.region, max_results=req.max_results)
+    return {
+        "results": [
+            {"title": r.title, "url": r.url, "snippet": r.snippet, "source": r.source}
+            for r in results
+        ],
+        "query": req.query,
+        "count": len(results),
+    }
+
+
+@app.post(
+    "/v1/search/news",
+    tags=["search"],
+    summary="ニュース検索 (Sprint 47)",
+    dependencies=[Depends(verify_api_key)],
+)
+def search_news(req: _WebSearchRequest):
+    """ニュースを検索し、結果リストを返す。"""
+    searcher = _WebSearcher(max_results=req.max_results)
+    results = searcher.news(req.query, max_results=req.max_results)
+    return {
+        "results": [
+            {"title": r.title, "url": r.url, "snippet": r.snippet, "source": r.source}
+            for r in results
+        ],
+        "query": req.query,
+        "count": len(results),
+    }
+
+
+@app.post(
+    "/v1/jupyter/execute",
+    tags=["jupyter"],
+    summary="Jupyter — コード実行 (Sprint 47)",
+    dependencies=[Depends(verify_api_key)],
+)
+def jupyter_execute(req: _JupyterExecuteRequest):
+    """Python コードを Jupyter カーネルで実行する (in-process fallback)。"""
+    jk = _JupyterKernelClient()
+    jk._native = False  # サーバー環境では exec fallback を使用
+    result = jk.execute(req.code, timeout=req.timeout)
+    return {
+        "stdout":          result.stdout,
+        "stderr":          result.stderr,
+        "outputs":         result.outputs,
+        "execution_count": result.execution_count,
+        "success":         result.success,
+        "error_name":      result.error_name,
+    }

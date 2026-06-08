@@ -1,6 +1,6 @@
 # OpenMythos — Sprint Plans
-> 最終更新: 2026-06-08 (Sprint 46 完了 / 次回: Sprint 47) | ブランチ規約: `feature/<sprint>-<topic>`
-> Sprint 46 完了: 推論バックエンド統合 → v0.49.0
+> 最終更新: 2026-06-08 (Sprint 47 完了 / 次回: Sprint 48) | ブランチ規約: `feature/<sprint>-<topic>`
+> Sprint 47 完了: 研究ツール統合 → v0.50.0
 > アーカイブ: Sprint 1〜9 → `docs/archive/sprint-plans-1-9.md`
 >            Sprint 10〜19 → `docs/archive/sprint-plans-10-19.md`
 >            Sprint 20〜25 → `docs/archive/sprint-plans-20-25.md`
@@ -42,8 +42,9 @@
 | 44 | **Vector DB 統合 + Instructor 構造化出力** | `open_mythos/skills/vector_store.py` `open_mythos/skills/instructor_extract.py` `serve/api.py` | 2322 | v0.47 |
 | 45 | **HuggingFace Hub 統合** | `open_mythos/skills/hf_hub.py` `serve/api.py` | 2384 | v0.48 |
 | 46 | **推論バックエンド統合** | `open_mythos/skills/inference_backends.py` `serve/api.py` | 2439 | v0.49 |
+| 47 | **研究ツール統合** | `open_mythos/skills/research_tools.py` `serve/api.py` | 2486 | v0.50 |
 
-> **累計テスト数**: 2439 PASS (Sprint 46: +55)
+> **累計テスト数**: 2486 PASS (Sprint 47: +47)
 
 ---
 
@@ -64,7 +65,22 @@
 
 ---
 
-## Sprint 46 詳細 (最新)
+## Sprint 47 詳細 (最新)
+
+### Sprint 47: 研究ツール統合 — v0.50.0
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 47.1 | `open_mythos/skills/research_tools.py` — ArxivPaper / ArxivSearcher | cc:完了 |
+| 47.2 | `open_mythos/skills/research_tools.py` — DSPySignature / DSPyPrediction / DSPyOptimizer | cc:完了 |
+| 47.3 | `open_mythos/skills/research_tools.py` — SearchResult / WebSearcher | cc:完了 |
+| 47.4 | `open_mythos/skills/research_tools.py` — KernelExecutionResult / JupyterKernelClient | cc:完了 |
+| 47.5 | `serve/api.py` — `/v1/arxiv/*` `/v1/dspy/*` `/v1/search/*` `/v1/jupyter/execute` | cc:完了 |
+| 47.T | `tests/test_sprint47.py` — 47 tests PASS (累計 2486) | cc:完了 |
+| 47.V | PyPI v0.50.0 | cc:完了 |
+
+---
+
+## Sprint 46 詳細
 
 ### Sprint 46: 推論バックエンド統合 — v0.49.0
 | task-id | 説明 | 状態 |
