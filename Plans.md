@@ -1,6 +1,6 @@
 # OpenMythos — Sprint Plans
-> 最終更新: 2026-06-08 (Sprint 53 完了 / 全スプリント完了!) | ブランチ規約: `feature/<sprint>-<topic>`
-> Sprint 53 完了: セキュリティ統合 → v0.56.0 🎉 Sprint 44〜53 全完了
+> 最終更新: 2026-06-08 (Sprint 54 完了) | ブランチ規約: `feature/<sprint>-<topic>`
+> Sprint 54 完了: OpenAI Assistants API 統合 → v0.57.0
 > アーカイブ: Sprint 1〜9 → `docs/archive/sprint-plans-1-9.md`
 >            Sprint 10〜19 → `docs/archive/sprint-plans-10-19.md`
 >            Sprint 20〜25 → `docs/archive/sprint-plans-20-25.md`
@@ -29,12 +29,27 @@
 | 51 | **データ・検索ツール統合** | `skills/data_tools.py` | 2708 | v0.54 |
 | 52 | **DevOps・クラウド統合** | `skills/devops_cloud.py` | 2756 | v0.55 |
 | 53 | **セキュリティ統合** | `skills/security.py` | 2797 | v0.56 |
+| 54 | **OpenAI Assistants API 統合** | `assistant.py` | 2862 | v0.57 |
 
-> **累計テスト数**: 2797 PASS (Sprint 53: +41) — **Sprint 44〜53 全完了**
+> **累計テスト数**: 2862 PASS (Sprint 54: +65) — **Sprint 54 完了**
 
 ---
 
-## Sprint 53 詳細 (最新)
+## Sprint 54 詳細 (最新)
+
+### Sprint 54: OpenAI Assistants API 統合 — v0.57.0
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 54.1 | `open_mythos/assistant.py` — AssistantTool / AssistantObject / Thread / MessageContent / Message / RunUsage / Run | cc:完了 |
+| 54.2 | `open_mythos/assistant.py` — AssistantStore (CRUD: assistants/threads/messages/runs) | cc:完了 |
+| 54.3 | `open_mythos/assistant.py` — AssistantRunner (LLM実行・応答追加) / get_default_store / reset_default_store | cc:完了 |
+| 54.4 | `serve/api.py` — `/v1/assistants` (CRUD) `/v1/threads` (CRUD) `/v1/threads/{id}/messages` `/v1/threads/{id}/runs` | cc:完了 |
+| 54.T | `tests/test_sprint54.py` — 65 tests PASS (累計 2862) | cc:完了 |
+| 54.V | PyPI v0.57.0 | cc:完了 |
+
+---
+
+## Sprint 53 詳細
 
 ### Sprint 53: セキュリティ統合 — v0.56.0
 | task-id | 説明 | 状態 |
