@@ -4969,3 +4969,277 @@ def sam_segment(req: _SAMSegmentRequest):
         ],
         "n_masks": result.n_masks,
     }
+
+
+# ============================================================================
+# Sprint 50 — エージェントフレームワーク強化 API
+# ============================================================================
+
+from open_mythos.skills.agent_framework import (  # noqa: E402
+    SubAgentTask as _SubAgentTask,
+    SubAgentOrchestrator as _SubAgentOrchestrator,
+    TDDAgent as _TDDAgent,
+    BugReport as _BugReport,
+    SystematicDebugger as _SystematicDebugger,
+    DarwinianEvolver as _DarwinianEvolver,
+    ParallelJob as _ParallelJob,
+    ParallelCLIRunner as _ParallelCLIRunner,
+)
+
+# ── リクエストモデル ────────────────────────────────────────────────────────────
+
+
+class _SubAgentPlanRequest(BaseModel):
+    goal: str
+    n_subtasks: int = 3
+
+
+class _SubAgentTaskItem(BaseModel):
+    task_id: str
+    description: str
+    priority: int = 1
+    timeout_s: float = 60.0
+
+
+class _SubAgentRunRequest(BaseModel):
+    tasks: List[_SubAgentTaskItem]
+
+
+class _TDDCycleRequest(BaseModel):
+    goal: str
+
+
+class _TDDSessionRequest(BaseModel):
+    goals: List[str]
+
+
+class _DebugRequest(BaseModel):
+    description: str
+    context: str = ""
+    stack_trace: str = ""
+    observed: str = ""
+    expected: str = ""
+
+
+class _EvolveRequest(BaseModel):
+    genome_dim: int = 4
+    n_generations: int = 20
+    population_size: int = 30
+    mutation_rate: float = 0.1
+    crossover_rate: float = 0.7
+    genome_bounds_lo: float = -1.0
+    genome_bounds_hi: float = 1.0
+
+
+class _CLIJobItem(BaseModel):
+    job_id: str
+    command: str
+    cwd: str = "."
+    timeout_s: float = 30.0
+
+
+class _CLIRunRequest(BaseModel):
+    jobs: List[_CLIJobItem]
+
+
+# ── エンドポイント ─────────────────────────────────────────────────────────────
+
+
+@app.post(
+    "/v1/agent/subagent/plan",
+    tags=["agent"],
+    summary="サブエージェント — タスク計画生成 (Sprint 50)",
+    dependencies=[Depends(verify_api_key)],
+)
+def subagent_plan(req: _SubAgentPlanRequest):
+    """ゴールからサブタスクリストを生成する。"""
+    orch = _SubAgentOrchestrator()
+    tasks = orch.plan(req.goal, n_subtasks=req.n_subtasks)
+    return {
+        "tasks": [
+            {"task_id": t.task_id, "description": t.description, "priority": t.priority}
+            for t in tasks
+        ]
+    }
+
+
+@app.post(
+    "/v1/agent/subagent/run",
+    tags=["agent"],
+    summary="サブエージェント — タスク実行 (Sprint 50)",
+    dependencies=[Depends(verify_api_key)],
+)
+def subagent_run(req: _SubAgentRunRequest):
+    """サブタスクリストを実行し 2-stage レビュー結果を返す。"""
+    orch = _SubAgentOrchestrator()
+    tasks = [
+        _SubAgentTask(
+            task_id=t.task_id,
+            description=t.description,
+            priority=t.priority,
+            timeout_s=t.timeout_s,
+        )
+        for t in req.tasks
+    ]
+    results = orch.run(tasks)
+    return {
+        "results": [
+            {
+                "task_id": r.task_id,
+                "output": r.output,
+                "success": r.success,
+                "review_passed": r.review_passed,
+                "latency_ms": r.latency_ms,
+                "reviewer_feedback": r.reviewer_feedback,
+            }
+            for r in results
+        ]
+    }
+
+
+@app.post(
+    "/v1/agent/tdd/cycle",
+    tags=["agent"],
+    summary="TDD エージェント — 1 サイクル実行 (Sprint 50)",
+    dependencies=[Depends(verify_api_key)],
+)
+def tdd_cycle(req: _TDDCycleRequest):
+    """Red-Green-Refactor 1 サイクルを実行する。"""
+    agent = _TDDAgent()
+    cycle = agent.run_cycle(req.goal)
+    return {
+        "phase": cycle.phase,
+        "test_code": cycle.test_code,
+        "impl_code": cycle.impl_code,
+        "test_passed": cycle.test_passed,
+        "notes": cycle.notes,
+    }
+
+
+@app.post(
+    "/v1/agent/tdd/session",
+    tags=["agent"],
+    summary="TDD エージェント — セッション実行 (Sprint 50)",
+    dependencies=[Depends(verify_api_key)],
+)
+def tdd_session(req: _TDDSessionRequest):
+    """複数ゴールに対して TDD セッションを実行する。"""
+    agent = _TDDAgent()
+    session = agent.run_session(req.goals)
+    return {
+        "goal": session.goal,
+        "total_tests_written": session.total_tests_written,
+        "total_tests_passing": session.total_tests_passing,
+        "pass_rate": session.pass_rate,
+        "cycles": [
+            {
+                "phase": c.phase,
+                "test_passed": c.test_passed,
+                "notes": c.notes,
+            }
+            for c in session.cycles
+        ],
+    }
+
+
+@app.post(
+    "/v1/agent/debug",
+    tags=["agent"],
+    summary="体系的デバッガー — 4 フェーズデバッグ (Sprint 50)",
+    dependencies=[Depends(verify_api_key)],
+)
+def agent_debug(req: _DebugRequest):
+    """バグレポートを受け取り 4 フェーズで体系的にデバッグする。"""
+    dbg = _SystematicDebugger()
+    bug = _BugReport(
+        description=req.description,
+        context=req.context,
+        stack_trace=req.stack_trace,
+        observed=req.observed,
+        expected=req.expected,
+    )
+    session = dbg.debug(bug)
+    return {
+        "root_cause": session.root_cause,
+        "fix_suggestion": session.fix_suggestion,
+        "verified": session.verified,
+        "steps": [
+            {
+                "phase": s.phase,
+                "action": s.action,
+                "finding": s.finding,
+                "hypothesis": s.hypothesis,
+                "confidence": s.confidence,
+            }
+            for s in session.steps
+        ],
+    }
+
+
+@app.post(
+    "/v1/agent/evolve",
+    tags=["agent"],
+    summary="Darwinian Evolver — 進化的最適化 (Sprint 50)",
+    dependencies=[Depends(verify_api_key)],
+)
+def agent_evolve(req: _EvolveRequest):
+    """遺伝的アルゴリズムで最適解を探索する。"""
+    import math as _math
+
+    def _fitness(genome: List[float]) -> float:  # type: ignore[name-defined]
+        # デフォルト適応度: 各次元の二乗和の負（最小化→最大化）
+        return -sum(g * g for g in genome)
+
+    evolver = _DarwinianEvolver(
+        population_size=req.population_size,
+        mutation_rate=req.mutation_rate,
+        crossover_rate=req.crossover_rate,
+    )
+    result = evolver.evolve(
+        fitness_fn=_fitness,
+        genome_dim=req.genome_dim,
+        n_generations=req.n_generations,
+        genome_bounds=(req.genome_bounds_lo, req.genome_bounds_hi),
+    )
+    return {
+        "best_fitness": result.best_fitness,
+        "generations_run": result.generations_run,
+        "population_size": result.population_size,
+        "fitness_history": result.fitness_history,
+        "best_genome": result.best_individual.genome,
+    }
+
+
+@app.post(
+    "/v1/agent/cli/run",
+    tags=["agent"],
+    summary="並列 CLI ランナー — コマンド実行 (Sprint 50)",
+    dependencies=[Depends(verify_api_key)],
+)
+def agent_cli_run(req: _CLIRunRequest):
+    """複数の CLI コマンドを並列実行する。"""
+    runner = _ParallelCLIRunner()
+    jobs = [
+        _ParallelJob(
+            job_id=j.job_id,
+            command=j.command,
+            cwd=j.cwd,
+            timeout_s=j.timeout_s,
+        )
+        for j in req.jobs
+    ]
+    results = runner.run(jobs)
+    return {
+        "results": [
+            {
+                "job_id": r.job_id,
+                "command": r.command,
+                "returncode": r.returncode,
+                "stdout": r.stdout,
+                "stderr": r.stderr,
+                "duration_s": r.duration_s,
+                "success": r.success,
+            }
+            for r in results
+        ]
+    }

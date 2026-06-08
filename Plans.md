@@ -1,6 +1,6 @@
 # OpenMythos — Sprint Plans
-> 最終更新: 2026-06-08 (Sprint 49 完了 / 次回: Sprint 50) | ブランチ規約: `feature/<sprint>-<topic>`
-> Sprint 49 完了: 訓練最適化統合 → v0.52.0
+> 最終更新: 2026-06-08 (Sprint 50 完了 / 次回: Sprint 51) | ブランチ規約: `feature/<sprint>-<topic>`
+> Sprint 50 完了: エージェントフレームワーク強化 → v0.53.0
 > アーカイブ: Sprint 1〜9 → `docs/archive/sprint-plans-1-9.md`
 >            Sprint 10〜19 → `docs/archive/sprint-plans-10-19.md`
 >            Sprint 20〜25 → `docs/archive/sprint-plans-20-25.md`
@@ -45,8 +45,9 @@
 | 47 | **研究ツール統合** | `open_mythos/skills/research_tools.py` `serve/api.py` | 2486 | v0.50 |
 | 48 | **マルチモーダル統合** | `open_mythos/skills/multimodal.py` `serve/api.py` | 2534 | v0.51 |
 | 49 | **訓練最適化統合** | `open_mythos/skills/training_optimization.py` `serve/api.py` | 2583 | v0.52 |
+| 50 | **エージェントフレームワーク強化** | `open_mythos/skills/agent_framework.py` `serve/api.py` | 2655 | v0.53 |
 
-> **累計テスト数**: 2583 PASS (Sprint 49: +49)
+> **累計テスト数**: 2655 PASS (Sprint 50: +72)
 
 ---
 
@@ -67,7 +68,23 @@
 
 ---
 
-## Sprint 49 詳細 (最新)
+## Sprint 50 詳細 (最新)
+
+### Sprint 50: エージェントフレームワーク強化 — v0.53.0
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 50.1 | `open_mythos/skills/agent_framework.py` — SubAgentTask / SubAgentResult / SubAgentOrchestrator | cc:完了 |
+| 50.2 | `open_mythos/skills/agent_framework.py` — TDDCycle / TDDSession / TDDAgent | cc:完了 |
+| 50.3 | `open_mythos/skills/agent_framework.py` — BugReport / DebugStep / DebugSession / SystematicDebugger | cc:完了 |
+| 50.4 | `open_mythos/skills/agent_framework.py` — Individual / EvolutionResult / DarwinianEvolver | cc:完了 |
+| 50.5 | `open_mythos/skills/agent_framework.py` — ParallelJob / JobResult / ParallelCLIRunner | cc:完了 |
+| 50.6 | `serve/api.py` — `/v1/agent/subagent/*` `/v1/agent/tdd/*` `/v1/agent/debug` `/v1/agent/evolve` `/v1/agent/cli/run` | cc:完了 |
+| 50.T | `tests/test_sprint50.py` — 72 tests PASS (累計 2655) | cc:完了 |
+| 50.V | PyPI v0.53.0 | cc:完了 |
+
+---
+
+## Sprint 49 詳細
 
 ### Sprint 49: 訓練最適化統合 — v0.52.0
 | task-id | 説明 | 状態 |
