@@ -4608,3 +4608,193 @@ def jupyter_execute(req: _JupyterExecuteRequest):
         "success":         result.success,
         "error_name":      result.error_name,
     }
+
+
+# ============================================================================
+# Sprint 48 — マルチモーダル統合 API
+# ============================================================================
+
+from open_mythos.skills.multimodal import (  # noqa: E402
+    CLIPModel as _CLIPModel,
+    VisionChatMessage as _VisionChatMessage,
+    LLaVAModel as _LLaVAModel,
+    DiffusionRequest as _DiffusionRequest,
+    StableDiffusionGenerator as _StableDiffusionGenerator,
+    SegmentRequest as _SegmentRequest,
+    SAMSegmenter as _SAMSegmenter,
+)
+
+# ── リクエストモデル ────────────────────────────────────────────────────────────
+
+class _CLIPEncodeTextRequest(BaseModel):
+    texts: List[str]
+    model: str = "openai/clip-vit-base-patch32"
+
+
+class _CLIPEncodeImageRequest(BaseModel):
+    image_b64: str
+    model: str = "openai/clip-vit-base-patch32"
+
+
+class _CLIPClassifyRequest(BaseModel):
+    image_b64: str
+    labels: List[str]
+    model: str = "openai/clip-vit-base-patch32"
+
+
+class _VisionChatMessageInput(BaseModel):
+    role: str = "user"
+    text: str
+    image_b64: Optional[str] = None
+
+
+class _LLaVAChatRequest(BaseModel):
+    messages: List[_VisionChatMessageInput]
+    max_new_tokens: int = 256
+    model: str = "llava-hf/llava-1.5-7b-hf"
+
+
+class _DiffusionGenerateRequest(BaseModel):
+    prompt: str
+    negative_prompt: str = ""
+    width: int = 512
+    height: int = 512
+    steps: int = 20
+    guidance_scale: float = 7.5
+    seed: int = -1
+
+
+class _SAMSegmentRequest(BaseModel):
+    image_b64: str
+    points: List[List[int]] = Field(default_factory=list)
+    boxes: List[List[int]] = Field(default_factory=list)
+    multimask: bool = True
+
+
+# ── エンドポイント ─────────────────────────────────────────────────────────────
+
+@app.post(
+    "/v1/clip/encode/text",
+    tags=["multimodal"],
+    summary="CLIP — テキスト埋め込み (Sprint 48)",
+    dependencies=[Depends(verify_api_key)],
+)
+def clip_encode_text(req: _CLIPEncodeTextRequest):
+    """テキストリストを CLIP ベクトルに変換する。"""
+    clip = _CLIPModel(req.model)
+    clip._native = False
+    embs = clip.encode_text(req.texts)
+    return {
+        "embeddings": [
+            {"vector": e.vector, "modality": e.modality, "dim": e.dim}
+            for e in embs
+        ],
+        "count": len(embs),
+    }
+
+
+@app.post(
+    "/v1/clip/encode/image",
+    tags=["multimodal"],
+    summary="CLIP — 画像埋め込み (Sprint 48)",
+    dependencies=[Depends(verify_api_key)],
+)
+def clip_encode_image(req: _CLIPEncodeImageRequest):
+    """Base64 画像を CLIP ベクトルに変換する。"""
+    clip = _CLIPModel(req.model)
+    clip._native = False
+    emb = clip.encode_image_b64(req.image_b64)
+    return {
+        "embedding": {"vector": emb.vector, "modality": emb.modality, "dim": emb.dim}
+    }
+
+
+@app.post(
+    "/v1/clip/classify",
+    tags=["multimodal"],
+    summary="CLIP — ゼロショット画像分類 (Sprint 48)",
+    dependencies=[Depends(verify_api_key)],
+)
+def clip_classify(req: _CLIPClassifyRequest):
+    """画像をラベルリストでゼロショット分類する。"""
+    clip = _CLIPModel(req.model)
+    clip._native = False
+    scores = clip.zero_shot_classify(req.image_b64, req.labels)
+    return {"scores": scores, "labels": req.labels}
+
+
+@app.post(
+    "/v1/llava/chat",
+    tags=["multimodal"],
+    summary="LLaVA — 視覚言語チャット (Sprint 48)",
+    dependencies=[Depends(verify_api_key)],
+)
+def llava_chat(req: _LLaVAChatRequest):
+    """画像とテキストを含む会話に応答する。"""
+    model = _LLaVAModel(req.model)
+    model._native = False
+    messages = [
+        _VisionChatMessage(role=m.role, text=m.text, image_b64=m.image_b64)
+        for m in req.messages
+    ]
+    result = model.chat(messages, max_new_tokens=req.max_new_tokens)
+    return {
+        "response":    result.response,
+        "model":       result.model,
+        "tokens_used": result.tokens_used,
+    }
+
+
+@app.post(
+    "/v1/diffusion/generate",
+    tags=["multimodal"],
+    summary="Stable Diffusion — 画像生成 (Sprint 48)",
+    dependencies=[Depends(verify_api_key)],
+)
+def diffusion_generate(req: _DiffusionGenerateRequest):
+    """テキストプロンプトから画像を生成する。"""
+    gen = _StableDiffusionGenerator()
+    gen._native = False
+    diff_req = _DiffusionRequest(
+        prompt=req.prompt,
+        negative_prompt=req.negative_prompt,
+        width=req.width,
+        height=req.height,
+        steps=req.steps,
+        guidance_scale=req.guidance_scale,
+        seed=req.seed,
+    )
+    result = gen.generate(diff_req)
+    return {
+        "image_b64": result.image_b64,
+        "prompt":    result.prompt,
+        "seed":      result.seed,
+        "steps":     result.steps,
+        "width":     result.width,
+        "height":    result.height,
+    }
+
+
+@app.post(
+    "/v1/sam/segment",
+    tags=["multimodal"],
+    summary="SAM — セグメンテーション (Sprint 48)",
+    dependencies=[Depends(verify_api_key)],
+)
+def sam_segment(req: _SAMSegmentRequest):
+    """画像をセグメンテーションし、マスクリストを返す。"""
+    sam = _SAMSegmenter()
+    seg_req = _SegmentRequest(
+        image_b64=req.image_b64,
+        points=[tuple(p) for p in req.points],  # type: ignore
+        boxes=[tuple(b) for b in req.boxes],     # type: ignore
+        multimask=req.multimask,
+    )
+    result = sam.segment(seg_req)
+    return {
+        "masks": [
+            {"mask_b64": m.mask_b64, "score": m.score, "area": m.area}
+            for m in result.masks
+        ],
+        "n_masks": result.n_masks,
+    }

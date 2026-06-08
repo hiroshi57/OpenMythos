@@ -1,6 +1,6 @@
 # OpenMythos — Sprint Plans
-> 最終更新: 2026-06-08 (Sprint 47 完了 / 次回: Sprint 48) | ブランチ規約: `feature/<sprint>-<topic>`
-> Sprint 47 完了: 研究ツール統合 → v0.50.0
+> 最終更新: 2026-06-08 (Sprint 48 完了 / 次回: Sprint 49) | ブランチ規約: `feature/<sprint>-<topic>`
+> Sprint 48 完了: マルチモーダル統合 → v0.51.0
 > アーカイブ: Sprint 1〜9 → `docs/archive/sprint-plans-1-9.md`
 >            Sprint 10〜19 → `docs/archive/sprint-plans-10-19.md`
 >            Sprint 20〜25 → `docs/archive/sprint-plans-20-25.md`
@@ -43,8 +43,9 @@
 | 45 | **HuggingFace Hub 統合** | `open_mythos/skills/hf_hub.py` `serve/api.py` | 2384 | v0.48 |
 | 46 | **推論バックエンド統合** | `open_mythos/skills/inference_backends.py` `serve/api.py` | 2439 | v0.49 |
 | 47 | **研究ツール統合** | `open_mythos/skills/research_tools.py` `serve/api.py` | 2486 | v0.50 |
+| 48 | **マルチモーダル統合** | `open_mythos/skills/multimodal.py` `serve/api.py` | 2534 | v0.51 |
 
-> **累計テスト数**: 2486 PASS (Sprint 47: +47)
+> **累計テスト数**: 2534 PASS (Sprint 48: +48)
 
 ---
 
@@ -65,7 +66,22 @@
 
 ---
 
-## Sprint 47 詳細 (最新)
+## Sprint 48 詳細 (最新)
+
+### Sprint 48: マルチモーダル統合 — v0.51.0
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 48.1 | `open_mythos/skills/multimodal.py` — CLIPEmbedding / CLIPModel | cc:完了 |
+| 48.2 | `open_mythos/skills/multimodal.py` — VisionChatMessage / VisionChatResult / LLaVAModel | cc:完了 |
+| 48.3 | `open_mythos/skills/multimodal.py` — DiffusionRequest / DiffusionResult / StableDiffusionGenerator | cc:完了 |
+| 48.4 | `open_mythos/skills/multimodal.py` — SegmentRequest / SegmentMask / SegmentResult / SAMSegmenter | cc:完了 |
+| 48.5 | `serve/api.py` — `/v1/clip/*` `/v1/llava/chat` `/v1/diffusion/generate` `/v1/sam/segment` | cc:完了 |
+| 48.T | `tests/test_sprint48.py` — 48 tests PASS (累計 2534) | cc:完了 |
+| 48.V | PyPI v0.51.0 | cc:完了 |
+
+---
+
+## Sprint 47 詳細
 
 ### Sprint 47: 研究ツール統合 — v0.50.0
 | task-id | 説明 | 状態 |
