@@ -5672,3 +5672,123 @@ def slime_fit(req: _SLiMeFitRequest):
         "reconstruction_error": result.reconstruction_error,
         "n_iter": result.n_iter,
     }
+
+
+# ============================================================================
+# Sprint 53 — セキュリティ統合 API
+# ============================================================================
+
+from open_mythos.skills.security import (  # noqa: E402
+    WebPentester as _WebPentester,
+    OSSForensics as _OSSForensics,
+)
+
+# ── リクエストモデル ────────────────────────────────────────────────────────────
+
+
+class _SecurityScanRequest(BaseModel):
+    target_url: str
+    checks: Optional[List[str]] = None
+    timeout: float = 10.0
+
+
+class _OSSAnalyzeRequest(BaseModel):
+    project_path: str = "."
+
+
+# ── エンドポイント ─────────────────────────────────────────────────────────────
+
+
+@app.post(
+    "/v1/security/scan",
+    tags=["security"],
+    summary="WebPentester — パッシブセキュリティスキャン (Sprint 53)",
+    dependencies=[Depends(verify_api_key)],
+)
+def security_scan(req: _SecurityScanRequest):
+    """ターゲット URL をスキャンし OWASP ベースの脆弱性を報告する。"""
+    pentester = _WebPentester()
+    report = pentester.scan(req.target_url, checks=req.checks, timeout=req.timeout)
+    return {
+        "target_url": report.target_url,
+        "risk_score": report.risk_score,
+        "scan_time_s": report.scan_time_s,
+        "summary": report.summary,
+        "critical_count": report.critical_count,
+        "high_count": report.high_count,
+        "findings": [
+            {
+                "severity": f.severity,
+                "category": f.category,
+                "title": f.title,
+                "description": f.description,
+                "url": f.url,
+                "recommendation": f.recommendation,
+            }
+            for f in report.findings
+        ],
+    }
+
+
+@app.post(
+    "/v1/security/report/md",
+    tags=["security"],
+    summary="WebPentester — Markdown レポート生成 (Sprint 53)",
+    dependencies=[Depends(verify_api_key)],
+)
+def security_report_md(req: _SecurityScanRequest):
+    """セキュリティスキャンを実行し Markdown レポートを返す。"""
+    pentester = _WebPentester()
+    report = pentester.scan(req.target_url, checks=req.checks, timeout=req.timeout)
+    md = pentester.generate_report_md(report)
+    return {
+        "markdown": md,
+        "risk_score": report.risk_score,
+        "n_findings": len(report.findings),
+    }
+
+
+@app.post(
+    "/v1/security/oss/analyze",
+    tags=["security"],
+    summary="OSSForensics — 依存関係・ライセンス分析 (Sprint 53)",
+    dependencies=[Depends(verify_api_key)],
+)
+def oss_analyze(req: _OSSAnalyzeRequest):
+    """プロジェクトの OSS 依存関係とライセンスを分析する。"""
+    oss = _OSSForensics()
+    report = oss.analyze(req.project_path)
+    return {
+        "project_path": report.project_path,
+        "total_deps": report.total_deps,
+        "vulnerable_count": report.vulnerable_count,
+        "license_issues": report.license_issues,
+        "dependencies": [
+            {
+                "name": d.name,
+                "version": d.version,
+                "license": d.license,
+                "has_known_vuln": d.has_known_vuln,
+                "vuln_ids": d.vuln_ids,
+            }
+            for d in report.dependencies[:20]  # 最大20件
+        ],
+    }
+
+
+@app.post(
+    "/v1/security/oss/sbom",
+    tags=["security"],
+    summary="OSSForensics — SBOM (CycloneDX) 生成 (Sprint 53)",
+    dependencies=[Depends(verify_api_key)],
+)
+def oss_sbom(req: _OSSAnalyzeRequest):
+    """プロジェクトの SBOM (Software Bill of Materials) を CycloneDX 形式で生成する。"""
+    oss = _OSSForensics()
+    report = oss.analyze(req.project_path)
+    sbom_json = oss.generate_sbom(report.dependencies)
+    return {
+        "sbom": sbom_json,
+        "format": "CycloneDX",
+        "n_components": len(report.dependencies),
+    }

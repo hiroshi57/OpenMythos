@@ -1,6 +1,6 @@
 # OpenMythos — Sprint Plans
-> 最終更新: 2026-06-08 (Sprint 52 完了 / 次回: Sprint 53) | ブランチ規約: `feature/<sprint>-<topic>`
-> Sprint 52 完了: DevOps・クラウド統合 → v0.55.0
+> 最終更新: 2026-06-08 (Sprint 53 完了 / 全スプリント完了!) | ブランチ規約: `feature/<sprint>-<topic>`
+> Sprint 53 完了: セキュリティ統合 → v0.56.0 🎉 Sprint 44〜53 全完了
 > アーカイブ: Sprint 1〜9 → `docs/archive/sprint-plans-1-9.md`
 >            Sprint 10〜19 → `docs/archive/sprint-plans-10-19.md`
 >            Sprint 20〜25 → `docs/archive/sprint-plans-20-25.md`
@@ -28,12 +28,26 @@
 | 50 | **エージェントフレームワーク強化** | `skills/agent_framework.py` | 2655 | v0.53 |
 | 51 | **データ・検索ツール統合** | `skills/data_tools.py` | 2708 | v0.54 |
 | 52 | **DevOps・クラウド統合** | `skills/devops_cloud.py` | 2756 | v0.55 |
+| 53 | **セキュリティ統合** | `skills/security.py` | 2797 | v0.56 |
 
-> **累計テスト数**: 2756 PASS (Sprint 52: +48)
+> **累計テスト数**: 2797 PASS (Sprint 53: +41) — **Sprint 44〜53 全完了**
 
 ---
 
-## Sprint 52 詳細 (最新)
+## Sprint 53 詳細 (最新)
+
+### Sprint 53: セキュリティ統合 — v0.56.0
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 53.1 | `open_mythos/skills/security.py` — PentestFinding / PentestReport / WebPentester | cc:完了 |
+| 53.2 | `open_mythos/skills/security.py` — DependencyInfo / ForensicsReport / OSSForensics | cc:完了 |
+| 53.3 | `serve/api.py` — `/v1/security/scan` `/v1/security/report/md` `/v1/security/oss/analyze` `/v1/security/oss/sbom` | cc:完了 |
+| 53.T | `tests/test_sprint53.py` — 41 tests PASS (累計 2797) | cc:完了 |
+| 53.V | PyPI v0.56.0 | cc:完了 |
+
+---
+
+## Sprint 52 詳細
 
 ### Sprint 52: DevOps・クラウド統合 — v0.55.0
 | task-id | 説明 | 状態 |
