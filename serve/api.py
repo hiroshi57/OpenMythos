@@ -4244,3 +4244,172 @@ def lm_eval_list_tasks():
     """利用可能な評価タスクの一覧を返す。"""
     evaluator = _LMEvaluator()
     return {"tasks": evaluator.list_tasks()}
+
+
+# ============================================================================
+# Sprint 46 — 推論バックエンド統合 API
+# ============================================================================
+
+from open_mythos.skills.inference_backends import (  # noqa: E402
+    AttentionConfig as _AttentionConfig,
+    FlashAttentionOptimizer as _FlashAttentionOptimizer,
+    GuidanceTemplate as _GuidanceTemplate,
+    GuidanceGenerator as _GuidanceGenerator,
+    TRTConfig as _TRTConfig,
+    TRTLLMBackend as _TRTLLMBackend,
+    WhisperTranscriber as _WhisperTranscriber,
+)
+
+# ── リクエストモデル ────────────────────────────────────────────────────────────
+
+class _AttentionBenchmarkRequest(BaseModel):
+    seq_len: int = 512
+    batch_size: int = 1
+    backend: str = "auto"
+
+
+class _GuidanceGenerateRequest(BaseModel):
+    template: str
+    variables: dict = Field(default_factory=dict)
+    max_tokens: int = 256
+
+
+class _RegexGrammarRequest(BaseModel):
+    pattern: str
+
+
+class _ChoiceGrammarRequest(BaseModel):
+    choices: List[str]
+
+
+class _TRTGenerateRequest(BaseModel):
+    input_ids: List[List[int]]
+    max_new_tokens: int = 64
+    temperature: float = 1.0
+
+
+class _WhisperTranscribeRequest(BaseModel):
+    audio_path: str
+    language: Optional[str] = None
+    task: str = "transcribe"
+    model: str = "base"
+
+
+# ── エンドポイント ─────────────────────────────────────────────────────────────
+
+@app.post(
+    "/v1/attention/benchmark",
+    tags=["inference"],
+    summary="Flash Attention — バックエンド選択とベンチマーク (Sprint 46)",
+    dependencies=[Depends(verify_api_key)],
+)
+def attention_benchmark(req: _AttentionBenchmarkRequest):
+    """利用可能な最速アテンション実装を検出し、ベンチマークを実行する。"""
+    cfg = _AttentionConfig(backend=req.backend)
+    opt = _FlashAttentionOptimizer(cfg)
+    bench = opt.benchmark(seq_len=req.seq_len, batch_size=req.batch_size)
+    return {
+        "backend":         bench.backend,
+        "seq_len":         bench.seq_len,
+        "batch_size":      bench.batch_size,
+        "latency_ms":      bench.latency_ms,
+        "memory_mb":       bench.memory_mb,
+        "speedup_vs_eager": bench.speedup_vs_eager,
+    }
+
+
+@app.post(
+    "/v1/guidance/generate",
+    tags=["guidance"],
+    summary="Guidance — 制約付きテキスト生成 (Sprint 46)",
+    dependencies=[Depends(verify_api_key)],
+)
+def guidance_generate(req: _GuidanceGenerateRequest):
+    """テンプレートと変数から制約付きテキストを生成する。"""
+    gen = _GuidanceGenerator()
+    tpl = _GuidanceTemplate(
+        template=req.template,
+        variables=req.variables,
+        max_tokens=req.max_tokens,
+    )
+    result = gen.generate(tpl)
+    return {
+        "text":        result.text,
+        "variables":   result.variables,
+        "tokens_used": result.tokens_used,
+        "success":     result.success,
+    }
+
+
+@app.post(
+    "/v1/guidance/grammar/regex",
+    tags=["guidance"],
+    summary="Guidance — 正規表現 grammar 生成 (Sprint 46)",
+    dependencies=[Depends(verify_api_key)],
+)
+def guidance_grammar_regex(req: _RegexGrammarRequest):
+    """正規表現パターンから Guidance grammar 文字列を生成する。"""
+    gen = _GuidanceGenerator()
+    return {"grammar": gen.build_regex_grammar(req.pattern), "pattern": req.pattern}
+
+
+@app.post(
+    "/v1/guidance/grammar/choice",
+    tags=["guidance"],
+    summary="Guidance — 選択肢 grammar 生成 (Sprint 46)",
+    dependencies=[Depends(verify_api_key)],
+)
+def guidance_grammar_choice(req: _ChoiceGrammarRequest):
+    """選択肢リストから Guidance select grammar を生成する。"""
+    gen = _GuidanceGenerator()
+    return {"grammar": gen.build_choice_grammar(req.choices), "choices": req.choices}
+
+
+@app.post(
+    "/v1/trt/generate",
+    tags=["tensorrt-llm"],
+    summary="TensorRT-LLM — バッチ推論 (Sprint 46)",
+    dependencies=[Depends(verify_api_key)],
+)
+def trt_generate(req: _TRTGenerateRequest):
+    """TensorRT-LLM バックエンドでバッチ推論を実行する。"""
+    backend = _TRTLLMBackend(_TRTConfig())
+    result = backend.generate(req.input_ids, max_new_tokens=req.max_new_tokens,
+                              temperature=req.temperature)
+    return {
+        "texts":      result.texts,
+        "output_ids": result.output_ids,
+        "latency_ms": result.latency_ms,
+    }
+
+
+@app.post(
+    "/v1/whisper/transcribe",
+    tags=["whisper"],
+    summary="Whisper — 音声書き起こし (Sprint 46)",
+    dependencies=[Depends(verify_api_key)],
+)
+def whisper_transcribe(req: _WhisperTranscribeRequest):
+    """音声ファイルをテキストに書き起こす。"""
+    w = _WhisperTranscriber(model_name=req.model)
+    result = w.transcribe(req.audio_path, language=req.language, task=req.task)
+    return {
+        "text":      result.text,
+        "language":  result.language,
+        "segments":  result.segments,
+        "duration_s": result.duration_s,
+        "model":     result.model,
+    }
+
+
+@app.post(
+    "/v1/whisper/detect-language",
+    tags=["whisper"],
+    summary="Whisper — 言語検出 (Sprint 46)",
+    dependencies=[Depends(verify_api_key)],
+)
+def whisper_detect_language(req: _WhisperTranscribeRequest):
+    """音声ファイルの言語を検出し、確率マップを返す。"""
+    w = _WhisperTranscriber(model_name=req.model)
+    probs = w.detect_language(req.audio_path)
+    return {"probabilities": probs, "audio_path": req.audio_path}

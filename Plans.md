@@ -1,6 +1,6 @@
 # OpenMythos — Sprint Plans
-> 最終更新: 2026-06-08 (Sprint 45 完了 / 次回: Sprint 46) | ブランチ規約: `feature/<sprint>-<topic>`
-> Sprint 45 完了: HuggingFace Hub 統合 → v0.48.0
+> 最終更新: 2026-06-08 (Sprint 46 完了 / 次回: Sprint 47) | ブランチ規約: `feature/<sprint>-<topic>`
+> Sprint 46 完了: 推論バックエンド統合 → v0.49.0
 > アーカイブ: Sprint 1〜9 → `docs/archive/sprint-plans-1-9.md`
 >            Sprint 10〜19 → `docs/archive/sprint-plans-10-19.md`
 >            Sprint 20〜25 → `docs/archive/sprint-plans-20-25.md`
@@ -41,8 +41,9 @@
 | 43 | **HermesOrchestrator: Layer 2 Ultracode Mode** | `open_mythos/hermes_orchestrator.py` `serve/api.py` | 2260 | v0.46 |
 | 44 | **Vector DB 統合 + Instructor 構造化出力** | `open_mythos/skills/vector_store.py` `open_mythos/skills/instructor_extract.py` `serve/api.py` | 2322 | v0.47 |
 | 45 | **HuggingFace Hub 統合** | `open_mythos/skills/hf_hub.py` `serve/api.py` | 2384 | v0.48 |
+| 46 | **推論バックエンド統合** | `open_mythos/skills/inference_backends.py` `serve/api.py` | 2439 | v0.49 |
 
-> **累計テスト数**: 2384 PASS (Sprint 45: +62)
+> **累計テスト数**: 2439 PASS (Sprint 46: +55)
 
 ---
 
@@ -63,7 +64,22 @@
 
 ---
 
-## Sprint 45 詳細 (最新)
+## Sprint 46 詳細 (最新)
+
+### Sprint 46: 推論バックエンド統合 — v0.49.0
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 46.1 | `open_mythos/skills/inference_backends.py` — AttentionConfig / FlashAttentionOptimizer / AttentionBenchmark | cc:完了 |
+| 46.2 | `open_mythos/skills/inference_backends.py` — GuidanceTemplate / GuidanceResult / GuidanceGenerator | cc:完了 |
+| 46.3 | `open_mythos/skills/inference_backends.py` — TRTConfig / TRTGenerationResult / TRTLLMBackend | cc:完了 |
+| 46.4 | `open_mythos/skills/inference_backends.py` — TranscriptionResult / WhisperTranscriber | cc:完了 |
+| 46.5 | `serve/api.py` — `/v1/attention/benchmark` `/v1/guidance/*` `/v1/trt/*` `/v1/whisper/*` | cc:完了 |
+| 46.T | `tests/test_sprint46.py` — 55 tests PASS (累計 2439) | cc:完了 |
+| 46.V | PyPI v0.49.0 | cc:完了 |
+
+---
+
+## Sprint 45 詳細
 
 ### Sprint 45: HuggingFace Hub 統合 — v0.48.0
 | task-id | 説明 | 状態 |
