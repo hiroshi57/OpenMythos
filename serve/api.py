@@ -5470,3 +5470,205 @@ def api_graphql(req: _APIGraphQLRequest):
         "valid_json": analysis.get("valid_json", False),
         "body_length": analysis.get("body_length", 0),
     }
+
+
+# ============================================================================
+# Sprint 52 — DevOps・クラウド統合 API
+# ============================================================================
+
+from open_mythos.skills.devops_cloud import (  # noqa: E402
+    ModalFunctionConfig as _ModalConfig,
+    ModalRunner as _ModalRunner,
+    DockerManager as _DockerManager,
+    WatchRule as _WatchRule,
+    FileWatcher as _FileWatcher,
+    SLiMeConfig as _SLiMeConfig,
+    SLiMeModel as _SLiMeModel,
+)
+
+# ── リクエストモデル ────────────────────────────────────────────────────────────
+
+
+class _ModalRunRequest(BaseModel):
+    name: str
+    # code フィールドは廃止 — eval による RCE を防止するため operation + args に変更
+    operation: str = "echo"   # echo | sum | count | noop
+    args: List[Any] = []
+    gpu: str = ""
+    memory: int = 512
+    timeout: int = 300
+
+
+class _ModalStubRequest(BaseModel):
+    name: str
+    gpu: str = ""
+    memory: int = 512
+    timeout: int = 300
+    app_name: str = "openmythos"
+
+
+class _DockerContainersRequest(BaseModel):
+    all: bool = False
+
+
+class _DockerBuildRequest(BaseModel):
+    dockerfile_path: str
+    tag: str
+    context: str = "."
+
+
+class _WatchRuleItem(BaseModel):
+    path: str
+    pattern: str = "**/*"
+    event_types: List[str] = ["created", "modified", "deleted"]
+    recursive: bool = True
+    debounce_ms: int = 500
+
+
+class _WatchConfigRequest(BaseModel):
+    rules: List[_WatchRuleItem] = []
+
+
+class _SLiMeFitRequest(BaseModel):
+    data: List[List[float]]
+    n_components: int = 64
+    alpha: float = 0.01
+    normalize: bool = True
+
+
+# ── エンドポイント ─────────────────────────────────────────────────────────────
+
+
+@app.post(
+    "/v1/modal/run",
+    tags=["devops"],
+    summary="Modal — クラウド関数実行 (Sprint 52)",
+    dependencies=[Depends(verify_api_key)],
+)
+def modal_run(req: _ModalRunRequest):
+    """定義済み操作をクラウド (または fallback) で実行する。eval() は使用しない。"""
+    cfg = _ModalConfig(name=req.name, gpu=req.gpu, memory=req.memory, timeout=req.timeout)
+    runner = _ModalRunner()
+    # 安全な定義済み操作のみ許可 (RCE 防止)
+    _ops = {
+        "echo":  lambda *a: list(a),
+        "sum":   lambda *a: sum(float(x) for x in a),
+        "count": lambda *a: len(a),
+        "noop":  lambda *a: None,
+    }
+    fn = _ops.get(req.operation, _ops["noop"])
+    result = runner.run_function(fn, cfg, *req.args)
+    return {
+        "output": result.output,
+        "run_id": result.run_id,
+        "duration_s": result.duration_s,
+        "gpu_used": result.gpu_used,
+        "success": result.success,
+        "error": result.error,
+    }
+
+
+@app.post(
+    "/v1/modal/stub",
+    tags=["devops"],
+    summary="Modal — スタブコード生成 (Sprint 52)",
+    dependencies=[Depends(verify_api_key)],
+)
+def modal_stub(req: _ModalStubRequest):
+    """Modal 関数のスタブコードを生成する。"""
+    cfg = _ModalConfig(name=req.name, gpu=req.gpu, memory=req.memory, timeout=req.timeout)
+    runner = _ModalRunner(app_name=req.app_name)
+    stub = runner.build_stub(cfg)
+    return {"stub_code": stub, "app_name": req.app_name, "function_name": req.name}
+
+
+@app.post(
+    "/v1/docker/containers",
+    tags=["devops"],
+    summary="Docker — コンテナ一覧 (Sprint 52)",
+    dependencies=[Depends(verify_api_key)],
+)
+def docker_containers(req: _DockerContainersRequest):
+    """実行中（または全）コンテナの一覧を返す。"""
+    dm = _DockerManager()
+    containers = dm.list_containers(all=req.all)
+    return {
+        "containers": [
+            {
+                "container_id": c.container_id,
+                "name": c.name,
+                "image": c.image,
+                "status": c.status,
+                "ports": c.ports,
+                "created": c.created,
+            }
+            for c in containers
+        ],
+        "count": len(containers),
+    }
+
+
+@app.post(
+    "/v1/docker/build",
+    tags=["devops"],
+    summary="Docker — イメージビルド (Sprint 52)",
+    dependencies=[Depends(verify_api_key)],
+)
+def docker_build(req: _DockerBuildRequest):
+    """Docker イメージをビルドする。"""
+    dm = _DockerManager()
+    result = dm.build(req.dockerfile_path, req.tag, req.context)
+    return {
+        "image_id": result.image_id,
+        "tag": result.tag,
+        "build_time_s": result.build_time_s,
+        "size_mb": result.size_mb,
+        "success": result.success,
+        "error": result.error,
+    }
+
+
+@app.post(
+    "/v1/watch/config",
+    tags=["devops"],
+    summary="FileWatcher — 監視設定生成 (Sprint 52)",
+    dependencies=[Depends(verify_api_key)],
+)
+def watch_config(req: _WatchConfigRequest):
+    """ファイル監視ルールを設定して構成情報を返す。"""
+    rules = [
+        _WatchRule(
+            path=r.path,
+            pattern=r.pattern,
+            event_types=r.event_types,
+            recursive=r.recursive,
+            debounce_ms=r.debounce_ms,
+        )
+        for r in req.rules
+    ]
+    fw = _FileWatcher(rules=rules)
+    config = fw.build_config()
+    return config
+
+
+@app.post(
+    "/v1/slime/fit",
+    tags=["devops"],
+    summary="SLiMe — スパース特徴学習 (Sprint 52)",
+    dependencies=[Depends(verify_api_key)],
+)
+def slime_fit(req: _SLiMeFitRequest):
+    """SLiMe でスパース特徴を学習する。"""
+    cfg = _SLiMeConfig(
+        n_components=req.n_components,
+        alpha=req.alpha,
+        normalize=req.normalize,
+    )
+    model = _SLiMeModel(cfg)
+    result = model.fit(req.data)
+    return {
+        "components": result.components,
+        "sparsity": result.sparsity,
+        "reconstruction_error": result.reconstruction_error,
+        "n_iter": result.n_iter,
+    }
