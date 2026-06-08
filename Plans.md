@@ -1,6 +1,6 @@
 # OpenMythos — Sprint Plans
-> 最終更新: 2026-06-08 (Sprint 44 完了 / 次回: Sprint 45) | ブランチ規約: `feature/<sprint>-<topic>`
-> Sprint 44 完了: Vector DB 統合 + Instructor 構造化出力 → v0.47.0
+> 最終更新: 2026-06-08 (Sprint 45 完了 / 次回: Sprint 46) | ブランチ規約: `feature/<sprint>-<topic>`
+> Sprint 45 完了: HuggingFace Hub 統合 → v0.48.0
 > アーカイブ: Sprint 1〜9 → `docs/archive/sprint-plans-1-9.md`
 >            Sprint 10〜19 → `docs/archive/sprint-plans-10-19.md`
 >            Sprint 20〜25 → `docs/archive/sprint-plans-20-25.md`
@@ -40,8 +40,9 @@
 | 42 | **/v1/embeddings + セマンティック検索** | `open_mythos/main.py` `serve/api.py` | 2166 | v0.45 |
 | 43 | **HermesOrchestrator: Layer 2 Ultracode Mode** | `open_mythos/hermes_orchestrator.py` `serve/api.py` | 2260 | v0.46 |
 | 44 | **Vector DB 統合 + Instructor 構造化出力** | `open_mythos/skills/vector_store.py` `open_mythos/skills/instructor_extract.py` `serve/api.py` | 2322 | v0.47 |
+| 45 | **HuggingFace Hub 統合** | `open_mythos/skills/hf_hub.py` `serve/api.py` | 2384 | v0.48 |
 
-> **累計テスト数**: 2322 PASS (Sprint 44: +62)
+> **累計テスト数**: 2384 PASS (Sprint 45: +62)
 
 ---
 
@@ -62,7 +63,22 @@
 
 ---
 
-## Sprint 44 詳細 (最新)
+## Sprint 45 詳細 (最新)
+
+### Sprint 45: HuggingFace Hub 統合 — v0.48.0
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 45.1 | `open_mythos/skills/hf_hub.py` — HFModelInfo / HFDatasetInfo / HFHubClient | cc:完了 |
+| 45.2 | `open_mythos/skills/hf_hub.py` — FastTokenizer / TokenizerResult | cc:完了 |
+| 45.3 | `open_mythos/skills/hf_hub.py` — LoRAConfig / PEFTAdapter / PEFTTrainResult | cc:完了 |
+| 45.4 | `open_mythos/skills/hf_hub.py` — EvalTask / EvalResult / LMEvaluator | cc:完了 |
+| 45.5 | `serve/api.py` — `/v1/hf/search/models` `/v1/hf/search/datasets` `/v1/hf/model/{id}` `/v1/tokenize` `/v1/peft/estimate` `/v1/lm-eval` | cc:完了 |
+| 45.T | `tests/test_sprint45.py` — 62 tests PASS (累計 2384) | cc:完了 |
+| 45.V | PyPI v0.48.0 | cc:完了 |
+
+---
+
+## Sprint 44 詳細
 
 ### Sprint 44: Vector DB 統合 + Instructor 構造化出力 — v0.47.0
 | task-id | 説明 | 状態 |

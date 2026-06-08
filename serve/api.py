@@ -4055,3 +4055,192 @@ def extract_prompt(req: _ExtractRequest):
         "schema":      schema.to_json_schema(),
         "schema_name": req.schema_name,
     }
+
+
+# ============================================================================
+# Sprint 45 — HuggingFace Hub 統合 API
+# ============================================================================
+
+from open_mythos.skills.hf_hub import (  # noqa: E402
+    HFHubClient as _HFHubClient,
+    FastTokenizer as _FastTokenizer,
+    LoRAConfig as _LoRAConfig,
+    PEFTAdapter as _PEFTAdapter,
+    EvalTask as _EvalTask,
+    LMEvaluator as _LMEvaluator,
+)
+
+# ── リクエストモデル ────────────────────────────────────────────────────────────
+
+class _HFSearchModelsRequest(BaseModel):
+    query: str
+    task: str = ""
+    limit: int = 10
+
+
+class _HFSearchDatasetsRequest(BaseModel):
+    query: str
+    limit: int = 10
+
+
+class _TokenizeRequest(BaseModel):
+    text: str
+    model: str = "gpt2"
+    max_length: Optional[int] = None
+    truncation: bool = False
+
+
+class _PEFTEstimateRequest(BaseModel):
+    total_params: int
+    r: int = 16
+    lora_alpha: int = 32
+    target_modules: List[str] = Field(default_factory=lambda: ["q_proj", "v_proj"])
+
+
+class _LMEvalRequest(BaseModel):
+    tasks: List[str]
+    model: str = "mock"
+    batch_size: int = 1
+
+
+# ── エンドポイント ─────────────────────────────────────────────────────────────
+
+@app.post(
+    "/v1/hf/search/models",
+    tags=["huggingface"],
+    summary="HuggingFace Hub — モデル検索 (Sprint 45)",
+    dependencies=[Depends(verify_api_key)],
+)
+def hf_search_models(req: _HFSearchModelsRequest):
+    """クエリに一致する HF Hub モデルを検索する。"""
+    client = _HFHubClient()
+    results = client.search_models(req.query, task=req.task, limit=req.limit)
+    return {
+        "results": [
+            {
+                "model_id": r.model_id,
+                "task":     r.task,
+                "downloads": r.downloads,
+                "likes":    r.likes,
+                "tags":     r.tags,
+                "private":  r.private,
+            }
+            for r in results
+        ],
+        "query": req.query,
+        "count": len(results),
+    }
+
+
+@app.post(
+    "/v1/hf/search/datasets",
+    tags=["huggingface"],
+    summary="HuggingFace Hub — データセット検索 (Sprint 45)",
+    dependencies=[Depends(verify_api_key)],
+)
+def hf_search_datasets(req: _HFSearchDatasetsRequest):
+    """クエリに一致する HF Hub データセットを検索する。"""
+    client = _HFHubClient()
+    results = client.search_datasets(req.query, limit=req.limit)
+    return {
+        "results": [
+            {
+                "dataset_id":       r.dataset_id,
+                "task_categories":  r.task_categories,
+                "downloads":        r.downloads,
+            }
+            for r in results
+        ],
+        "query": req.query,
+        "count": len(results),
+    }
+
+
+@app.get(
+    "/v1/hf/model/{model_id:path}",
+    tags=["huggingface"],
+    summary="HuggingFace Hub — モデル情報取得 (Sprint 45)",
+    dependencies=[Depends(verify_api_key)],
+)
+def hf_model_info(model_id: str):
+    """指定 model_id のモデル情報を返す。"""
+    client = _HFHubClient()
+    info = client.get_model_info(model_id)
+    return {
+        "model_id": info.model_id,
+        "task":     info.task,
+        "downloads": info.downloads,
+        "likes":    info.likes,
+        "tags":     info.tags,
+        "private":  info.private,
+    }
+
+
+@app.post(
+    "/v1/tokenize",
+    tags=["huggingface"],
+    summary="FastTokenizer — テキストをトークン化 (Sprint 45)",
+    dependencies=[Depends(verify_api_key)],
+)
+def tokenize(req: _TokenizeRequest):
+    """テキストをトークン ID に変換する。"""
+    tok = _FastTokenizer(req.model)
+    tok._native = False  # テスト環境でも安全にフォールバックへ
+    result = tok.encode(req.text, max_length=req.max_length, truncation=req.truncation)
+    return {
+        "tokens":    result.tokens,
+        "n_tokens":  result.n_tokens,
+        "truncated": result.truncated,
+        "model":     req.model,
+    }
+
+
+@app.post(
+    "/v1/peft/estimate",
+    tags=["peft"],
+    summary="PEFT/LoRA — 訓練可能パラメータ概算 (Sprint 45)",
+    dependencies=[Depends(verify_api_key)],
+)
+def peft_estimate(req: _PEFTEstimateRequest):
+    """LoRA 設定に基づいて訓練可能パラメータ数を概算する。"""
+    cfg = _LoRAConfig(
+        r=req.r,
+        lora_alpha=req.lora_alpha,
+        target_modules=req.target_modules,
+    )
+    adapter = _PEFTAdapter(cfg)
+    est = adapter.estimate_trainable_params(req.total_params)
+    return est
+
+
+@app.post(
+    "/v1/lm-eval",
+    tags=["lm-eval"],
+    summary="LM Evaluation Harness — モデル評価 (Sprint 45)",
+    dependencies=[Depends(verify_api_key)],
+)
+def lm_eval(req: _LMEvalRequest):
+    """指定タスクでモデルを評価し、スコアを返す。"""
+    evaluator = _LMEvaluator(req.model)
+    tasks = [_EvalTask(name=t) for t in req.tasks]
+    results = evaluator.evaluate(tasks, batch_size=req.batch_size)
+    return {
+        "results": [
+            {"task": r.task, "metric": r.metric, "value": r.value, "stderr": r.stderr}
+            for r in results
+        ],
+        "model":  req.model,
+        "count":  len(results),
+    }
+
+
+@app.get(
+    "/v1/lm-eval/tasks",
+    tags=["lm-eval"],
+    summary="LM Evaluation Harness — 利用可能タスク一覧 (Sprint 45)",
+    dependencies=[Depends(verify_api_key)],
+)
+def lm_eval_list_tasks():
+    """利用可能な評価タスクの一覧を返す。"""
+    evaluator = _LMEvaluator()
+    return {"tasks": evaluator.list_tasks()}
