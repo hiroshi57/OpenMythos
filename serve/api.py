@@ -5792,3 +5792,224 @@ def oss_sbom(req: _OSSAnalyzeRequest):
         "format": "CycloneDX",
         "n_components": len(report.dependencies),
     }
+
+
+# ===========================================================================
+# Sprint 54 — OpenAI Assistants API 互換レイヤー
+# ===========================================================================
+
+from open_mythos.assistant import (  # noqa: E402
+    AssistantRunner as _AssistantRunner,
+    AssistantStore as _AssistantStore,
+    AssistantTool as _AssistantTool,
+    get_default_store as _get_default_store,
+)
+from typing import List as _List, Optional as _Optional  # noqa: E402
+
+
+class _CreateAssistantRequest(BaseModel):
+    model: str = "openmythos"
+    name: _Optional[str] = None
+    description: _Optional[str] = None
+    instructions: _Optional[str] = None
+    tools: _List[dict] = []
+    metadata: dict = {}
+
+
+class _CreateThreadRequest(BaseModel):
+    metadata: dict = {}
+
+
+class _AddMessageRequest(BaseModel):
+    role: str = "user"
+    content: str = ""
+    metadata: dict = {}
+
+
+class _CreateRunRequest(BaseModel):
+    assistant_id: str
+    model: _Optional[str] = None
+    instructions: _Optional[str] = None
+    tools: _List[dict] = []
+    metadata: dict = {}
+
+
+# --- Assistants ---
+
+@app.post(
+    "/v1/assistants",
+    tags=["assistants"],
+    summary="Create assistant (Sprint 54)",
+    dependencies=[Depends(verify_api_key)],
+)
+def create_assistant(req: _CreateAssistantRequest):
+    """OpenAI Assistants API 互換: アシスタントを作成する。"""
+    tools = [_AssistantTool(**t) for t in req.tools]
+    store = _get_default_store()
+    asst = store.create_assistant(
+        model=req.model,
+        name=req.name,
+        description=req.description,
+        instructions=req.instructions,
+        tools=tools,
+        metadata=req.metadata,
+    )
+    return asst.to_dict()
+
+
+@app.get(
+    "/v1/assistants",
+    tags=["assistants"],
+    summary="List assistants (Sprint 54)",
+    dependencies=[Depends(verify_api_key)],
+)
+def list_assistants(limit: int = 20):
+    """OpenAI Assistants API 互換: アシスタント一覧を取得する。"""
+    store = _get_default_store()
+    items = store.list_assistants(limit=limit)
+    return {"object": "list", "data": [a.to_dict() for a in items]}
+
+
+@app.get(
+    "/v1/assistants/{assistant_id}",
+    tags=["assistants"],
+    summary="Get assistant (Sprint 54)",
+    dependencies=[Depends(verify_api_key)],
+)
+def get_assistant(assistant_id: str):
+    """OpenAI Assistants API 互換: 指定 ID のアシスタントを取得する。"""
+    store = _get_default_store()
+    asst = store.get_assistant(assistant_id)
+    if asst is None:
+        from fastapi import HTTPException  # noqa: F811
+        raise HTTPException(status_code=404, detail="Assistant not found")
+    return asst.to_dict()
+
+
+@app.delete(
+    "/v1/assistants/{assistant_id}",
+    tags=["assistants"],
+    summary="Delete assistant (Sprint 54)",
+    dependencies=[Depends(verify_api_key)],
+)
+def delete_assistant(assistant_id: str):
+    """OpenAI Assistants API 互換: アシスタントを削除する。"""
+    store = _get_default_store()
+    deleted = store.delete_assistant(assistant_id)
+    return {"id": assistant_id, "object": "assistant.deleted", "deleted": deleted}
+
+
+# --- Threads ---
+
+@app.post(
+    "/v1/threads",
+    tags=["assistants"],
+    summary="Create thread (Sprint 54)",
+    dependencies=[Depends(verify_api_key)],
+)
+def create_thread(req: _CreateThreadRequest):
+    """OpenAI Assistants API 互換: スレッドを作成する。"""
+    store = _get_default_store()
+    thread = store.create_thread(metadata=req.metadata)
+    return thread.to_dict()
+
+
+@app.get(
+    "/v1/threads/{thread_id}",
+    tags=["assistants"],
+    summary="Get thread (Sprint 54)",
+    dependencies=[Depends(verify_api_key)],
+)
+def get_thread(thread_id: str):
+    """OpenAI Assistants API 互換: 指定 ID のスレッドを取得する。"""
+    store = _get_default_store()
+    thread = store.get_thread(thread_id)
+    if thread is None:
+        from fastapi import HTTPException  # noqa: F811
+        raise HTTPException(status_code=404, detail="Thread not found")
+    return thread.to_dict()
+
+
+@app.delete(
+    "/v1/threads/{thread_id}",
+    tags=["assistants"],
+    summary="Delete thread (Sprint 54)",
+    dependencies=[Depends(verify_api_key)],
+)
+def delete_thread(thread_id: str):
+    """OpenAI Assistants API 互換: スレッドを削除する。"""
+    store = _get_default_store()
+    deleted = store.delete_thread(thread_id)
+    return {"id": thread_id, "object": "thread.deleted", "deleted": deleted}
+
+
+# --- Messages ---
+
+@app.post(
+    "/v1/threads/{thread_id}/messages",
+    tags=["assistants"],
+    summary="Add message to thread (Sprint 54)",
+    dependencies=[Depends(verify_api_key)],
+)
+def add_message(thread_id: str, req: _AddMessageRequest):
+    """OpenAI Assistants API 互換: スレッドにメッセージを追加する。"""
+    store = _get_default_store()
+    msg = store.add_message(
+        thread_id=thread_id,
+        role=req.role,
+        content=req.content,
+        metadata=req.metadata,
+    )
+    return msg.to_dict()
+
+
+@app.get(
+    "/v1/threads/{thread_id}/messages",
+    tags=["assistants"],
+    summary="List messages in thread (Sprint 54)",
+    dependencies=[Depends(verify_api_key)],
+)
+def list_messages(thread_id: str, limit: int = 20):
+    """OpenAI Assistants API 互換: スレッド内のメッセージ一覧を取得する。"""
+    store = _get_default_store()
+    msgs = store.list_messages(thread_id=thread_id, limit=limit)
+    return {"object": "list", "data": [m.to_dict() for m in msgs]}
+
+
+# --- Runs ---
+
+@app.post(
+    "/v1/threads/{thread_id}/runs",
+    tags=["assistants"],
+    summary="Create and execute run (Sprint 54)",
+    dependencies=[Depends(verify_api_key)],
+)
+def create_run(thread_id: str, req: _CreateRunRequest):
+    """OpenAI Assistants API 互換: ランを作成して実行する。"""
+    store = _get_default_store()
+    run = store.create_run(
+        thread_id=thread_id,
+        assistant_id=req.assistant_id,
+        model=req.model,
+        instructions=req.instructions,
+        metadata=req.metadata,
+    )
+    runner = _AssistantRunner(store)
+    result = runner.execute(run)
+    return result.to_dict()
+
+
+@app.get(
+    "/v1/threads/{thread_id}/runs/{run_id}",
+    tags=["assistants"],
+    summary="Get run (Sprint 54)",
+    dependencies=[Depends(verify_api_key)],
+)
+def get_run(thread_id: str, run_id: str):
+    """OpenAI Assistants API 互換: 指定 ID のランを取得する。"""
+    store = _get_default_store()
+    run = store.get_run(run_id)
+    if run is None:
+        from fastapi import HTTPException  # noqa: F811
+        raise HTTPException(status_code=404, detail="Run not found")
+    return run.to_dict()
