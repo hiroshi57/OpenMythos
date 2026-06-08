@@ -642,12 +642,13 @@ def roas_simulate(
     n: int = 1000,
     noise: float = 0.20,
     seed: int | None = None,
+    noise_dist: str = "uniform",
 ) -> dict:
     """
     モンテカルロ法による ROAS 予測（信頼区間付き）。
 
-    各パラメータに ±``noise`` (デフォルト 20%) の一様乱数ノイズを加えて
-    ``n`` 回シミュレーションし、ROAS 分布の統計量を返す。
+    各パラメータにノイズを加えて ``n`` 回シミュレーションし、
+    ROAS 分布の統計量と 90%/50% 信頼区間を返す。
 
     モデル::
 
@@ -670,14 +671,16 @@ def roas_simulate(
     n : int
         シミュレーション回数。デフォルト 1,000。
     noise : float
-        各パラメータへの一様ノイズ幅 (±noise)。デフォルト 0.20 (±20%)。
+        ノイズ幅。uniform: ±noise、normal: 標準偏差 = noise。デフォルト 0.20。
     seed : int | None
         乱数シード。None の場合は非決定的。
+    noise_dist : str
+        ノイズ分布。"uniform"（一様、デフォルト）または "normal"（正規分布）。
 
     Returns
     -------
     dict
-        mean_roas / p5 / p25 / p50 / p75 / p95 / std_dev /
+        mean_roas / std_dev / ci90 / ci50 / p5〜p95 /
         profitable_probability / expected_revenue_usd 等。
     """
     import math
@@ -692,14 +695,21 @@ def roas_simulate(
         raise ValueError("aov must be > 0")
     if n < 1:
         raise ValueError("n must be >= 1")
+    if noise_dist not in ("uniform", "normal"):
+        raise ValueError("noise_dist must be 'uniform' or 'normal'")
 
     rng = random.Random(seed)
     samples: list[float] = []
 
     for _ in range(n):
-        ctr_i = max(1e-9, ctr * (1.0 + rng.uniform(-noise, noise)))
-        cvr_i = min(1.0, max(1e-9, cvr * (1.0 + rng.uniform(-noise, noise))))
-        aov_i = max(1e-9, aov * (1.0 + rng.uniform(-noise, noise)))
+        if noise_dist == "normal":
+            ctr_i = max(1e-9, ctr * (1.0 + rng.gauss(0, noise)))
+            cvr_i = min(1.0, max(1e-9, cvr * (1.0 + rng.gauss(0, noise))))
+            aov_i = max(1e-9, aov * (1.0 + rng.gauss(0, noise)))
+        else:
+            ctr_i = max(1e-9, ctr * (1.0 + rng.uniform(-noise, noise)))
+            cvr_i = min(1.0, max(1e-9, cvr * (1.0 + rng.uniform(-noise, noise))))
+            aov_i = max(1e-9, aov * (1.0 + rng.uniform(-noise, noise)))
         samples.append(ctr_i * cvr_i * aov_i)
 
     samples.sort()
@@ -712,9 +722,18 @@ def roas_simulate(
 
     return {
         "n_simulations": n,
+        "noise_dist": noise_dist,
         "ad_spend_usd": round(ad_spend, 2),
         "mean_roas": round(mean, 4),
         "std_dev": round(math.sqrt(variance), 4),
+        "ci90": {
+            "lower": round(_percentile(0.05), 4),
+            "upper": round(_percentile(0.95), 4),
+        },
+        "ci50": {
+            "lower": round(_percentile(0.25), 4),
+            "upper": round(_percentile(0.75), 4),
+        },
         "p5_roas": round(_percentile(0.05), 4),
         "p25_roas": round(_percentile(0.25), 4),
         "p50_roas": round(_percentile(0.50), 4),

@@ -1,6 +1,6 @@
 # OpenMythos — Sprint Plans
-> 最終更新: 2026-06-04 (Sprint 43 完了 / 次回: Sprint 44) | ブランチ規約: `feature/<sprint>-<topic>`
-> Sprint 43 完了: HermesOrchestrator Layer 2 Ultracode Mode → v0.46.0
+> 最終更新: 2026-06-08 (Sprint 44 完了 / 次回: Sprint 45) | ブランチ規約: `feature/<sprint>-<topic>`
+> Sprint 44 完了: Vector DB 統合 + Instructor 構造化出力 → v0.47.0
 > アーカイブ: Sprint 1〜9 → `docs/archive/sprint-plans-1-9.md`
 >            Sprint 10〜19 → `docs/archive/sprint-plans-10-19.md`
 >            Sprint 20〜25 → `docs/archive/sprint-plans-20-25.md`
@@ -39,8 +39,9 @@
 | 41 | **Function Calling 統合 (tools / tool_calls / tool ロール)** | `serve/api.py` | 2120 | v0.44 |
 | 42 | **/v1/embeddings + セマンティック検索** | `open_mythos/main.py` `serve/api.py` | 2166 | v0.45 |
 | 43 | **HermesOrchestrator: Layer 2 Ultracode Mode** | `open_mythos/hermes_orchestrator.py` `serve/api.py` | 2260 | v0.46 |
+| 44 | **Vector DB 統合 + Instructor 構造化出力** | `open_mythos/skills/vector_store.py` `open_mythos/skills/instructor_extract.py` `serve/api.py` | 2322 | v0.47 |
 
-> **累計テスト数**: 2260 PASS (Sprint 43: +94)
+> **累計テスト数**: 2322 PASS (Sprint 44: +62)
 
 ---
 
@@ -61,7 +62,21 @@
 
 ---
 
-## Sprint 43 詳細 (最新)
+## Sprint 44 詳細 (最新)
+
+### Sprint 44: Vector DB 統合 + Instructor 構造化出力 — v0.47.0
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 44.1 | `open_mythos/skills/vector_store.py` — VectorDocument / VectorStoreConfig / ChromaStore / QdrantStore / PineconeStore / FaissStore / VectorStoreFactory | cc:完了 |
+| 44.2 | `open_mythos/skills/instructor_extract.py` — ExtractionSchema / ExtractionResult / InstructorExtractor | cc:完了 |
+| 44.3 | `serve/api.py` — `/v1/vector-store/*` + `/v1/extract` + `/v1/extract/prompt` エンドポイント追加 | cc:完了 |
+| 44.4 | `open_mythos/skills/__init__.py` — Vector DB / Instructor クラス全エクスポート追加 | cc:完了 |
+| 44.T | `tests/test_sprint44.py` — 62 tests PASS (累計 2322) | cc:完了 |
+| 44.V | PyPI v0.47.0 | cc:完了 |
+
+---
+
+## Sprint 43 詳細
 
 ### Sprint 43: HermesOrchestrator — Layer 2 Ultracode Mode — v0.46.0
 | task-id | 説明 | 状態 |

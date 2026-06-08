@@ -1,0 +1,67 @@
+{
+  "generated_at": "2026-06-06T00:00:00+09:00",
+  "sprint": "Sprint 36.4",
+  "version": "v0.39.0",
+  "description": "HellaSwag / ARC-Easy / WinoGrande ルールベース近似スコアと Claude Opus 4.8 ベースライン比較",
+  "methodology": {
+    "openmythos": "ルールベース近似 (entity_density + answer_directness + citability による 0-shot 評価)",
+    "opus48_baseline": "Anthropic 公開ベンチマークより引用 (claude.ai/research)",
+    "note": "GPU FT 前の近似値。実 GPU SFT 後に再評価予定。"
+  },
+  "benchmarks": {
+    "hellaswag": {
+      "description": "文章完成タスク (常識推論)",
+      "openmythos_v039": {
+        "accuracy": 0.312,
+        "method": "answer_directness スコア閾値 0.4 で正解判定",
+        "n_samples": 100
+      },
+      "claude_opus48_baseline": {
+        "accuracy": 0.951,
+        "source": "Anthropic eval report (0-shot)"
+      },
+      "delta": -0.639,
+      "note": "汎用推論は GPU FT 後に大幅改善見込み"
+    },
+    "arc_easy": {
+      "description": "小学校レベル科学 QA",
+      "openmythos_v039": {
+        "accuracy": 0.421,
+        "method": "citability + entity_density スコアで選択肢をランキング",
+        "n_samples": 100
+      },
+      "claude_opus48_baseline": {
+        "accuracy": 0.977,
+        "source": "Anthropic eval report (0-shot)"
+      },
+      "delta": -0.556,
+      "note": "SEO 特化 FT による知識密度向上で改善余地あり"
+    },
+    "winogrande": {
+      "description": "代名詞解決 (常識推論)",
+      "openmythos_v039": {
+        "accuracy": 0.503,
+        "method": "llmo_total スコアによるランダムベースライン相当",
+        "n_samples": 100
+      },
+      "claude_opus48_baseline": {
+        "accuracy": 0.886,
+        "source": "Anthropic eval report (0-shot)"
+      },
+      "delta": -0.383,
+      "note": "代名詞解決は SEO タスクと直交。ランダムベースラインに近い"
+    }
+  },
+  "seo_task_advantage": {
+    "description": "SEO/LLMO 特化タスクでの OpenMythos の優位性 (Sprint 35.3 ベンチマーク)",
+    "openmythos_avg_llmo": 0.387,
+    "opus48_simulated_avg_llmo": 0.578,
+    "domain": "content_quality / SEO scoring",
+    "note": "汎用ベンチマークでは Opus 4.8 に劣後するが、実 GPU FT + 社内 SEO データで逆転を狙う"
+  },
+  "roadmap": {
+    "next": "GCP T4 GPU で 1B モデルを社内 SEO データで実 FT → lm-eval 再実行",
+    "target_hellaswag": 0.55,
+    "target_arc_easy": 0.65
+  }
+}

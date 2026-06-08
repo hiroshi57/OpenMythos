@@ -2553,11 +2553,34 @@ def ab_infer(req: ABInferRequest):
         label = 1 if score >= 0.5 else 0
         model_id = "openmythos-rdt"
     else:
-        # 既存 ML スタブ: user_id ハッシュから決定論的スコアを生成
-        h = int(hashlib.md5(req.user_id.encode()).hexdigest(), 16)
-        score = 0.5 + (h % 500) / 1000.0  # 0.5–1.0 の決定論的スコア
-        label = 1 if score >= 0.5 else 0
-        model_id = "existing-ml-stub"
+        # Claude API (Opus 4.8) — CLAUDE_API_KEY があれば実 API、なければスタブ
+        claude_api_key = os.getenv("CLAUDE_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
+        if claude_api_key:
+            try:
+                import anthropic as _anthropic
+                _client = _anthropic.Anthropic(api_key=claude_api_key)
+                _msg = _client.messages.create(
+                    model="claude-opus-4-8",
+                    max_tokens=64,
+                    messages=[{"role": "user", "content": req.text[:500]}],
+                )
+                _response_text = _msg.content[0].text if _msg.content else ""
+                # レスポンス長をスコアの代理指標として使用
+                score = min(len(_response_text) / 200.0, 1.0)
+                label = 1 if score >= 0.5 else 0
+                model_id = "claude-opus-4-8"
+            except Exception:
+                # API エラー時はスタブにフォールバック
+                h = int(hashlib.md5(req.user_id.encode()).hexdigest(), 16)
+                score = 0.5 + (h % 500) / 1000.0
+                label = 1 if score >= 0.5 else 0
+                model_id = "claude-api-error-stub"
+        else:
+            # API キー未設定: 決定論的スタブ
+            h = int(hashlib.md5(req.user_id.encode()).hexdigest(), 16)
+            score = 0.5 + (h % 500) / 1000.0
+            label = 1 if score >= 0.5 else 0
+            model_id = "claude-stub-no-key"
 
     latency_ms = (time.perf_counter() - t0) * 1000
 
@@ -2577,6 +2600,45 @@ def ab_infer(req: ABInferRequest):
         traffic_pct=(
             AB_OPENMYTHOS_PCT if group == "openmythos" else 100 - AB_OPENMYTHOS_PCT
         ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Sprint 35: ROAS Monte Carlo シミュレーター API
+# ---------------------------------------------------------------------------
+
+
+class RoasSimulateRequest(BaseModel):
+    ad_spend: float = Field(..., gt=0, description="広告費 (USD)")
+    ctr: float = Field(..., gt=0, description="期待クリック率 (clicks per USD)")
+    cvr: float = Field(..., gt=0, le=1.0, description="期待成約率 (0〜1)")
+    aov: float = Field(..., gt=0, description="平均注文金額 (USD)")
+    n: int = Field(1000, ge=100, le=100000, description="シミュレーション回数")
+    noise: float = Field(0.20, ge=0.0, le=1.0, description="ノイズ幅 (デフォルト: ±20%)")
+    noise_dist: str = Field("uniform", description="ノイズ分布: 'uniform' or 'normal'")
+    seed: Optional[int] = Field(None, description="乱数シード (再現性用)")
+
+
+@app.post(
+    "/v1/roas/simulate",
+    tags=["marketing"],
+    summary="ROAS モンテカルロシミュレーション",
+    description=(
+        "広告費・CTR・CVR・AOV に対してモンテカルロ法で ROAS 分布を推定し、"
+        "90%/50% 信頼区間・収益確率・期待収益を返す。"
+    ),
+)
+def roas_simulate_endpoint(req: RoasSimulateRequest):
+    from open_mythos.tools_marketing import roas_simulate
+    return roas_simulate(
+        ad_spend=req.ad_spend,
+        ctr=req.ctr,
+        cvr=req.cvr,
+        aov=req.aov,
+        n=req.n,
+        noise=req.noise,
+        seed=req.seed,
+        noise_dist=req.noise_dist,
     )
 
 
@@ -3610,6 +3672,37 @@ def guard_refresh():
     return {"refreshed": True, "rule_count": n_rules}
 
 
+# ---------------------------------------------------------------------------
+# Sprint 36.5: Core Web Vitals シミュレーター
+# ---------------------------------------------------------------------------
+
+
+class CWVSimulateRequest(BaseModel):
+    content: str = Field(..., description="ページ本文テキスト")
+    n_images: int = Field(0, ge=0, description="ページ内の画像数")
+    server_response_ms: float = Field(200.0, ge=0.0, description="サーバー初期応答時間 (ms)")
+
+
+@app.post(
+    "/v1/cwv/simulate",
+    tags=["seo"],
+    summary="Core Web Vitals シミュレーション (Sprint 36)",
+    description=(
+        "コンテンツ長・画像数・サーバー応答時間から LCP / CLS / FID を疑似推定する。"
+        "実ブラウザ計測の代替ではなく、コンテンツ改善の方向性確認に使用する。"
+    ),
+)
+def cwv_simulate(req: CWVSimulateRequest):
+    from open_mythos.structured import CoreWebVitalsSimulator
+    sim = CoreWebVitalsSimulator()
+    result = sim.simulate(
+        content=req.content,
+        n_images=req.n_images,
+        server_response_ms=req.server_response_ms,
+    )
+    return result.to_dict()
+
+
 # Sprint 30: GrowingAIOrchestrator — /v1/grow/run
 from open_mythos.growing_ai_orchestrator import (
     GrowingAIOrchestrator as _GrowingAIOrchestrator,
@@ -3770,4 +3863,195 @@ def hermes_plan(req: HermesPlanRequest):
             }
             for st in subtasks
         ],
+    }
+
+
+# ============================================================================
+# Sprint 44 — Vector Store API  +  Instructor 構造化抽出 API
+# ============================================================================
+
+from open_mythos.skills.vector_store import (  # noqa: E402
+    VectorDocument as _VectorDocument,
+    VectorStoreConfig as _VectorStoreConfig,
+    ChromaStore as _ChromaStore,
+    QdrantStore as _QdrantStore,
+    PineconeStore as _PineconeStore,
+    FaissStore as _FaissStore,
+)
+from open_mythos.skills.instructor_extract import (  # noqa: E402
+    ExtractionSchema as _ExtractionSchema,
+    InstructorExtractor as _InstructorExtractor,
+)
+# ── ストアレジストリ (backend, collection) → store instance ─────────────────
+_vs_registry: dict = {}
+
+
+def _get_or_create_store(backend: str, collection: str, dim: int = 768):
+    """バックエンドとコレクション名でストアを取得または生成する。"""
+    key = (backend, collection)
+    if key not in _vs_registry:
+        cfg = _VectorStoreConfig(collection=collection, dim=dim)
+        if backend == "faiss":
+            _vs_registry[key] = _FaissStore(cfg)
+        elif backend == "chroma":
+            _vs_registry[key] = _ChromaStore(cfg)
+        elif backend == "qdrant":
+            _vs_registry[key] = _QdrantStore(cfg)
+        elif backend == "pinecone":
+            _vs_registry[key] = _PineconeStore(cfg)
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported backend: {backend}")
+    return _vs_registry[key]
+
+
+# ── リクエストモデル ────────────────────────────────────────────────────────────
+
+class _VsDocInput(BaseModel):
+    id: str = ""
+    vector: List[float]
+    text: str = ""
+    metadata: dict = Field(default_factory=dict)
+
+
+class _VsUpsertRequest(BaseModel):
+    backend: str = "faiss"
+    collection: str = "default"
+    documents: List[_VsDocInput]
+
+
+class _VsQueryRequest(BaseModel):
+    backend: str = "faiss"
+    collection: str = "default"
+    vector: List[float]
+    top_k: int = 5
+    filter: Optional[dict] = None
+
+
+class _VsDeleteRequest(BaseModel):
+    backend: str = "faiss"
+    collection: str = "default"
+    ids: List[str]
+
+
+class _FieldDef(BaseModel):
+    name: str
+    type: str = "str"
+
+
+class _ExtractRequest(BaseModel):
+    text: str = ""
+    schema_name: str
+    fields: List[_FieldDef]
+    max_retries: int = 3
+
+
+# ── Vector Store エンドポイント ─────────────────────────────────────────────────
+
+@app.post(
+    "/v1/vector-store/upsert",
+    tags=["vector-store"],
+    summary="Vector Store — ドキュメント upsert (Sprint 44)",
+    dependencies=[Depends(verify_api_key)],
+)
+def vs_upsert(req: _VsUpsertRequest):
+    """指定バックエンド・コレクションへドキュメントを挿入/更新する。"""
+    store = _get_or_create_store(req.backend, req.collection)
+    docs = [
+        _VectorDocument(id=d.id, vector=d.vector, text=d.text, metadata=d.metadata)
+        for d in req.documents
+    ]
+    count = store.upsert(docs)
+    return {"upserted": count, "backend": req.backend, "collection": req.collection}
+
+
+@app.post(
+    "/v1/vector-store/query",
+    tags=["vector-store"],
+    summary="Vector Store — 近傍検索 (Sprint 44)",
+    dependencies=[Depends(verify_api_key)],
+)
+def vs_query(req: _VsQueryRequest):
+    """クエリベクターに近い上位 top_k ドキュメントを返す。"""
+    store = _get_or_create_store(req.backend, req.collection)
+    results = store.query(req.vector, top_k=req.top_k, filter=req.filter)
+    hits = [
+        {
+            "id":       doc.id,
+            "text":     doc.text,
+            "metadata": doc.metadata,
+            "score":    float(score),
+        }
+        for doc, score in results
+    ]
+    return {"hits": hits, "backend": req.backend, "collection": req.collection}
+
+
+@app.post(
+    "/v1/vector-store/delete",
+    tags=["vector-store"],
+    summary="Vector Store — ドキュメント削除 (Sprint 44)",
+    dependencies=[Depends(verify_api_key)],
+)
+def vs_delete(req: _VsDeleteRequest):
+    """指定 ID のドキュメントを削除する。"""
+    store = _get_or_create_store(req.backend, req.collection)
+    deleted = store.delete(req.ids)
+    return {"deleted": deleted, "backend": req.backend, "collection": req.collection}
+
+
+@app.get(
+    "/v1/vector-store/count",
+    tags=["vector-store"],
+    summary="Vector Store — ドキュメント数取得 (Sprint 44)",
+    dependencies=[Depends(verify_api_key)],
+)
+def vs_count(backend: str = "faiss", collection: str = "default"):
+    """コレクションのドキュメント総数を返す。"""
+    store = _get_or_create_store(backend, collection)
+    return {"count": store.count(), "backend": backend, "collection": collection}
+
+
+# ── Instructor 構造化抽出エンドポイント ─────────────────────────────────────────
+
+@app.post(
+    "/v1/extract",
+    tags=["instructor"],
+    summary="Instructor 構造化抽出 (Sprint 44)",
+    dependencies=[Depends(verify_api_key)],
+)
+def extract(req: _ExtractRequest):
+    """テキストからスキーマ定義に従って JSON を抽出する。"""
+    schema = _ExtractionSchema(
+        name=req.schema_name,
+        fields={f.name: f.type for f in req.fields},
+    )
+    extractor = _InstructorExtractor(max_retries=req.max_retries)
+    result = extractor.extract(req.text, schema)
+    return {
+        "success":     result.success,
+        "data":        result.data,
+        "schema_name": result.schema_name,
+        "error":       result.error,
+        "retries":     result.retries,
+    }
+
+
+@app.post(
+    "/v1/extract/prompt",
+    tags=["instructor"],
+    summary="Instructor 構造化抽出プロンプト生成 (Sprint 44)",
+    dependencies=[Depends(verify_api_key)],
+)
+def extract_prompt(req: _ExtractRequest):
+    """スキーマから LLM 向け抽出プロンプトを生成して返す。"""
+    schema = _ExtractionSchema(
+        name=req.schema_name,
+        fields={f.name: f.type for f in req.fields},
+    )
+    extractor = _InstructorExtractor()
+    prompt = extractor.build_prompt(schema)
+    return {
+        "prompt":      prompt,
+        "schema":      schema.to_json_schema(),
+        "schema_name": req.schema_name,
     }
