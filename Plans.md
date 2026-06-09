@@ -1,12 +1,13 @@
 # OpenMythos — Sprint Plans
-> 最終更新: 2026-06-08 (Sprint 54 完了) | ブランチ規約: `feature/<sprint>-<topic>`
-> Sprint 54 完了: OpenAI Assistants API 統合 → v0.57.0
-> アーカイブ: Sprint 1〜9 → `docs/archive/sprint-plans-1-9.md`
->            Sprint 10〜19 → `docs/archive/sprint-plans-10-19.md`
->            Sprint 20〜25 → `docs/archive/sprint-plans-20-25.md`
->            Sprint 26〜35 → `docs/archive/sprint-plans-26-35.md`
->            Sprint 36〜43 → `docs/archive/sprint-plans-36-42.md`
->            Sprint 43〜51 → `docs/archive/sprint-plans-43-51.md`
+> 最終更新: 2026-06-09 (Sprint 59 完了) | ブランチ規約: `feature/<sprint>-<topic>`
+> Sprint 59 完了: 自律脆弱性スキャン (defending-code-harness 移植) → v0.62.0
+> アーカイブ: Sprint 1〜9   → `docs/archive/sprint-plans-1-9.md`
+>            Sprint 10〜19  → `docs/archive/sprint-plans-10-19.md`
+>            Sprint 20〜25  → `docs/archive/sprint-plans-20-25.md`
+>            Sprint 26〜35  → `docs/archive/sprint-plans-26-35.md`
+>            Sprint 36〜43  → `docs/archive/sprint-plans-36-42.md`
+>            Sprint 43〜51  → `docs/archive/sprint-plans-43-51.md`
+>            Sprint 52〜58  → `docs/archive/sprint-plans-52-58.md`
 
 ---
 
@@ -30,66 +31,54 @@
 | 52 | **DevOps・クラウド統合** | `skills/devops_cloud.py` | 2756 | v0.55 |
 | 53 | **セキュリティ統合** | `skills/security.py` | 2797 | v0.56 |
 | 54 | **OpenAI Assistants API 統合** | `assistant.py` | 2862 | v0.57 |
+| 55 | **ストリーミング & SSE 応答** | `open_mythos/streaming.py` | 2920 | v0.58 |
+| 56 | **マルチプロバイダー LLM** | `skills/llm_providers.py` | 2972 | v0.59 |
+| 57 | **LLM 評価フレームワーク** | `skills/evaluation.py` | 3026 | v0.60 |
+| 58 | **LLMO ダッシュボード・CEP管理・競合分析** | `skills/llmo_dashboard.py` | 3078 | v0.61 |
+| 59 | **自律脆弱性スキャン (harness 移植)** | `skills/vuln_scanner.py` | 3155 | v0.62 |
 
-> **累計テスト数**: 2862 PASS (Sprint 54: +65) — **Sprint 54 完了**
-
----
-
-## Sprint 54 詳細 (最新)
-
-### Sprint 54: OpenAI Assistants API 統合 — v0.57.0
-| task-id | 説明 | 状態 |
-|---------|------|------|
-| 54.1 | `open_mythos/assistant.py` — AssistantTool / AssistantObject / Thread / MessageContent / Message / RunUsage / Run | cc:完了 |
-| 54.2 | `open_mythos/assistant.py` — AssistantStore (CRUD: assistants/threads/messages/runs) | cc:完了 |
-| 54.3 | `open_mythos/assistant.py` — AssistantRunner (LLM実行・応答追加) / get_default_store / reset_default_store | cc:完了 |
-| 54.4 | `serve/api.py` — `/v1/assistants` (CRUD) `/v1/threads` (CRUD) `/v1/threads/{id}/messages` `/v1/threads/{id}/runs` | cc:完了 |
-| 54.T | `tests/test_sprint54.py` — 65 tests PASS (累計 2862) | cc:完了 |
-| 54.V | PyPI v0.57.0 | cc:完了 |
+> **累計テスト数**: ~3155 PASS (Sprint 59: +77) — **Sprint 60 候補検討中**
 
 ---
 
-## Sprint 53 詳細
+## Sprint 59 詳細 (最新 / 完了)
 
-### Sprint 53: セキュリティ統合 — v0.56.0
+### Sprint 59: 自律脆弱性スキャン — v0.62.0
+> 参照: `external/defending-code-harness/` (anthropics/defending-code-reference-harness, Apache-2.0)
+> harness の 4 ステージパイプラインを Python-native 静的解析に移植
+
 | task-id | 説明 | 状態 |
 |---------|------|------|
-| 53.1 | `open_mythos/skills/security.py` — PentestFinding / PentestReport / WebPentester | cc:完了 |
-| 53.2 | `open_mythos/skills/security.py` — DependencyInfo / ForensicsReport / OSSForensics | cc:完了 |
-| 53.3 | `serve/api.py` — `/v1/security/scan` `/v1/security/report/md` `/v1/security/oss/analyze` `/v1/security/oss/sbom` | cc:完了 |
-| 53.T | `tests/test_sprint53.py` — 41 tests PASS (累計 2797) | cc:完了 |
-| 53.V | PyPI v0.56.0 | cc:完了 |
+| 59.1 | `skills/vuln_scanner.py` — VulnSeverity/VulnCategory/PatchStatus (Enum 層) | cc:完了 |
+| 59.2 | `skills/vuln_scanner.py` — ScanTarget (harness:TargetConfig) / VulnFinding (harness:CrashArtifact) | cc:完了 |
+| 59.3 | `skills/vuln_scanner.py` — VerifyVerdict (harness:GraderVerdict 5基準) / PatchCandidate (T0/T1/T2) | cc:完了 |
+| 59.4 | `skills/vuln_scanner.py` — ScanReport (harness:ReportVerdict) / ScanSession (harness:RunResult) | cc:完了 |
+| 59.5 | `skills/vuln_scanner.py` — VulnStore / VulnScanner (find+recon) | cc:完了 |
+| 59.6 | `skills/vuln_scanner.py` — VulnPatcher (T0/T1/T2 ラダー) / ScanReportEngine | cc:完了 |
+| 59.7 | `serve/api.py` — `/v1/vuln/scan` `/v1/vuln/findings` `/v1/vuln/patch/{id}` `/v1/vuln/session/{id}/report` | cc:完了 |
+| 59.T | `tests/test_sprint59.py` — 77 tests PASS (累計 3155) | cc:完了 |
+| 59.V | PyPI v0.62.0 | cc:完了 |
+| 59.X | `external/defending-code-harness/` クローン (read-only reference) | cc:完了 |
+
+### harness 対応表
+| harness | vuln_scanner.py | 役割 |
+|---------|----------------|------|
+| `TargetConfig` | `ScanTarget` | スキャン対象設定 |
+| `CrashArtifact` | `VulnFinding` | 脆弱性 1 件 |
+| `GraderVerdict` | `VerifyVerdict` | 5 基準スコアリング |
+| `PatchVerdict (T0-T3)` | `PatchCandidate` | T0:構文/T1:消滅/T2:テスト |
+| `ReportVerdict` | `ScanReport` | 悪用可能性分析 |
+| `RunResult` | `ScanSession` | セッション全体 |
 
 ---
 
-## Sprint 52 詳細
+## Sprint 60 候補テーマ
 
-### Sprint 52: DevOps・クラウド統合 — v0.55.0
-| task-id | 説明 | 状態 |
-|---------|------|------|
-| 52.1 | `open_mythos/skills/devops_cloud.py` — ModalFunctionConfig / ModalRunResult / ModalRunner | cc:完了 |
-| 52.2 | `open_mythos/skills/devops_cloud.py` — ContainerInfo / BuildResult / DockerManager | cc:完了 |
-| 52.3 | `open_mythos/skills/devops_cloud.py` — WatchRule / FileEvent / FileWatcher | cc:完了 |
-| 52.4 | `open_mythos/skills/devops_cloud.py` — SLiMeConfig / SLiMeResult / SLiMeModel | cc:完了 |
-| 52.5 | `serve/api.py` — `/v1/modal/*` `/v1/docker/*` `/v1/watch/config` `/v1/slime/fit` | cc:完了 |
-| 52.T | `tests/test_sprint52.py` — 48 tests PASS (累計 2756) | cc:完了 |
-| 52.V | PyPI v0.55.0 | cc:完了 |
-
----
-
-## Sprint 51 詳細
-
-### Sprint 51: データ・検索ツール統合 — v0.54.0
-| task-id | 説明 | 状態 |
-|---------|------|------|
-| 51.1 | `open_mythos/skills/data_tools.py` — SearXNGResult / SearXNGSearcher | cc:完了 |
-| 51.2 | `open_mythos/skills/data_tools.py` — DomainInfo / DomainIntelligence | cc:完了 |
-| 51.3 | `open_mythos/skills/data_tools.py` — CurationRule / CurationResult / NemoCurator | cc:完了 |
-| 51.4 | `open_mythos/skills/data_tools.py` — CodeSymbol / CodeWiki / CodeWikiGenerator | cc:完了 |
-| 51.5 | `open_mythos/skills/data_tools.py` — APICallResult / APIDebugger | cc:完了 |
-| 51.6 | `serve/api.py` — `/v1/search/searxng` `/v1/domain/lookup` `/v1/data/curate` `/v1/code/wiki` `/v1/api/rest` `/v1/api/graphql` | cc:完了 |
-| 51.T | `tests/test_sprint51.py` — 53 tests PASS (累計 2708) | cc:完了 |
-| 51.V | PyPI v0.54.0 | cc:完了 |
+| Option | テーマ | コアモジュール | 理由 |
+|--------|--------|--------------|------|
+| **A** | **広告キャンペーン管理** | `skills/campaign_manager.py` | CEP→コピー→評価の全フローをワークフロー化 |
+| B | **日本語対応トークナイザー** | `open_mythos/tokenizer_ja.py` | GPT-2英語依存を解消。日本語広告コピー学習の前提 |
+| C | **A/Bテスト基盤** | `skills/ab_test.py` | 複数コピー案の効果測定フレームワーク |
 
 ---
 
@@ -100,3 +89,4 @@
 - `store or Store()` は空ストア (len=0→falsy) を別インスタンスに差し替える → `is not None` チェックを使う
 - `ConsensusEngine.score(texts)` が正しい API (build_consensus/compute_agreement は存在しない)
 - テスト間レート制限干渉: `tests/conftest.py` の `reset_rate_limiter` fixture で全スイート実行時に自動リセット
+- `VulnScanner.scan_source()` の focus_areas フィルタは title の部分一致 (harness の focus_area partition に対応)
