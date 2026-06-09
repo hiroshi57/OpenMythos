@@ -1,5 +1,5 @@
 # OpenMythos — Sprint Plans
-> 最終更新: 2026-06-08 (Sprint 54 完了) | ブランチ規約: `feature/<sprint>-<topic>`
+> 最終更新: 2026-06-09 (Sprint 55 計画中) | ブランチ規約: `feature/<sprint>-<topic>`
 > Sprint 54 完了: OpenAI Assistants API 統合 → v0.57.0
 > アーカイブ: Sprint 1〜9 → `docs/archive/sprint-plans-1-9.md`
 >            Sprint 10〜19 → `docs/archive/sprint-plans-10-19.md`
@@ -30,12 +30,50 @@
 | 52 | **DevOps・クラウド統合** | `skills/devops_cloud.py` | 2756 | v0.55 |
 | 53 | **セキュリティ統合** | `skills/security.py` | 2797 | v0.56 |
 | 54 | **OpenAI Assistants API 統合** | `assistant.py` | 2862 | v0.57 |
+| 55 | **ストリーミング & SSE 応答** | `open_mythos/streaming.py` | ~2920 | v0.58 |
 
-> **累計テスト数**: 2862 PASS (Sprint 54: +65) — **Sprint 54 完了**
+> **累計テスト数**: 2862 PASS (Sprint 54: +65) — **Sprint 55 計画中**
 
 ---
 
-## Sprint 54 詳細 (最新)
+## Sprint 55 詳細 (最新 / 計画中)
+
+### Sprint 55: ストリーミング & SSE 応答 — v0.58.0
+
+**テーマ**: Assistants API・generate エンドポイントにリアルタイム SSE ストリーミングを追加。  
+`StreamChunk` / `StreamEvent` 型を整備し、クライアントが逐次トークンを受信できるようにする。
+
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 55.1 | `open_mythos/streaming.py` — `StreamDelta` / `StreamChunk` / `StreamEvent` / `StreamSession` データクラス定義 | cc:TODO |
+| 55.2 | `open_mythos/streaming.py` — `StreamingRunner`: ジェネレータ方式でトークン列を yield、`done` イベントで終端 | cc:TODO |
+| 55.3 | `open_mythos/streaming.py` — `StreamBuffer`: チャンク蓄積・全文復元・エラーハンドリング | cc:TODO |
+| 55.4 | `serve/api.py` — `StreamResponse` (SSE) `/v1/generate/stream` `/v1/chat/stream` エンドポイント追加 | cc:TODO |
+| 55.5 | `serve/api.py` — `/v1/threads/{id}/runs/stream` — Assistants Run のストリーミング実行 | cc:TODO |
+| 55.T | `tests/test_sprint55.py` — ~58 tests PASS (累計 ~2920) | cc:TODO |
+| 55.V | PyPI v0.58.0 | cc:TODO |
+
+**DoD**:
+- `StreamingRunner` が `yield StreamChunk(delta=..., index=i, done=False)` → `StreamChunk(done=True)` を返す
+- SSE エンドポイントが `text/event-stream` を返す（FastAPI `StreamingResponse`）
+- Assistants Run ストリームが `data: {...}\n\n` 形式で順次送出される
+- 全テスト PASS (`pytest tests/test_sprint55.py -v`)
+
+---
+
+## Sprint 55 候補テーマ（選択肢）
+
+次のスプリントは以下 3 候補から選択可能。**デフォルト選択: Option A (ストリーミング)**。
+
+| Option | テーマ | 理由 |
+|--------|--------|------|
+| **A** ✅ | **ストリーミング & SSE** (`streaming.py`) | Assistants API の自然な拡張。UX インパクト最大 |
+| B | **Claude / Gemini マルチプロバイダー** (`skills/llm_providers.py`) | Sprint 54 の OpenAI 統合と対称。プロバイダー抽象化 |
+| C | **LLM 評価フレームワーク** (`skills/evaluation.py`) | 研究用途に必須。自動ベンチマーク + レポート生成 |
+
+---
+
+## Sprint 54 詳細
 
 ### Sprint 54: OpenAI Assistants API 統合 — v0.57.0
 | task-id | 説明 | 状態 |
