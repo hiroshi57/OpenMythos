@@ -68,6 +68,10 @@ benchmark/results/*.md
 # 開発ツール (Claude Code Harness)
 harness-creator-SKILL.md
 
+# 外部リポジトリ参照 (clone して使う read-only reference)
+# clone: git clone https://github.com/anthropics/defending-code-reference-harness external/defending-code-harness
+external/
+
 # データセット・学習データ (大容量)
 data/
 *.jsonl

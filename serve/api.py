@@ -43,6 +43,7 @@ from open_mythos.main import MythosConfig, OpenMythos
 from open_mythos.agents import MythosAgent, OpenMythosLLM
 from serve.auth import RateLimitMiddleware, verify_api_key
 from serve.dashboard import router as _dashboard_router
+from serve.ad_router import router as _ad_router
 
 try:
     from prometheus_client import (
@@ -212,6 +213,7 @@ app.add_middleware(
 
 # Sprint 39: ショーケースダッシュボード + Prometheus
 app.include_router(_dashboard_router)
+app.include_router(_ad_router)
 
 
 @app.get(
@@ -6013,3 +6015,637 @@ def get_run(thread_id: str, run_id: str):
         from fastapi import HTTPException  # noqa: F811
         raise HTTPException(status_code=404, detail="Run not found")
     return run.to_dict()
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Sprint 55 — ストリーミング & SSE エンドポイント
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+from open_mythos.streaming import StreamingRunner as _StreamingRunner  # noqa: E402
+
+
+class _ChatStreamRequest(BaseModel):
+    messages: list[dict] = Field(..., description="OpenAI 形式のメッセージ列")
+    model:    str         = Field("openmythos", description="モデル名")
+    max_tokens: int       = Field(256, ge=1, le=2048)
+    stream:   bool        = Field(True, description="常に True（SSE 専用エンドポイント）")
+
+
+@app.post(
+    "/v1/chat/stream",
+    tags=["streaming"],
+    summary="Chat ストリーミング (SSE) — Sprint 55",
+    description=(
+        "チャットメッセージを受け取り、Server-Sent Events でトークンを逐次返す。\n\n"
+        "フォーマット:\n"
+        "```\n"
+        "event: delta\n"
+        "data: {\"choices\":[{\"delta\":{\"content\":\"こんにちは\"},...}]}\n\n"
+        "data: [DONE]\n\n"
+        "```"
+    ),
+)
+def chat_stream(req: _ChatStreamRequest):
+    """OpenAI Chat Completions 互換 SSE ストリーミングエンドポイント。"""
+    # ユーザーメッセージを結合してプロンプトを構築
+    system_msg = next(
+        (m.get("content", "") for m in req.messages if m.get("role") == "system"),
+        None,
+    )
+    user_parts = [
+        m.get("content", "")
+        for m in req.messages
+        if m.get("role") in ("user", "assistant")
+    ]
+    prompt = " ".join(user_parts).strip() or "こんにちは"
+
+    llm_instance = state.llm if hasattr(state, "llm") else None
+    runner = _StreamingRunner(model_name=req.model, llm=llm_instance)
+
+    def _sse_gen():
+        yield from runner.run_as_sse(prompt, max_tokens=req.max_tokens, system=system_msg)
+
+    return StreamingResponse(_sse_gen(), media_type="text/event-stream")
+
+
+class _RunStreamRequest(BaseModel):
+    assistant_id: str          = Field(..., description="アシスタント ID")
+    model:        Optional[str] = Field(None,  description="モデル上書き（省略可）")
+    instructions: Optional[str] = Field(None,  description="指示上書き")
+    max_tokens:   int            = Field(256, ge=1, le=2048)
+
+
+@app.post(
+    "/v1/threads/{thread_id}/runs/stream",
+    tags=["streaming"],
+    summary="Assistants Run ストリーミング (SSE) — Sprint 55",
+    description=(
+        "Assistants Run をストリーミングで実行する。\n"
+        "スレッドの最新ユーザーメッセージをプロンプトとし、"
+        "SSE で逐次トークンを返す。完了時に Run レコードを `completed` に更新する。"
+    ),
+)
+def run_stream(thread_id: str, req: _RunStreamRequest):
+    """Assistants API 互換: Run の結果を SSE で逐次配信する。"""
+    store = _get_default_store()
+
+    # スレッド存在確認
+    thread = store.get_thread(thread_id)
+    if thread is None:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    # アシスタント存在確認
+    asst = store.get_assistant(req.assistant_id)
+    if asst is None:
+        raise HTTPException(status_code=404, detail="Assistant not found")
+
+    # Run を作成（status=in_progress）
+    run = store.create_run(
+        thread_id=thread_id,
+        assistant_id=req.assistant_id,
+        model=req.model or asst.model,
+        instructions=req.instructions or asst.instructions,
+    )
+    run.status = "in_progress"
+
+    # プロンプト: スレッドの最新ユーザーメッセージ
+    msgs = store.list_messages(thread_id)
+    user_texts = [m.text for m in msgs if m.role == "user"]
+    prompt = user_texts[-1] if user_texts else "こんにちは"
+    system = run.instructions or ""
+
+    llm_instance = state.llm if hasattr(state, "llm") else None
+    runner = _StreamingRunner(model_name=run.model, llm=llm_instance)
+
+    collected: list[str] = []
+
+    def _sse_gen():
+        for chunk in runner.run(prompt, max_tokens=req.max_tokens, system=system or None):
+            if not chunk.done:
+                collected.append(chunk.delta.content)
+                import json as _j
+                payload = {
+                    "object":  "thread.run.step.delta",
+                    "run_id":  run.id,
+                    "thread_id": thread_id,
+                    "delta": {
+                        "step_details": {
+                            "type": "message_creation",
+                            "message_creation": {
+                                "content": chunk.delta.content,
+                                "index": chunk.delta.index,
+                            },
+                        }
+                    },
+                }
+                yield f"event: thread.run.step.delta\ndata: {_j.dumps(payload, ensure_ascii=False)}\n\n"
+            else:
+                # 完了: アシスタントメッセージを保存して Run を completed に
+                full_text = "".join(collected)
+                store.add_message(
+                    thread_id=thread_id,
+                    role="assistant",
+                    content=full_text,
+                    assistant_id=req.assistant_id,
+                    run_id=run.id,
+                )
+                run.status       = "completed"
+                run.completed_at = int(time.time())
+                run.usage.completion_tokens = len(collected)
+                run.usage.total_tokens      = len(collected)
+
+                import json as _j
+                done_payload = {
+                    "object":   "thread.run",
+                    "id":       run.id,
+                    "status":   "completed",
+                    "thread_id": thread_id,
+                }
+                yield f"event: thread.run.completed\ndata: {_j.dumps(done_payload, ensure_ascii=False)}\n\n"
+                yield "data: [DONE]\n\n"
+
+    return StreamingResponse(_sse_gen(), media_type="text/event-stream")
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Sprint 56 — マルチプロバイダー LLM エンドポイント
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+from open_mythos.skills.llm_providers import (  # noqa: E402
+    MultiProviderRouter as _MultiProviderRouter,
+    LLMRequest as _LLMRequest,
+    ProviderType as _ProviderType,
+)
+
+
+class _ProviderCompleteRequest(BaseModel):
+    prompt:      str             = Field(..., description="プロンプト")
+    system:      Optional[str]   = Field(None,  description="システムプロンプト")
+    max_tokens:  int             = Field(256, ge=1, le=4096)
+    temperature: float           = Field(0.7, ge=0.0, le=2.0)
+    preferred_provider: Optional[str] = Field(
+        None, description="優先プロバイダー: claude | openai | openmythos"
+    )
+
+
+class _ProviderCompleteResponse(BaseModel):
+    text:              str
+    provider_used:     str
+    model:             str
+    latency_ms:        float
+    prompt_tokens:     int
+    completion_tokens: int
+    total_tokens:      int
+
+
+@app.post(
+    "/v1/llm/complete",
+    response_model=_ProviderCompleteResponse,
+    tags=["providers"],
+    summary="マルチプロバイダー LLM 補完 — Sprint 56",
+    description=(
+        "Claude / OpenAI / OpenMythos の中から利用可能なプロバイダーを自動選択して補完する。\n"
+        "`preferred_provider` で優先プロバイダーを指定できる。"
+    ),
+)
+def llm_complete(req: _ProviderCompleteRequest):
+    """マルチプロバイダー LLM 補完エンドポイント。"""
+    llm = state.llm if hasattr(state, "llm") else None
+    router = _MultiProviderRouter.from_env(llm=llm)
+
+    preferred = None
+    if req.preferred_provider:
+        try:
+            preferred = _ProviderType(req.preferred_provider.lower())
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"不明なプロバイダー: {req.preferred_provider}. "
+                       "有効値: claude, openai, openmythos",
+            )
+
+    llm_req = _LLMRequest(
+        prompt=req.prompt,
+        system=req.system,
+        max_tokens=req.max_tokens,
+        temperature=req.temperature,
+    )
+    try:
+        resp = router.complete(llm_req, preferred=preferred)
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+    return _ProviderCompleteResponse(
+        text=resp.text,
+        provider_used=resp.provider_used,
+        model=resp.model,
+        latency_ms=resp.latency_ms,
+        prompt_tokens=resp.prompt_tokens,
+        completion_tokens=resp.completion_tokens,
+        total_tokens=resp.total_tokens,
+    )
+
+
+@app.get(
+    "/v1/llm/providers",
+    tags=["providers"],
+    summary="利用可能プロバイダー一覧 — Sprint 56",
+)
+def list_providers():
+    """設定済みの LLM プロバイダー一覧と稼働状態を返す。"""
+    llm = state.llm if hasattr(state, "llm") else None
+    router = _MultiProviderRouter.from_env(llm=llm)
+    available = router.available_providers()
+    return {
+        "available":  available,
+        "total":      len(available),
+        "all_providers": ["claude", "openai", "openmythos"],
+    }
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Sprint 57 — LLM 評価フレームワーク エンドポイント
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+from open_mythos.skills.evaluation import (  # noqa: E402
+    EvalSample as _EvalSample,
+    BenchmarkRunner as _BenchmarkRunner,
+    AdEvaluator as _AdEvaluator,
+    TextEvaluator as _TextEvaluator,
+    EvalLeaderboard as _EvalLeaderboard,
+)
+
+
+class _EvalSampleIn(BaseModel):
+    id:         str
+    input:      str
+    prediction: str
+    reference:  Optional[str] = None
+
+
+class _BenchmarkRequest(BaseModel):
+    samples:         list[_EvalSampleIn]  = Field(..., min_length=1)
+    model_name:      str                   = Field("unknown")
+    evaluator_type:  str                   = Field(
+        "text", description="'text' (汎用) | 'ad' (広告コピー専用)"
+    )
+    brand_keywords:  Optional[list[str]]   = Field(None, description="ad モード用ブランドキーワード")
+
+
+class _LeaderboardRequest(BaseModel):
+    samples:     list[_EvalSampleIn]
+    models:      list[str]            = Field(..., min_length=2)
+    predictions: dict[str, list[str]] = Field(
+        ..., description="{model_name: [prediction1, ...]}"
+    )
+    evaluator_type: str = Field("text")
+    brand_keywords: Optional[list[str]] = None
+
+
+@app.post(
+    "/v1/eval/benchmark",
+    tags=["evaluation"],
+    summary="LLM ベンチマーク評価 — Sprint 57",
+    description=(
+        "サンプルセットに対してテキスト評価または広告コピー評価を実行し、"
+        "BenchmarkReport を返す。\n\n"
+        "evaluator_type:\n"
+        "- `text`: 汎用 BLEU/ROUGE/長さ/多様性\n"
+        "- `ad`: 広告LLMO + CTR予測 + ブランド適合"
+    ),
+)
+def run_benchmark(req: _BenchmarkRequest):
+    """LLM 出力を自動ベンチマーク評価してレポートを返す。"""
+    samples = [
+        _EvalSample(
+            id=s.id, input=s.input,
+            prediction=s.prediction, reference=s.reference,
+        )
+        for s in req.samples
+    ]
+
+    if req.evaluator_type == "ad":
+        evaluator = _AdEvaluator(brand_keywords=req.brand_keywords)
+    else:
+        evaluator = _TextEvaluator()
+
+    runner = _BenchmarkRunner(evaluator=evaluator, model_name=req.model_name)
+    report = runner.run(samples)
+    return report.to_dict()
+
+
+@app.post(
+    "/v1/eval/benchmark/md",
+    tags=["evaluation"],
+    summary="ベンチマーク Markdown レポート — Sprint 57",
+)
+def run_benchmark_md(req: _BenchmarkRequest):
+    """ベンチマーク結果を Markdown 形式で返す。"""
+    samples = [
+        _EvalSample(id=s.id, input=s.input, prediction=s.prediction, reference=s.reference)
+        for s in req.samples
+    ]
+    evaluator = _AdEvaluator(brand_keywords=req.brand_keywords) \
+        if req.evaluator_type == "ad" else _TextEvaluator()
+    runner = _BenchmarkRunner(evaluator=evaluator, model_name=req.model_name)
+    report = runner.run(samples)
+    return {"markdown": report.to_markdown(), "avg_overall": report.avg_overall}
+
+
+@app.post(
+    "/v1/eval/leaderboard",
+    tags=["evaluation"],
+    summary="モデル比較リーダーボード — Sprint 57",
+    description="複数モデルの予測を比較してリーダーボードを生成する。",
+)
+def run_leaderboard(req: _LeaderboardRequest):
+    """複数モデルを比較してリーダーボードを返す。"""
+    samples = [
+        _EvalSample(id=s.id, input=s.input, prediction=s.prediction, reference=s.reference)
+        for s in req.samples
+    ]
+    evaluator = _AdEvaluator(brand_keywords=req.brand_keywords) \
+        if req.evaluator_type == "ad" else _TextEvaluator()
+    runner = _BenchmarkRunner(evaluator=evaluator)
+    board  = runner.compare(samples, req.models, req.predictions)
+    return {
+        "rankings": board.rankings(),
+        "winner":   board.winner(),
+        "markdown": board.to_markdown(),
+    }
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Sprint 58 — LLMO ダッシュボード・CEP管理・競合分析 エンドポイント
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+from open_mythos.skills.llmo_dashboard import (  # noqa: E402
+    CepStore as _CepStore,
+    CepCategory as _CepCategory,
+    LlmoDashboard as _LlmoDashboard,
+    LlmoReportEngine as _LlmoReportEngine,
+    CompetitorAnalysis as _CompAnalysis,
+)
+
+# サービス全体で共有するシングルトン (インプロセス)
+_cep_store: _CepStore = _CepStore()
+_dashboards: dict[str, _LlmoDashboard] = {}
+
+
+def _get_dashboard(brand: str) -> _LlmoDashboard:
+    if brand not in _dashboards:
+        _dashboards[brand] = _LlmoDashboard(brand_name=brand)
+    return _dashboards[brand]
+
+
+# ── CEP 管理 ────────────────────────────────────────────────────
+
+class _CepCreateReq(BaseModel):
+    scenario:  str
+    category:  str           = Field("other", description="problem/comparison/recommend/how_to/purchase/other")
+    target:    Optional[str] = None
+    keywords:  Optional[list[str]] = None
+    priority:  int           = Field(3, ge=1, le=5)
+    notes:     str           = ""
+
+
+@app.post("/v1/cep", tags=["cep"], summary="CEP 登録 — Sprint 58")
+def cep_create(req: _CepCreateReq):
+    try:
+        cat = _CepCategory(req.category)
+    except ValueError:
+        raise HTTPException(400, f"不明なカテゴリー: {req.category}")
+    entry = _cep_store.add(
+        scenario=req.scenario, category=cat,
+        target=req.target, keywords=req.keywords,
+        priority=req.priority, notes=req.notes,
+    )
+    return entry.to_dict()
+
+
+@app.get("/v1/cep", tags=["cep"], summary="CEP 一覧 — Sprint 58")
+def cep_list(category: Optional[str] = None, max_priority: Optional[int] = None):
+    if category:
+        try:
+            cat = _CepCategory(category)
+            entries = _cep_store.by_category(cat)
+        except ValueError:
+            raise HTTPException(400, f"不明なカテゴリー: {category}")
+    elif max_priority:
+        entries = _cep_store.by_priority(max_priority)
+    else:
+        entries = _cep_store.list_all()
+    return {"entries": [e.to_dict() for e in entries], "total": len(entries)}
+
+
+@app.delete("/v1/cep/{cep_id}", tags=["cep"], summary="CEP 削除 — Sprint 58")
+def cep_delete(cep_id: str):
+    ok = _cep_store.delete(cep_id)
+    if not ok:
+        raise HTTPException(404, "CEP not found")
+    return {"deleted": cep_id}
+
+
+# ── スナップショット / ダッシュボード ─────────────────────────
+
+class _SnapshotReq(BaseModel):
+    brand_name:     str
+    prompt:         str
+    mention_rate:   float = Field(..., ge=0.0, le=1.0)
+    citation_rate:  float = Field(0.0, ge=0.0, le=1.0)
+    reference_rate: float = Field(0.0, ge=0.0, le=1.0)
+    cep_id:         Optional[str] = None
+    notes:          str   = ""
+
+
+@app.post("/v1/llmo/snapshot", tags=["llmo-dashboard"], summary="LLMO スナップショット追加 — Sprint 58")
+def add_snapshot(req: _SnapshotReq):
+    db = _get_dashboard(req.brand_name)
+    snap = db.add_snapshot(
+        prompt=req.prompt,
+        mention_rate=req.mention_rate,
+        citation_rate=req.citation_rate,
+        reference_rate=req.reference_rate,
+        cep_id=req.cep_id,
+        notes=req.notes,
+    )
+    return snap.to_dict()
+
+
+@app.get("/v1/llmo/dashboard/{brand_name}", tags=["llmo-dashboard"], summary="LLMO ダッシュボード — Sprint 58")
+def get_dashboard(brand_name: str):
+    db = _get_dashboard(brand_name)
+    engine = _LlmoReportEngine(db)
+    return engine.summary()
+
+
+@app.get("/v1/llmo/dashboard/{brand_name}/report", tags=["llmo-dashboard"], summary="LLMO Markdown レポート — Sprint 58")
+def get_dashboard_report(brand_name: str):
+    db = _get_dashboard(brand_name)
+    engine = _LlmoReportEngine(db)
+    return {"markdown": engine.to_markdown(), "brand": brand_name}
+
+
+@app.get("/v1/llmo/dashboard/{brand_name}/trend", tags=["llmo-dashboard"], summary="LLMO 時系列トレンド — Sprint 58")
+def get_trend(brand_name: str):
+    db = _get_dashboard(brand_name)
+    return {"brand": brand_name, "trend": db.trend(), "trend_delta": db.trend_delta()}
+
+
+# ── 競合分析 ────────────────────────────────────────────────────
+
+class _CompetitorReq(BaseModel):
+    brand_name:  str
+    name:        str
+    category:    str  = ""
+    url:         Optional[str]       = None
+    keywords:    Optional[list[str]] = None
+
+
+class _CompAnalyzeReq(BaseModel):
+    brand_name:    str
+    competitor_id: str
+    prompt:        str
+    our_mention:   float = Field(..., ge=0.0, le=1.0)
+    comp_mention:  float = Field(..., ge=0.0, le=1.0)
+
+
+@app.post("/v1/llmo/competitor", tags=["llmo-dashboard"], summary="競合ブランド登録 — Sprint 58")
+def add_competitor(req: _CompetitorReq):
+    db   = _get_dashboard(req.brand_name)
+    comp = db.add_competitor(
+        name=req.name, category=req.category,
+        url=req.url, keywords=req.keywords,
+    )
+    return comp.to_dict()
+
+
+@app.post("/v1/llmo/competitor/analyze", tags=["llmo-dashboard"], summary="競合比較分析 — Sprint 58")
+def analyze_competitor(req: _CompAnalyzeReq):
+    db     = _get_dashboard(req.brand_name)
+    result = db.analyze_competitor(
+        competitor_id=req.competitor_id,
+        prompt=req.prompt,
+        our_mention=req.our_mention,
+        comp_mention=req.comp_mention,
+    )
+    if result is None:
+        raise HTTPException(404, "Competitor not found")
+    return result.to_dict()
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Sprint 59 — 自律脆弱性スキャン エンドポイント
+# harness: TargetConfig→ScanTarget / CrashArtifact→VulnFinding /
+#          GraderVerdict→VerifyVerdict / PatchVerdict→PatchCandidate
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+from open_mythos.skills.vuln_scanner import (  # noqa: E402
+    VulnStore      as _VulnStore,
+    VulnScanner    as _VulnScanner,
+    VulnPatcher    as _VulnPatcher,
+    ScanTarget     as _ScanTarget,
+    ScanReportEngine as _ScanReportEngine,
+)
+
+# サービス全体で共有するシングルトン (インプロセス)
+_vuln_store:   _VulnStore   = _VulnStore()
+_vuln_scanner: _VulnScanner = _VulnScanner(_vuln_store)
+
+
+class _VulnScanReq(BaseModel):
+    target_name:     str
+    target_path:     str
+    source:          str           = ""
+    language:        str           = "python"
+    focus_areas:     Optional[list[str]] = None
+    known_findings:  Optional[list[str]] = None
+
+
+@app.post("/v1/vuln/scan", tags=["vuln-scanner"], summary="脆弱性スキャン実行 — Sprint 59")
+def vuln_scan(req: _VulnScanReq):
+    """ソースコードをスキャンして VulnFinding を検出する。
+    harness の run_find() + run_recon() に相当。
+    """
+    target = _ScanTarget(
+        name=req.target_name,
+        path=req.target_path,
+        language=req.language,
+        focus_areas=req.focus_areas or [],
+        known_findings=req.known_findings or [],
+    )
+    session = _vuln_scanner.scan(target, source=req.source)
+    return session.to_dict()
+
+
+@app.get("/v1/vuln/findings", tags=["vuln-scanner"], summary="全 Finding 一覧 — Sprint 59")
+def vuln_list_findings():
+    """スキャンで検出した全 Finding を返す。"""
+    return [f.to_dict() for f in _vuln_store.list_findings()]
+
+
+@app.get("/v1/vuln/findings/{finding_id}", tags=["vuln-scanner"], summary="Finding 詳細 — Sprint 59")
+def vuln_get_finding(finding_id: str):
+    """Finding 1 件を返す。"""
+    f = _vuln_store.get_finding(finding_id)
+    if f is None:
+        raise HTTPException(404, f"Finding not found: {finding_id}")
+    return f.to_dict()
+
+
+@app.delete("/v1/vuln/findings/{finding_id}", tags=["vuln-scanner"], summary="Finding 削除 — Sprint 59")
+def vuln_delete_finding(finding_id: str):
+    """Finding を削除する。"""
+    deleted = _vuln_store.delete_finding(finding_id)
+    if not deleted:
+        raise HTTPException(404, f"Finding not found: {finding_id}")
+    return {"deleted": finding_id}
+
+
+class _VulnPatchReq(BaseModel):
+    finding_id: str
+
+
+@app.post("/v1/vuln/patch/{finding_id}", tags=["vuln-scanner"], summary="パッチ候補生成+検証 — Sprint 59")
+def vuln_patch(finding_id: str):
+    """Finding に対してパッチ候補を生成し T0/T1/T2 ラダーで検証する。
+    harness の patch + patch_grade に相当。
+    """
+    f = _vuln_store.get_finding(finding_id)
+    if f is None:
+        raise HTTPException(404, f"Finding not found: {finding_id}")
+    patcher = _VulnPatcher()
+    candidate = patcher.suggest_patch(f)
+    if candidate is None:
+        raise HTTPException(422, f"Auto-patch not available for finding: {finding_id}")
+    validated = patcher.validate_patch(candidate)
+    return validated.to_dict()
+
+
+@app.get("/v1/vuln/session/{session_id}", tags=["vuln-scanner"], summary="スキャンセッション詳細 — Sprint 59")
+def vuln_get_session(session_id: str):
+    """ScanSession を返す。harness の RunResult に相当。"""
+    session = _vuln_store.get_session(session_id)
+    if session is None:
+        raise HTTPException(404, f"Session not found: {session_id}")
+    return session.to_dict()
+
+
+@app.get("/v1/vuln/session/{session_id}/report", tags=["vuln-scanner"], summary="脆弱性レポート JSON — Sprint 59")
+def vuln_session_report(session_id: str):
+    """ScanSession の JSON レポートを返す。harness の ReportVerdict に相当。"""
+    session = _vuln_store.get_session(session_id)
+    if session is None:
+        raise HTTPException(404, f"Session not found: {session_id}")
+    engine = _ScanReportEngine()
+    return engine.to_json(session)
+
+
+@app.get("/v1/vuln/session/{session_id}/report/md", tags=["vuln-scanner"], summary="脆弱性レポート Markdown — Sprint 59")
+def vuln_session_report_md(session_id: str):
+    """ScanSession の Markdown レポートを返す。"""
+    session = _vuln_store.get_session(session_id)
+    if session is None:
+        raise HTTPException(404, f"Session not found: {session_id}")
+    engine = _ScanReportEngine()
+    return Response(content=engine.to_markdown(session), media_type="text/markdown")
