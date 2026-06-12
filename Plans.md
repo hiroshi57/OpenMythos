@@ -1,6 +1,6 @@
 # OpenMythos — Sprint Plans
-> 最終更新: 2026-06-09 (Sprint 59 完了) | ブランチ規約: `feature/<sprint>-<topic>`
-> Sprint 59 完了: 自律脆弱性スキャン (defending-code-harness 移植) → v0.62.0
+> 最終更新: 2026-06-12 (Sprint 61 完了) | ブランチ規約: `feature/<sprint>-<topic>`
+> Sprint 61 完了: Claude Fable 5 / Mythos 5 × N-day→N-hour サイバー防衛 → v0.64.0
 > アーカイブ: Sprint 1〜9   → `docs/archive/sprint-plans-1-9.md`
 >            Sprint 10〜19  → `docs/archive/sprint-plans-10-19.md`
 >            Sprint 20〜25  → `docs/archive/sprint-plans-20-25.md`
@@ -36,12 +36,63 @@
 | 57 | **LLM 評価フレームワーク** | `skills/evaluation.py` | 3026 | v0.60 |
 | 58 | **LLMO ダッシュボード・CEP管理・競合分析** | `skills/llmo_dashboard.py` | 3078 | v0.61 |
 | 59 | **自律脆弱性スキャン (harness 移植)** | `skills/vuln_scanner.py` | 3155 | v0.62 |
+| 60 | **広告キャンペーン管理 + A/Bテスト基盤** | `skills/campaign_manager.py` `skills/ab_test.py` | 3238 | v0.63 |
+| 61 | **Claude Fable 5 / Mythos 5 × N-hour サイバー防衛** | `skills/cyber_defense.py` `skills/llm_providers.py` | 3352 | v0.64 |
 
-> **累計テスト数**: ~3155 PASS (Sprint 59: +77) — **Sprint 60 候補検討中**
+> **累計テスト数**: ~3352 PASS (Sprint 61: +114)
 
 ---
 
-## Sprint 59 詳細 (最新 / 完了)
+## Sprint 61 詳細 (最新 / 完了)
+
+### Sprint 61: Claude Fable 5 / Mythos 5 × N-day→N-hour サイバー防衛 — v0.64.0
+> 参照: `external/defending-code-harness/` + Anthropic Security Research (https://red.anthropic.com/2026/n-days/)
+> 「N-day という表現は危険なほど誤解を招く。現実は N-hour だ。」— Anthropic Security
+
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 61.L | `skills/llm_providers.py` — ClaudeModelTier(HAIKU_5/FABLE_5/MYTHOS_5) + HFInferenceProvider(Lily-Cyber-7B) + list_model_tiers() | cc:完了 |
+| 61.C | `skills/cyber_defense.py` — ThreatLevel/IndicatorType/IncidentStatus/ThreatIndicator/ThreatIntelReport/Incident/ForensicsArtifact | cc:完了 |
+| 61.C | `skills/cyber_defense.py` — IncidentStore/ThreatIntelAnalyzer/IncidentResponder/ForensicsAI/CyberDefenseOrchestrator(マルチエージェント) | cc:完了 |
+| 61.S | `skills/security.py` — AISecurityEnhancer (Claude Fable 5: エグゼクティブサマリー/優先度付けリメディエーション/修正アドバイス) | cc:完了 |
+| 61.V | `skills/vuln_scanner.py` — PatchUrgency(N-hour SLA)/NDayRecord/NDayVulnTracker/HFCodeBERTClassifier/MythosVulnAnalyzer(Claude Mythos 5) | cc:完了 |
+| 61.A | `serve/api.py` — GET /v1/model/tiers + POST /v1/cyber/threat + /v1/cyber/incident CRUD + /v1/cyber/forensics + /v1/cyber/defend | cc:完了 |
+| 61.A | `serve/api.py` — POST /v1/cyber/classify/code + POST /v1/cyber/nday/register + PATCH /v1/cyber/nday/{id}/patch + GET /v1/cyber/nday/* | cc:完了 |
+| 61.T | `tests/test_sprint61.py` — 114 tests PASS (累計 3352) | cc:完了 |
+| 61.V | PyPI v0.64.0 | cc:完了 |
+
+### モデル対応表
+| OpenMythos 名称 | Anthropic モデル | 用途 |
+|----------------|----------------|------|
+| Claude Fable 5 | `claude-sonnet-4-5` | 一般向け・ペンテストサマリー (AISecurityEnhancer) |
+| Claude Mythos 5 | `claude-opus-4` | サイバー防衛特化・N-hour パッチ分析 (MythosVulnAnalyzer) |
+
+### HuggingFace 流用モデル (Apache-2.0)
+| モデル | 用途 |
+|-------|------|
+| `segolilylabs/Lily-Cybersecurity-7B-v0.2` | SOC Q&A / 脅威アドバイス (HFInferenceProvider) |
+| `RayenLLM/Vulnerability_Detection_Using_CodeBERT` | コード脆弱性分類 (HFCodeBERTClassifier) |
+
+---
+
+## Sprint 60 詳細 (完了)
+
+### Sprint 60: 広告キャンペーン管理 + A/Bテスト基盤 — v0.63.0
+
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 60.A | `skills/campaign_manager.py` — CampaignStatus/AdFormat/CopyRequest/AdCopy/CampaignMetrics/CampaignEntry | cc:完了 |
+| 60.A | `skills/campaign_manager.py` — CampaignStore/CopyGenerator/CampaignEvaluator/CampaignWorkflow/CampaignReportEngine | cc:完了 |
+| 60.A | `serve/api.py` — `/v1/campaign` CRUD + `/v1/campaign/{id}/run` ワークフロー + メトリクス/レポート | cc:完了 |
+| 60.C | `skills/ab_test.py` — VariantStatus/TestStatus/StatMethod/Variant/ABTest/ABTestStore | cc:完了 |
+| 60.C | `skills/ab_test.py` — StatEngine(χ²/Welch-t/Bayes)/ABTestAnalyzer/ABTestRunner/ABReportEngine | cc:完了 |
+| 60.C | `serve/api.py` — `/v1/ab/test` CRUD + start/record/analyze/stop/report | cc:完了 |
+| 60.T | `tests/test_sprint60.py` — 83 tests PASS (累計 3238) | cc:完了 |
+| 60.V | PyPI v0.63.0 | cc:完了 |
+
+---
+
+## Sprint 59 詳細 (完了)
 
 ### Sprint 59: 自律脆弱性スキャン — v0.62.0
 > 参照: `external/defending-code-harness/` (anthropics/defending-code-reference-harness, Apache-2.0)

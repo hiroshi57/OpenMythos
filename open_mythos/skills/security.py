@@ -1,10 +1,17 @@
 """
 Sprint 53 — セキュリティ統合
+Sprint 61 — Claude Fable 5 による AI 強化ペンテスト分析
 
 Hermes Skills: web-pentest / oss-forensics
 ref: skills/security/*-SKILL.md
 
 セキュリティテスト・OSS 検査ツールを OpenMythos に統合する。
+
+Sprint 61 追加:
+  AISecurityEnhancer : Claude Fable 5 で pentest 結果を AI 分析強化
+    - generate_executive_summary()   エグゼクティブサマリー
+    - prioritize_findings()          優先度付きリメディエーション計画
+    - generate_patch_advice()        具体的修正アドバイス
 """
 from __future__ import annotations
 
@@ -334,3 +341,117 @@ class OSSForensics:
 
 
 import os  # noqa: E402 (moved to end to avoid circular)
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Sprint 61 — AISecurityEnhancer (Claude Fable 5)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class AISecurityEnhancer:
+    """Claude Fable 5 を使った AI 強化セキュリティ分析モジュール。
+
+    WebPentester / OSSForensics の結果を受け取り、
+    自然言語によるエグゼクティブサマリー・優先度付きリメディエーション・
+    具体的修正アドバイスを生成する。
+
+    AI 未設定時はルールベースのフォールバックを提供する。
+    """
+
+    def __init__(self, anthropic_api_key: Optional[str] = None) -> None:
+        self._provider: Any = None
+        if anthropic_api_key:
+            try:
+                from open_mythos.skills.llm_providers import (
+                    ClaudeModelTier, ClaudeProvider, ProviderConfig, ProviderType,
+                )
+                self._provider = ClaudeProvider(ProviderConfig(
+                    provider=ProviderType.CLAUDE,
+                    api_key=anthropic_api_key,
+                    model=ClaudeModelTier.FABLE_5,
+                    timeout=60,
+                ))
+            except Exception:
+                pass
+
+    def generate_executive_summary(self, report: "PentestReport") -> str:
+        """ペンテスト結果のエグゼクティブサマリーを生成する。"""
+        if self._provider:
+            findings_text = "\n".join(
+                f"[{f.severity}] {f.title}: {f.description[:100]}"
+                for f in report.findings[:10]
+            )
+            prompt = (
+                f"Pentest result for {report.target_url}:\n"
+                f"Risk Score: {report.risk_score}/10\n"
+                f"Findings:\n{findings_text}\n\n"
+                "Write a 3-sentence executive summary for non-technical stakeholders."
+            )
+            try:
+                from open_mythos.skills.llm_providers import LLMRequest
+                resp = self._provider.complete(LLMRequest(
+                    prompt=prompt,
+                    system="You are a cybersecurity consultant using Claude Fable 5.",
+                    max_tokens=256,
+                    temperature=0.3,
+                ))
+                return resp.text
+            except Exception:
+                pass
+
+        # フォールバック
+        risk_label = (
+            "Critical" if report.risk_score >= 8
+            else "High" if report.risk_score >= 6
+            else "Medium" if report.risk_score >= 4
+            else "Low"
+        )
+        return (
+            f"Security assessment of {report.target_url} identified {len(report.findings)} issues "
+            f"with an overall risk score of {report.risk_score}/10 ({risk_label}). "
+            f"{report.critical_count} critical and {report.high_count} high severity issues "
+            f"require immediate attention. Immediate remediation is {'strongly ' if risk_label in ('Critical','High') else ''}recommended."
+        )
+
+    def prioritize_findings(self, report: "PentestReport") -> List[Dict[str, Any]]:
+        """ファインディングを優先度付きリメディエーション計画に変換する。"""
+        priority_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "INFO": 4}
+        sorted_findings = sorted(
+            report.findings,
+            key=lambda f: priority_order.get(f.severity, 5),
+        )
+        return [
+            {
+                "priority":       i + 1,
+                "severity":       f.severity,
+                "title":          f.title,
+                "recommendation": f.recommendation,
+                "effort":         "immediate" if f.severity == "CRITICAL"
+                                  else "short-term" if f.severity == "HIGH"
+                                  else "planned",
+            }
+            for i, f in enumerate(sorted_findings)
+        ]
+
+    def generate_patch_advice(self, finding: "PentestFinding") -> str:
+        """個別ファインディングの具体的修正アドバイスを生成する。"""
+        if self._provider:
+            prompt = (
+                f"Security finding:\n"
+                f"Category: {finding.category}\n"
+                f"Title: {finding.title}\n"
+                f"Description: {finding.description}\n\n"
+                "Provide specific, actionable patch advice in 2-3 steps."
+            )
+            try:
+                from open_mythos.skills.llm_providers import LLMRequest
+                resp = self._provider.complete(LLMRequest(
+                    prompt=prompt,
+                    system="You are a security engineer using Claude Fable 5.",
+                    max_tokens=200,
+                    temperature=0.2,
+                ))
+                return resp.text
+            except Exception:
+                pass
+
+        return finding.recommendation or f"Apply standard {finding.category} security controls."

@@ -1,24 +1,44 @@
 """
 Sprint 56 — マルチプロバイダー LLM 統合
+Sprint 61 — Claude Fable 5 / Mythos 5 モデルティア + HuggingFace サイバー統合
 
-Claude / OpenAI / OpenMythos の 3 プロバイダーを共通インターフェースで扱う。
+Claude / OpenAI / OpenMythos / HuggingFace の 4 プロバイダーを共通インターフェースで扱う。
 
-オブジェクト:
-  ProviderType      : プロバイダー識別 enum (claude / openai / openmythos)
+モデルティア (Sprint 61):
+  ClaudeModelTier.HAIKU_5   → claude-haiku-4-5         高速 / 低コスト (現行デフォルト)
+  ClaudeModelTier.FABLE_5   → claude-sonnet-4-5         バランス / 一般向け
+  ClaudeModelTier.MYTHOS_5  → claude-opus-4             サイバー防衛 / 最高性能
+
+HuggingFace 統合 (Sprint 61):
+  HFInferenceProvider       : HuggingFace Inference API
+    - Lily-Cybersecurity-7B-v0.2        セキュリティ Q&A / SOC アシスタント
+    - Vulnerability_Detection_CodeBERT  コード脆弱性テキスト分類
+
+オブジェクト (Sprint 56):
+  ProviderType      : プロバイダー識別 enum (claude / openai / openmythos / hf_cyber)
   LLMRequest        : 共通リクエスト形式
   LLMResponse       : 共通レスポンス形式（プロバイダー名・使用トークンを含む）
   ProviderConfig    : プロバイダー設定（API キー・モデル名・タイムアウト）
   BaseLLMProvider   : 抽象基底クラス（.complete / .stream インターフェース）
-  ClaudeProvider    : Anthropic claude-haiku-4-5
+  ClaudeProvider    : Anthropic (haiku / fable / mythos ティア対応)
   OpenAIProvider    : gpt-4o-mini
   OpenMythosProvider: ローカル OpenMythos モデル
+  HFInferenceProvider: HuggingFace Inference API (サイバー特化)
   MultiProviderRouter: 優先順位・フォールバック付きルーター
 
 使用例::
     router = MultiProviderRouter.from_env()
     resp = router.complete(LLMRequest(prompt="夏の広告コピーを1案生成してください"))
     print(resp.text)          # 生成テキスト
-    print(resp.provider_used) # "claude" | "openai" | "openmythos"
+    print(resp.provider_used) # "claude" | "openai" | "openmythos" | "hf_cyber"
+
+    # Claude Mythos 5 でサイバー分析
+    from open_mythos.skills.llm_providers import ClaudeModelTier, ClaudeProvider, ProviderConfig, ProviderType
+    provider = ClaudeProvider(ProviderConfig(
+        provider=ProviderType.CLAUDE,
+        api_key=os.getenv("ANTHROPIC_API_KEY"),
+        model=ClaudeModelTier.MYTHOS_5,
+    ))
 """
 from __future__ import annotations
 
@@ -40,6 +60,48 @@ class ProviderType(str, Enum):
     CLAUDE      = "claude"
     OPENAI      = "openai"
     OPENMYTHOS  = "openmythos"
+    HF_CYBER    = "hf_cyber"    # Sprint 61: HuggingFace サイバー特化
+
+
+class ClaudeModelTier(str, Enum):
+    """Sprint 61 — Claude モデルティア定義。
+
+    各ティアは実際の Anthropic API モデル ID にマッピングされる。
+    API キーが利用できない場合は ClaudeProvider のフォールバックが動作する。
+
+    Attributes:
+        HAIKU_5:   高速・低コスト (既存デフォルト)
+        FABLE_5:   バランス・一般向け消費者向けモデル (claude-sonnet-4-5)
+        MYTHOS_5:  最高性能・サイバー防衛特化 (claude-opus-4)
+    """
+    HAIKU_5  = "claude-haiku-4-5"
+    FABLE_5  = "claude-sonnet-4-5"
+    MYTHOS_5 = "claude-opus-4"
+
+    @property
+    def tier_label(self) -> str:
+        return {
+            "claude-haiku-4-5":  "Haiku 5 (Fast)",
+            "claude-sonnet-4-5": "Fable 5 (Balanced)",
+            "claude-opus-4":     "Mythos 5 (Cyber Defense)",
+        }.get(self.value, self.value)
+
+    @property
+    def context_window(self) -> int:
+        """各モデルの公開コンテキストウィンドウサイズ（トークン）。"""
+        return {
+            "claude-haiku-4-5":  200_000,
+            "claude-sonnet-4-5": 200_000,
+            "claude-opus-4":     200_000,
+        }.get(self.value, 100_000)
+
+    @property
+    def recommended_for(self) -> str:
+        return {
+            "claude-haiku-4-5":  "高速タスク・大量処理",
+            "claude-sonnet-4-5": "汎用生成・コード・一般分析",
+            "claude-opus-4":     "サイバー防衛・高度推論・複雑分析",
+        }.get(self.value, "汎用")
 
 
 @dataclass
@@ -81,13 +143,18 @@ class ProviderConfig:
 
     # デフォルトモデル
     _DEFAULT_MODELS: Dict[str, str] = field(default_factory=lambda: {
-        "claude":     "claude-haiku-4-5",
+        "claude":     ClaudeModelTier.HAIKU_5.value,
         "openai":     "gpt-4o-mini",
         "openmythos": "openmythos",
+        "hf_cyber":   "segolilylabs/Lily-Cybersecurity-7B-v0.2",
     }, repr=False)
 
     def resolved_model(self) -> str:
-        return self.model or self._DEFAULT_MODELS.get(self.provider.value, "unknown")
+        m = self.model
+        # ClaudeModelTier enum を渡された場合は .value を使う
+        if isinstance(m, ClaudeModelTier):
+            return m.value
+        return m or self._DEFAULT_MODELS.get(self.provider.value, "unknown")
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -297,6 +364,105 @@ class OpenMythosProvider(BaseLLMProvider):
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# HFInferenceProvider  (Sprint 61)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class HFInferenceProvider(BaseLLMProvider):
+    """HuggingFace Inference API プロバイダー (Sprint 61 — サイバー特化)。
+
+    対応モデル:
+      segolilylabs/Lily-Cybersecurity-7B-v0.2  : Apache-2.0 | SOC / セキュリティ Q&A
+      RayenLLM/Vulnerability_Detection_Using_CodeBERT : コード脆弱性テキスト分類
+
+    HF_TOKEN 環境変数が設定されていれば認証付きリクエストを行う。
+    未設定の場合は匿名アクセス（レート制限あり）にフォールバックする。
+    """
+
+    _API_BASE = "https://api-inference.huggingface.co/models"
+
+    # 推奨サイバーモデル一覧 (HuggingFace 調査済み, Apache-2.0)
+    CYBER_MODELS: Dict[str, str] = {
+        "lily-cyber":   "segolilylabs/Lily-Cybersecurity-7B-v0.2",
+        "codebert-vuln": "RayenLLM/Vulnerability_Detection_Using_CodeBERT",
+        "titus-cyber":  "AlicanKiraz0/Titus-CybersecurityLLM-v1.0",
+    }
+
+    def is_available(self) -> bool:
+        # API キー不要（匿名アクセス可）。常に利用可能とする。
+        return True
+
+    def complete(self, req: LLMRequest) -> LLMResponse:
+        model = self.config.resolved_model()
+        t0    = time.perf_counter()
+
+        payload = json.dumps({"inputs": req.prompt}).encode("utf-8")
+        headers: Dict[str, str] = {"Content-Type": "application/json"}
+        if self.config.api_key:
+            headers["Authorization"] = f"Bearer {self.config.api_key}"
+
+        url     = f"{self._API_BASE}/{model}"
+        http_req = urllib.request.Request(url, data=payload, headers=headers)
+
+        try:
+            with urllib.request.urlopen(http_req, timeout=self.config.timeout) as res:
+                data = json.loads(res.read())
+        except urllib.error.HTTPError as e:
+            body = e.read().decode()[:200]
+            # モデルロード待ち (503) の場合はフォールバックメッセージを返す
+            if e.code == 503:
+                latency_ms = (time.perf_counter() - t0) * 1000
+                return self._build_response(
+                    text=f"[HF model loading: {model}] retry after 20s",
+                    model=model, latency_ms=latency_ms,
+                )
+            raise RuntimeError(f"HuggingFace Inference API HTTP {e.code}: {body}")
+        except Exception as e:
+            raise RuntimeError(f"HuggingFace Inference API error: {e}")
+
+        # レスポンス形式はモデルにより異なる
+        if isinstance(data, list) and data:
+            first = data[0]
+            if isinstance(first, dict):
+                text = first.get("generated_text", first.get("label", str(first)))
+            else:
+                text = str(first)
+        elif isinstance(data, dict):
+            text = data.get("generated_text", data.get("label", str(data)))
+        else:
+            text = str(data)
+
+        latency_ms = (time.perf_counter() - t0) * 1000
+        return self._build_response(text=text, model=model, latency_ms=latency_ms)
+
+
+def list_model_tiers() -> List[Dict[str, str]]:
+    """Sprint 61 — 利用可能なモデルティア一覧を返す。
+
+    Returns:
+        各ティアの id / label / context_window / recommended_for を含む辞書リスト
+    """
+    return [
+        {
+            "id":             tier.value,
+            "label":          tier.tier_label,
+            "context_window": str(tier.context_window),
+            "recommended_for": tier.recommended_for,
+            "provider":       "anthropic",
+        }
+        for tier in ClaudeModelTier
+    ] + [
+        {
+            "id":             model_id,
+            "label":          alias,
+            "context_window": "4096",
+            "recommended_for": "サイバーセキュリティ特化 Q&A / 脆弱性分類",
+            "provider":       "huggingface",
+        }
+        for alias, model_id in HFInferenceProvider.CYBER_MODELS.items()
+    ]
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # MultiProviderRouter
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -338,6 +504,10 @@ class MultiProviderRouter:
                 providers.append(
                     OpenMythosProvider(ProviderConfig(provider=pt), llm=llm)
                 )
+            elif pt == ProviderType.HF_CYBER:
+                # Sprint 61: HuggingFace Inference API (HF_TOKEN は任意)
+                key = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN")
+                providers.append(HFInferenceProvider(ProviderConfig(provider=pt, api_key=key)))
         return cls(providers)
 
     def available_providers(self) -> List[str]:

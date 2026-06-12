@@ -6649,3 +6649,523 @@ def vuln_session_report_md(session_id: str):
         raise HTTPException(404, f"Session not found: {session_id}")
     engine = _ScanReportEngine()
     return Response(content=engine.to_markdown(session), media_type="text/markdown")
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Sprint 60-A: 広告キャンペーン管理
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+from open_mythos.skills.campaign_manager import (
+    AdFormat as _AdFormat,
+    CampaignStatus as _CampaignStatus,
+    CampaignStore as _CampaignStore,
+    CampaignWorkflow as _CampaignWorkflow,
+    CampaignReportEngine as _CampaignReportEngine,
+)
+
+_campaign_store    = _CampaignStore()
+_campaign_workflow = _CampaignWorkflow(store=_campaign_store)
+_campaign_report   = _CampaignReportEngine()
+
+
+class _CampaignCreateReq(BaseModel):
+    name:        str
+    description: str   = ""
+    budget:      float = 0.0
+    cep_ids:     List[str] = Field(default_factory=list)
+
+
+class _CampaignWorkflowReq(BaseModel):
+    brief:    str
+    format:   str = "text"
+    target:   Optional[str] = None
+    keywords: List[str] = Field(default_factory=list)
+    tone:     str = "friendly"
+    n_copies: int = Field(default=3, ge=1, le=10)
+
+
+class _MetricsRecordReq(BaseModel):
+    impressions: int   = 0
+    clicks:      int   = 0
+    conversions: int   = 0
+    spend:       float = 0.0
+    revenue:     float = 0.0
+
+
+@app.post("/v1/campaign", tags=["campaign"], summary="キャンペーン作成 — Sprint 60-A")
+def campaign_create(req: _CampaignCreateReq):
+    entry = _campaign_store.create(
+        name=req.name, description=req.description,
+        budget=req.budget, cep_ids=req.cep_ids,
+    )
+    return entry.to_dict()
+
+
+@app.get("/v1/campaign", tags=["campaign"], summary="キャンペーン一覧 — Sprint 60-A")
+def campaign_list(status: Optional[str] = None):
+    st = _CampaignStatus(status) if status else None
+    return [c.to_dict() for c in _campaign_store.list_all(status=st)]
+
+
+@app.get("/v1/campaign/{campaign_id}", tags=["campaign"], summary="キャンペーン詳細 — Sprint 60-A")
+def campaign_get(campaign_id: str):
+    entry = _campaign_store.get(campaign_id)
+    if entry is None:
+        raise HTTPException(404, f"Campaign not found: {campaign_id}")
+    return entry.to_dict()
+
+
+@app.post("/v1/campaign/{campaign_id}/run", tags=["campaign"], summary="CEP→コピー→評価 ワークフロー — Sprint 60-A")
+def campaign_run(campaign_id: str, req: _CampaignWorkflowReq):
+    entry = _campaign_store.get(campaign_id)
+    if entry is None:
+        raise HTTPException(404, f"Campaign not found: {campaign_id}")
+    try:
+        fmt = _AdFormat(req.format)
+    except ValueError:
+        raise HTTPException(400, f"Invalid format: {req.format}")
+    result = _campaign_workflow.run(
+        campaign_id=campaign_id,
+        brief=req.brief,
+        format=fmt,
+        target=req.target,
+        keywords=req.keywords,
+        tone=req.tone,
+        n_copies=req.n_copies,
+    )
+    return result.to_dict()
+
+
+@app.post("/v1/campaign/{campaign_id}/metrics", tags=["campaign"], summary="実績指標記録 — Sprint 60-A")
+def campaign_record_metrics(campaign_id: str, req: _MetricsRecordReq):
+    metrics = _campaign_store.record_metrics(
+        campaign_id,
+        impressions=req.impressions, clicks=req.clicks,
+        conversions=req.conversions, spend=req.spend, revenue=req.revenue,
+    )
+    if metrics is None:
+        raise HTTPException(404, f"Campaign not found: {campaign_id}")
+    return metrics.to_dict()
+
+
+@app.get("/v1/campaign/{campaign_id}/report", tags=["campaign"], summary="キャンペーンレポート JSON — Sprint 60-A")
+def campaign_report(campaign_id: str):
+    entry = _campaign_store.get(campaign_id)
+    if entry is None:
+        raise HTTPException(404, f"Campaign not found: {campaign_id}")
+    return _campaign_report.to_json(entry)
+
+
+@app.get("/v1/campaign/{campaign_id}/report/md", tags=["campaign"], summary="キャンペーンレポート Markdown — Sprint 60-A")
+def campaign_report_md(campaign_id: str):
+    entry = _campaign_store.get(campaign_id)
+    if entry is None:
+        raise HTTPException(404, f"Campaign not found: {campaign_id}")
+    return Response(content=_campaign_report.to_markdown(entry), media_type="text/markdown")
+
+
+@app.patch("/v1/campaign/{campaign_id}/status", tags=["campaign"], summary="ステータス変更 — Sprint 60-A")
+def campaign_update_status(campaign_id: str, status: str):
+    try:
+        st = _CampaignStatus(status)
+    except ValueError:
+        raise HTTPException(400, f"Invalid status: {status}")
+    entry = _campaign_store.update_status(campaign_id, st)
+    if entry is None:
+        raise HTTPException(404, f"Campaign not found: {campaign_id}")
+    return entry.to_dict()
+
+
+@app.delete("/v1/campaign/{campaign_id}", tags=["campaign"], summary="キャンペーン削除 — Sprint 60-A")
+def campaign_delete(campaign_id: str):
+    ok = _campaign_store.delete(campaign_id)
+    if not ok:
+        raise HTTPException(404, f"Campaign not found: {campaign_id}")
+    return {"deleted": campaign_id}
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Sprint 60-C: A/Bテスト基盤
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+from open_mythos.skills.ab_test import (
+    StatMethod as _StatMethod,
+    TestStatus as _TestStatus,
+    ABTestStore as _ABTestStore,
+    ABTestRunner as _ABTestRunner,
+    ABReportEngine as _ABReportEngine,
+)
+
+_ab_store  = _ABTestStore()
+_ab_runner = _ABTestRunner(store=_ab_store)
+_ab_report = _ABReportEngine()
+
+
+class _ABTestCreateReq(BaseModel):
+    name:        str
+    description: str   = ""
+    method:      str   = "chi_square"
+    confidence:  float = Field(default=0.95, ge=0.5, le=0.9999)
+    min_samples: int   = Field(default=100, ge=1)
+
+
+class _VariantAddReq(BaseModel):
+    model_config = {"populate_by_name": True}
+    name:      str
+    copy_text: str  # JSON キー: "copy" (test_sprint60 は copy_text で送信)
+
+
+class _ABRecordReq(BaseModel):
+    variant_id:  str
+    impressions: int = 0
+    clicks:      int = 0
+    conversions: int = 0
+
+
+@app.post("/v1/ab/test", tags=["ab-test"], summary="A/Bテスト作成 — Sprint 60-C")
+def ab_create(req: _ABTestCreateReq):
+    try:
+        method = _StatMethod(req.method)
+    except ValueError:
+        raise HTTPException(400, f"Invalid method: {req.method}")
+    test = _ab_store.create(
+        name=req.name, description=req.description,
+        method=method, confidence=req.confidence, min_samples=req.min_samples,
+    )
+    return test.to_dict()
+
+
+@app.get("/v1/ab/test", tags=["ab-test"], summary="A/Bテスト一覧 — Sprint 60-C")
+def ab_list(status: Optional[str] = None):
+    st = _TestStatus(status) if status else None
+    return [t.to_dict() for t in _ab_store.list_all(status=st)]
+
+
+@app.get("/v1/ab/test/{test_id}", tags=["ab-test"], summary="A/Bテスト詳細 — Sprint 60-C")
+def ab_get(test_id: str):
+    test = _ab_store.get(test_id)
+    if test is None:
+        raise HTTPException(404, f"Test not found: {test_id}")
+    return test.to_dict()
+
+
+@app.post("/v1/ab/test/{test_id}/variant", tags=["ab-test"], summary="バリアント追加 — Sprint 60-C")
+def ab_add_variant(test_id: str, req: _VariantAddReq):
+    test = _ab_store.get(test_id)
+    if test is None:
+        raise HTTPException(404, f"Test not found: {test_id}")
+    variant = test.add_variant(name=req.name, copy=req.copy_text)
+    return variant.to_dict()
+
+
+@app.post("/v1/ab/test/{test_id}/start", tags=["ab-test"], summary="テスト開始 — Sprint 60-C")
+def ab_start(test_id: str):
+    try:
+        test = _ab_runner.start(test_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    if test is None:
+        raise HTTPException(404, f"Test not found: {test_id}")
+    return test.to_dict()
+
+
+@app.post("/v1/ab/test/{test_id}/record", tags=["ab-test"], summary="インプレッション/クリック/CV 記録 — Sprint 60-C")
+def ab_record(test_id: str, req: _ABRecordReq):
+    variant = _ab_runner.record(
+        test_id, req.variant_id,
+        impressions=req.impressions, clicks=req.clicks, conversions=req.conversions,
+    )
+    if variant is None:
+        raise HTTPException(404, f"Test or variant not found: {test_id}/{req.variant_id}")
+    return variant.to_dict()
+
+
+@app.get("/v1/ab/test/{test_id}/analyze", tags=["ab-test"], summary="統計解析 — Sprint 60-C")
+def ab_analyze(test_id: str):
+    result = _ab_runner.analyze(test_id)
+    if result is None:
+        raise HTTPException(404, f"Test not found: {test_id}")
+    return result.to_dict()
+
+
+@app.post("/v1/ab/test/{test_id}/stop", tags=["ab-test"], summary="テスト停止 — Sprint 60-C")
+def ab_stop(test_id: str):
+    test = _ab_runner.stop(test_id)
+    if test is None:
+        raise HTTPException(404, f"Test not found: {test_id}")
+    return test.to_dict()
+
+
+@app.get("/v1/ab/test/{test_id}/report", tags=["ab-test"], summary="A/Bテストレポート JSON — Sprint 60-C")
+def ab_report(test_id: str):
+    test = _ab_store.get(test_id)
+    if test is None:
+        raise HTTPException(404, f"Test not found: {test_id}")
+    result = _ab_runner.analyze(test_id)
+    return _ab_report.to_json(test, analysis=result)
+
+
+@app.get("/v1/ab/test/{test_id}/report/md", tags=["ab-test"], summary="A/Bテストレポート Markdown — Sprint 60-C")
+def ab_report_md(test_id: str):
+    test = _ab_store.get(test_id)
+    if test is None:
+        raise HTTPException(404, f"Test not found: {test_id}")
+    result = _ab_runner.analyze(test_id)
+    return Response(content=_ab_report.to_markdown(test, analysis=result), media_type="text/markdown")
+
+
+@app.delete("/v1/ab/test/{test_id}", tags=["ab-test"], summary="A/Bテスト削除 — Sprint 60-C")
+def ab_delete(test_id: str):
+    ok = _ab_store.delete(test_id)
+    if not ok:
+        raise HTTPException(404, f"Test not found: {test_id}")
+    return {"deleted": test_id}
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Sprint 61 — Claude Fable 5 / Mythos 5 サイバー防衛 + N-hour 対応
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+from open_mythos.skills.cyber_defense import (  # noqa: E402
+    CyberDefenseOrchestrator as _CyberOrchestrator,
+    IncidentStore as _IncidentStore,
+    IncidentResponder as _IncidentResponder,
+    ThreatIntelAnalyzer as _ThreatAnalyzer,
+    ThreatIndicator as _ThreatIndicator,
+    ThreatLevel as _ThreatLevel,
+    IndicatorType as _IndicatorType,
+    IncidentStatus as _IncidentStatus,
+    ForensicsAI as _ForensicsAI,
+)
+from open_mythos.skills.vuln_scanner import (  # noqa: E402
+    NDayVulnTracker as _NDayTracker,
+    PatchUrgency as _PatchUrgency,
+    HFCodeBERTClassifier as _CodeBERTClassifier,
+)
+from open_mythos.skills.llm_providers import (  # noqa: E402
+    list_model_tiers as _list_model_tiers,
+    ClaudeModelTier as _ClaudeModelTier,
+)
+
+_anthropic_key = os.getenv("ANTHROPIC_API_KEY") or os.getenv("CLAUDE_API_KEY")
+_hf_token      = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN")
+
+_cyber_orchestrator  = _CyberOrchestrator(anthropic_api_key=_anthropic_key, hf_token=_hf_token)
+_incident_store      = _IncidentStore()
+_incident_responder  = _IncidentResponder(anthropic_api_key=_anthropic_key)
+_threat_analyzer     = _ThreatAnalyzer(anthropic_api_key=_anthropic_key, hf_token=_hf_token)
+_forensics_ai        = _ForensicsAI(anthropic_api_key=_anthropic_key)
+_nday_tracker        = _NDayTracker()
+_codebert            = _CodeBERTClassifier(hf_token=_hf_token)
+
+
+# --- Pydantic schemas ---
+
+class _IOCReq(BaseModel):
+    ioc_type:    str   = Field("ip", description="ip | domain | url | hash_md5 | hash_sha256 | email | cve | technique")
+    value:       str
+    threat_level: str  = Field("medium", description="critical | high | medium | low | info")
+    source:      str   = "manual"
+    description: str   = ""
+    confidence:  float = Field(0.5, ge=0.0, le=1.0)
+    tags:        List[str] = Field(default_factory=list)
+
+
+class _ThreatAnalyzeReq(BaseModel):
+    indicators:  List[_IOCReq]
+    context:     str = ""
+
+
+class _IncidentCreateReq(BaseModel):
+    title:            str
+    description:      str
+    severity:         str = Field("medium", description="critical | high | medium | low | info")
+    affected_systems: List[str] = Field(default_factory=list)
+
+
+class _ForensicsReq(BaseModel):
+    artifact_type: str = Field("log", description="log | memory_dump | network_pcap | filesystem | registry")
+    content:       str
+
+
+class _CodeClassifyReq(BaseModel):
+    code: str = Field(..., description="分類するコードスニペット")
+
+
+class _NDayRegisterReq(BaseModel):
+    cve_id:         str
+    urgency:        str = Field("planned", description="immediate_1h | urgent_6h | critical_24h | high_72h | planned")
+    exploit_public: bool = False
+
+
+def _parse_threat_level(s: str) -> "_ThreatLevel":
+    try:
+        return _ThreatLevel(s.lower())
+    except ValueError:
+        raise HTTPException(400, f"Invalid threat_level: {s}")
+
+
+def _parse_indicator_type(s: str) -> "_IndicatorType":
+    try:
+        return _IndicatorType(s.lower())
+    except ValueError:
+        raise HTTPException(400, f"Invalid ioc_type: {s}")
+
+
+def _build_indicator(req: _IOCReq) -> "_ThreatIndicator":
+    import uuid as _uuid
+    return _ThreatIndicator(
+        ioc_id=str(_uuid.uuid4()),
+        ioc_type=_parse_indicator_type(req.ioc_type),
+        value=req.value,
+        threat_level=_parse_threat_level(req.threat_level),
+        source=req.source,
+        description=req.description,
+        confidence=req.confidence,
+        tags=req.tags,
+    )
+
+
+# --- Model Tier エンドポイント ---
+
+@app.get("/v1/model/tiers", tags=["model-tiers"], summary="利用可能なモデルティア一覧 — Sprint 61")
+def model_tiers():
+    """Claude Fable 5 / Mythos 5 を含むモデルティア一覧を返す。"""
+    return {"tiers": _list_model_tiers()}
+
+
+# --- 脅威インテリジェンス ---
+
+@app.post("/v1/cyber/threat", tags=["cyber-defense"], summary="脅威インテリジェンス分析 — Sprint 61")
+def cyber_threat_analyze(req: _ThreatAnalyzeReq):
+    """IOC リストを Claude Fable 5 + HuggingFace Lily で分析する。"""
+    indicators = [_build_indicator(r) for r in req.indicators]
+    report = _threat_analyzer.analyze(indicators, context=req.context)
+    return report.to_dict()
+
+
+# --- インシデント管理 ---
+
+@app.post("/v1/cyber/incident", tags=["cyber-defense"], summary="インシデント作成 — Sprint 61")
+def cyber_incident_create(req: _IncidentCreateReq):
+    """セキュリティインシデントを作成する。"""
+    sev = _parse_threat_level(req.severity)
+    inc = _incident_store.create(
+        title=req.title,
+        description=req.description,
+        severity=sev,
+        affected_systems=req.affected_systems,
+    )
+    return inc.to_dict()
+
+
+@app.get("/v1/cyber/incident", tags=["cyber-defense"], summary="インシデント一覧 — Sprint 61")
+def cyber_incident_list():
+    return [i.to_dict() for i in _incident_store.list_all()]
+
+
+@app.get("/v1/cyber/incident/{incident_id}", tags=["cyber-defense"], summary="インシデント詳細 — Sprint 61")
+def cyber_incident_get(incident_id: str):
+    inc = _incident_store.get(incident_id)
+    if inc is None:
+        raise HTTPException(404, f"Incident not found: {incident_id}")
+    return inc.to_dict()
+
+
+@app.post("/v1/cyber/incident/{incident_id}/respond", tags=["cyber-defense"], summary="インシデント対応計画生成 — Sprint 61")
+def cyber_incident_respond(incident_id: str):
+    """Claude Mythos 5 でインシデント対応計画を生成する。"""
+    inc = _incident_store.get(incident_id)
+    if inc is None:
+        raise HTTPException(404, f"Incident not found: {incident_id}")
+    triaged = _incident_responder.triage(inc)
+    return triaged.to_dict()
+
+
+@app.patch("/v1/cyber/incident/{incident_id}/status", tags=["cyber-defense"], summary="インシデントステータス更新 — Sprint 61")
+def cyber_incident_status(incident_id: str, status: str):
+    try:
+        new_status = _IncidentStatus(status.lower())
+    except ValueError:
+        raise HTTPException(400, f"Invalid status: {status}")
+    inc = _incident_store.update_status(incident_id, new_status)
+    if inc is None:
+        raise HTTPException(404, f"Incident not found: {incident_id}")
+    return inc.to_dict()
+
+
+@app.delete("/v1/cyber/incident/{incident_id}", tags=["cyber-defense"], summary="インシデント削除 — Sprint 61")
+def cyber_incident_delete(incident_id: str):
+    ok = _incident_store.delete(incident_id)
+    if not ok:
+        raise HTTPException(404, f"Incident not found: {incident_id}")
+    return {"deleted": incident_id}
+
+
+# --- フォレンジクス ---
+
+@app.post("/v1/cyber/forensics", tags=["cyber-defense"], summary="AI フォレンジクス解析 — Sprint 61")
+def cyber_forensics(req: _ForensicsReq):
+    """Claude Mythos 5 で証跡を解析する。"""
+    artifact = _forensics_ai.analyze_artifact(req.artifact_type, req.content)
+    return artifact.to_dict()
+
+
+# --- フル防衛 ---
+
+@app.post("/v1/cyber/defend", tags=["cyber-defense"], summary="フルサイバー防衛分析 — Sprint 61")
+def cyber_defend(req: _ThreatAnalyzeReq):
+    """マルチエージェント (Fable 5 + Mythos 5 + HF Lily) でフル防衛分析を実行する。"""
+    indicators = [_build_indicator(r) for r in req.indicators]
+    report = _cyber_orchestrator.run_full_defense(
+        indicators=indicators,
+        context=req.context,
+    )
+    return report.to_dict()
+
+
+# --- HuggingFace CodeBERT 脆弱性分類 ---
+
+@app.post("/v1/cyber/classify/code", tags=["cyber-defense"], summary="HF CodeBERT 脆弱性分類 — Sprint 61")
+def cyber_classify_code(req: _CodeClassifyReq):
+    """HuggingFace CodeBERT でコードの脆弱性を分類する。"""
+    result = _codebert.classify(req.code)
+    return result.to_dict()
+
+
+# --- N-hour パッチ追跡 (N-day → N-hour 対応) ---
+
+@app.post("/v1/cyber/nday/register", tags=["n-hour-patch"], summary="CVE N-hour 登録 — Sprint 61")
+def nday_register(req: _NDayRegisterReq):
+    """CVE を N-hour トラッカーに登録する。"""
+    try:
+        urgency = _PatchUrgency(req.urgency.lower())
+    except ValueError:
+        raise HTTPException(400, f"Invalid urgency: {req.urgency}")
+    rec = _nday_tracker.register(
+        cve_id=req.cve_id,
+        urgency=urgency,
+        exploit_public=req.exploit_public,
+    )
+    return rec.to_dict()
+
+
+@app.post("/v1/cyber/nday/{cve_id}/patch", tags=["n-hour-patch"], summary="パッチ適用済みマーク — Sprint 61")
+def nday_mark_patched(cve_id: str):
+    rec = _nday_tracker.mark_patched(cve_id)
+    if rec is None:
+        raise HTTPException(404, f"CVE not found: {cve_id}")
+    return rec.to_dict()
+
+
+@app.get("/v1/cyber/nday/breached", tags=["n-hour-patch"], summary="SLA 超過 CVE 一覧 — Sprint 61")
+def nday_breached():
+    return [r.to_dict() for r in _nday_tracker.get_breached()]
+
+
+@app.get("/v1/cyber/nday/summary", tags=["n-hour-patch"], summary="N-hour 追跡サマリー — Sprint 61")
+def nday_summary():
+    return _nday_tracker.summary()
+
+
+@app.get("/v1/cyber/nday", tags=["n-hour-patch"], summary="N-hour 全CVE 一覧 — Sprint 61")
+def nday_list():
+    return _nday_tracker.to_dict_list()
