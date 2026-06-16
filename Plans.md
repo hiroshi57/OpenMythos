@@ -1,6 +1,6 @@
 # OpenMythos — Sprint Plans
-> 最終更新: 2026-06-09 (Sprint 59 完了) | ブランチ規約: `feature/<sprint>-<topic>`
-> Sprint 59 完了: 自律脆弱性スキャン (defending-code-harness 移植) → v0.62.0
+> 最終更新: 2026-06-16 (Sprint 60 完了) | ブランチ規約: `feature/<sprint>-<topic>`
+> Sprint 60 完了: 広告キャンペーン管理 (CEP→コピー生成→評価フロー) → v0.63.0
 > アーカイブ: Sprint 1〜9   → `docs/archive/sprint-plans-1-9.md`
 >            Sprint 10〜19  → `docs/archive/sprint-plans-10-19.md`
 >            Sprint 20〜25  → `docs/archive/sprint-plans-20-25.md`
@@ -36,8 +36,15 @@
 | 57 | **LLM 評価フレームワーク** | `skills/evaluation.py` | 3026 | v0.60 |
 | 58 | **LLMO ダッシュボード・CEP管理・競合分析** | `skills/llmo_dashboard.py` | 3078 | v0.61 |
 | 59 | **自律脆弱性スキャン (harness 移植)** | `skills/vuln_scanner.py` | 3155 | v0.62 |
+| 60 | **広告キャンペーン管理** | `skills/campaign_manager.py` | 3240 | v0.63 |
+| 61 | **日本語対応トークナイザー** | `open_mythos/tokenizer_ja.py` | 3301 | v0.64 |
+| 62 | **LLM コピー生成強化** | `skills/llm_copy_generator.py` | 3357 | v0.65 |
+| 63 | **A/Bテスト + 分析DB + 形態素解析** | `skills/ab_test.py` `skills/campaign_analytics.py` `tokenizer_ja.py` | 3492 | v0.66 |
+| 64 | **A/B+分析API + 形態素連携 + 予算最適化** | `serve/api.py` `skills/budget_optimizer.py` | 3542 | v0.67 |
+| 65 | **Fusion マルチモデル融合 (OpenRouter移植)** | `skills/fusion.py` | 3593 | v0.68 |
+| 66 | **Fusionストリーミング + A/B予算連携 + 異常検知** | `skills/campaign_orchestrator.py` `skills/anomaly_detector.py` | 3650 | v0.69 |
 
-> **累計テスト数**: ~3155 PASS (Sprint 59: +77) — **Sprint 60 候補検討中**
+> **累計テスト数**: ~3650 PASS (Sprint 66: +57) — **Sprint 67 候補検討中**
 
 ---
 
@@ -72,13 +79,186 @@
 
 ---
 
-## Sprint 60 候補テーマ
+## Sprint 60 詳細 (最新 / 完了)
+
+### Sprint 60: 広告キャンペーン管理 — v0.63.0
+> CEP→コピー生成→評価→キャンペーン登録の全フローをワークフロー化
+
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 60.1 | `skills/campaign_manager.py` — CampaignStatus/AdChannel/AdObjective (Enum 層) | cc:完了 |
+| 60.2 | `skills/campaign_manager.py` — AdCopy/CampaignBudget/Campaign (データモデル) | cc:完了 |
+| 60.3 | `skills/campaign_manager.py` — CampaignStore (CRUD) | cc:完了 |
+| 60.4 | `skills/campaign_manager.py` — CopyGenerator (CEP→コピー生成) | cc:完了 |
+| 60.5 | `skills/campaign_manager.py` — CampaignEvaluator/EvalResult (品質スコアリング) | cc:完了 |
+| 60.6 | `skills/campaign_manager.py` — CampaignWorkflow/WorkflowResult (全フロー) | cc:完了 |
+| 60.7 | `skills/campaign_manager.py` — CampaignReportEngine (Markdown/JSON レポート) | cc:完了 |
+| 60.8 | `serve/api.py` — `/v1/campaign/*` 9エンドポイント | cc:完了 |
+| 60.T | `tests/test_sprint60.py` — 85 tests PASS (累計 3240) | cc:完了 |
+
+---
+
+## Sprint 61 詳細 (最新 / 完了)
+
+### Sprint 61: 日本語対応トークナイザー — v0.64.0
+> GPT-2 英語依存を解消。外部ライブラリなしで日本語を処理する軽量トークナイザー。
+
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 61.1 | `tokenizer_ja.py` — CharType/classify_char (文字種分類) | cc:完了 |
+| 61.2 | `tokenizer_ja.py` — JaTokenizerConfig (設定) | cc:完了 |
+| 61.3 | `tokenizer_ja.py` — JaVocab (語彙管理) | cc:完了 |
+| 61.4 | `tokenizer_ja.py` — JaSentenceSplitter (文分割) | cc:完了 |
+| 61.5 | `tokenizer_ja.py` — JaTokenizer (文字種境界分割 + N-gram) | cc:完了 |
+| 61.6 | `tokenizer_ja.py` — JaTokenizerAdapter (MythosTokenizer 互換) | cc:完了 |
+| 61.7 | `tokenizer_ja.py` — build_vocab_from_corpus (コーパス語彙構築) | cc:完了 |
+| 61.T | `tests/test_sprint61.py` — 61 tests PASS (累計 3301) | cc:完了 |
+
+---
+
+## Sprint 62 詳細 (最新 / 完了)
+
+### Sprint 62: LLM コピー生成強化 — v0.65.0
+> CopyGenerator を LLM API 連携に拡張。API 未設定時はルールベースに自動フォールバック。
+
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 62.1 | `llm_copy_generator.py` — CopyGenerationConfig / CopyGenerationResult | cc:完了 |
+| 62.2 | `llm_copy_generator.py` — LLMCopyPromptBuilder (プロンプト構築) | cc:完了 |
+| 62.3 | `llm_copy_generator.py` — LLMCopyParser (レスポンス解析: JSON/CodeBlock/Regex) | cc:完了 |
+| 62.4 | `llm_copy_generator.py` — LLMCopyGenerator (LLM 生成 + フォールバック) | cc:完了 |
+| 62.5 | `llm_copy_generator.py` — LLMCopyGeneratorFactory (from_env/from_mock/rule_based) | cc:完了 |
+| 62.T | `tests/test_sprint62.py` — 56 tests PASS (累計 3357) | cc:完了 |
+
+---
+
+## Sprint 63 詳細 (最新 / 完了)
+
+### Sprint 63: A/Bテスト + 分析DB + 形態素解析 — v0.66.0
+> 候補 A/B/C を一括実装。広告効果測定の全レイヤーを整備。
+
+#### 63A: A/B テスト基盤 (`skills/ab_test.py`)
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 63A.1 | VariantStatus/ABTestStatus/VariantStats/Variant | cc:完了 |
+| 63A.2 | ABTest (状態遷移) / ABTestStore (CRUD) | cc:完了 |
+| 63A.3 | TrafficAllocator (hash ベース重み付き振り分け) | cc:完了 |
+| 63A.4 | ABTestAnalyzer (2標本比率 z 検定, 外部依存なし) / ABTestReportEngine | cc:完了 |
+
+#### 63B: キャンペーン分析ダッシュボード (`skills/campaign_analytics.py`)
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 63B.1 | MetricType/MetricPoint/CampaignMetrics (時系列蓄積) | cc:完了 |
+| 63B.2 | KpiCalculator (CTR/CVR/CPC/CPA/CPM/ROAS/ROI) | cc:完了 |
+| 63B.3 | TrendAnalyzer (前期比/移動平均) | cc:完了 |
+| 63B.4 | CampaignAnalyticsDashboard (横断集計/ランキング) / AnalyticsReportEngine | cc:完了 |
+
+#### 63C: 日本語形態素解析強化 (`tokenizer_ja.py` 拡張)
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 63C.1 | PartOfSpeech/DictionaryEntry/Morpheme | cc:完了 |
+| 63C.2 | JaDictionary (デフォルト助詞・助動詞 + 最長一致辞書) | cc:完了 |
+| 63C.3 | JaMorphologicalAnalyzer (最長一致法 + 名詞抽出) | cc:完了 |
+
+| 63.T | `test_sprint63a/b/c.py` — 135 tests PASS (累計 3492) | cc:完了 |
+
+---
+
+## Sprint 64 詳細 (最新 / 完了)
+
+### Sprint 64: A/B+分析API + 形態素連携 + 予算最適化 — v0.67.0
+> 候補 A/B/C を一括実装。Sprint 63 の機能群を API 公開し、横断統合。
+> **副次修正**: serve/api.py の Sprint 60 ブロック重複を解消（route 二重定義を削除）。
+
+#### 64A: A/B + 分析ダッシュボード API (`serve/api.py`)
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 64A.1 | `/v1/abtest/*` 8 endpoints (作成/一覧/詳細/削除/開始/実績記録/レポート) | cc:完了 |
+| 64A.2 | `/v1/analytics/*` 4 endpoints (記録/KPI/レポート/サマリー) | cc:完了 |
+| 64A.3 | Sprint 60 重複ブロック削除 (route 二重定義の解消) | cc:完了 |
+
+#### 64B: 形態素解析 → コピー生成連携 (`skills/campaign_manager.py`)
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 64B.1 | CopyGenerator(use_morphology=True) — 名詞抽出ベースのタグ生成 | cc:完了 |
+| 64B.2 | 後方互換維持 (デフォルト False = 正規表現抽出) | cc:完了 |
+
+#### 64C: 広告予算最適化 (`skills/budget_optimizer.py`)
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 64C.1 | AllocationStrategy/BudgetConstraint/BudgetAllocation/OptimizationResult | cc:完了 |
+| 64C.2 | BudgetOptimizer (Equal/RoasWeighted/Performance/Proportional + 推奨戦略) | cc:完了 |
+| 64C.3 | `/v1/budget/*` 2 endpoints (最適化/推奨戦略) | cc:完了 |
+
+| 64.T | `tests/test_sprint64.py` — 50 tests PASS (累計 3542) | cc:完了 |
+
+---
+
+## Sprint 65 詳細 (最新 / 完了)
+
+### Sprint 65: Fusion マルチモデル融合 — v0.68.0
+> OpenRouter Fusion Server Tool を OpenMythos に移植。
+> 参照: https://openrouter.ai/docs/guides/features/server-tools/fusion
+> 仕組み: 候補モデル群 → 審査モデルが構造化分析 → 呼び出しモデルが最終回答合成。
+
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 65.1 | `skills/fusion.py` — FusionRole/CandidateSpec/FusionConfig (設定層) | cc:完了 |
+| 65.2 | `skills/fusion.py` — CandidateResponse/CandidateAnalysis/FusionAnalysis/FusionResult | cc:完了 |
+| 65.3 | `skills/fusion.py` — FusionAnalysisParser (審査 JSON パース + フォールバック) | cc:完了 |
+| 65.4 | `skills/fusion.py` — JudgeAnalyzer (審査ステージ, LLM + ヒューリスティック) | cc:完了 |
+| 65.5 | `skills/fusion.py` — FusionEngine (3段パイプライン: 候補収集→審査→合成) | cc:完了 |
+| 65.6 | `skills/fusion.py` — FusionEngineFactory (from_env/from_mock/rule_based) | cc:完了 |
+| 65.7 | `serve/api.py` — `/v1/fusion/run` `/v1/fusion/status` | cc:完了 |
+| 65.T | `tests/test_sprint65.py` — 51 tests PASS (累計 3593) | cc:完了 |
+
+#### OpenRouter Fusion 対応表
+| OpenRouter Fusion | fusion.py | 役割 |
+|-------------------|-----------|------|
+| candidate models | `CandidateSpec` / `CandidateResponse` | 候補回答生成 |
+| judge model | `JudgeAnalyzer` → `FusionAnalysis` | 構造化分析 |
+| caller model | `FusionEngine._synthesize` | 最終回答合成 |
+| 既存 `MultiProviderRouter` を再利用（claude/openai/openmythos） | | |
+
+---
+
+## Sprint 66 詳細 (最新 / 完了)
+
+### Sprint 66: Fusionストリーミング + A/B予算連携 + 異常検知 — v0.69.0
+> 候補 A/B/C を一括実装。広告運用自動化レイヤーを完成。
+
+#### 66A: Fusion ストリーミング (`skills/fusion.py` 拡張)
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 66A.1 | FusionEngine.run_stream — 段階イベント (candidates/analysis/delta/done/error) | cc:完了 |
+| 66A.2 | `/v1/fusion/stream` — SSE ストリーミング | cc:完了 |
+
+#### 66B: A/B → 予算最適化 自動連携 (`skills/campaign_orchestrator.py`)
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 66B.1 | OrchestrationConfig/WinnerDecision/ReallocationPlan | cc:完了 |
+| 66B.2 | CampaignOrchestrator — 勝者判定(有意差考慮) + 勝者ボーナス予算再配分 | cc:完了 |
+| 66B.3 | `/v1/orchestrator/decide-winner` `/v1/orchestrator/reallocate` | cc:完了 |
+
+#### 66C: KPI 異常検知アラート (`skills/anomaly_detector.py`)
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 66C.1 | AlertSeverity/AnomalyType/Alert/DetectorConfig | cc:完了 |
+| 66C.2 | AnomalyDetector — z-score + 変化率 + stale 検知 | cc:完了 |
+| 66C.3 | AlertStore / AnomalyReportEngine | cc:完了 |
+| 66C.4 | `/v1/anomaly/{id}/detect` `/v1/anomaly/alerts` `/report/md` | cc:完了 |
+
+| 66.T | `tests/test_sprint66.py` — 57 tests PASS (累計 3650) | cc:完了 |
+
+---
+
+## Sprint 67 候補テーマ
 
 | Option | テーマ | コアモジュール | 理由 |
 |--------|--------|--------------|------|
-| **A** | **広告キャンペーン管理** | `skills/campaign_manager.py` | CEP→コピー→評価の全フローをワークフロー化 |
-| B | **日本語対応トークナイザー** | `open_mythos/tokenizer_ja.py` | GPT-2英語依存を解消。日本語広告コピー学習の前提 |
-| C | **A/Bテスト基盤** | `skills/ab_test.py` | 複数コピー案の効果測定フレームワーク |
+| **A** | **異常検知 → 自動予算停止** | `campaign_orchestrator.py` 拡張 | Critical アラートで予算配分を自動凍結 |
+| B | **Fusion 結果キャッシュ** | `skills/fusion_cache.py` | 同一質問の再計算を回避 |
+| C | **広告運用 統合ダッシュボード API** | `serve/api.py` 拡張 | 全 KPI/アラート/A-B を 1 エンドポイントに集約 |
 
 ---
 
