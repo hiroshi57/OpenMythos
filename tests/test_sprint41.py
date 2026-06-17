@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import json
 import sys
-import uuid
 import pytest
 import torch
 from unittest.mock import MagicMock
@@ -418,7 +417,6 @@ class TestChatFunctionCalling:
 
     def test_tool_call_response_has_tool_calls(self, client):
         """モデル出力に <tool_call> が含まれる場合 tool_calls が返る"""
-        import unittest.mock as mock
 
         # モデルが <tool_call>{"name":"search_competitor","arguments":{"company":"X"}}</tool_call> を出力するよう mock
         tool_call_text = '<tool_call>{"name":"search_competitor","arguments":{"company":"X"}}</tool_call>'

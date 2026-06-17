@@ -16,10 +16,10 @@ import pytest
 
 from open_mythos.skills.campaign_analytics import (
     MetricType, MetricPoint, CampaignMetrics,
-    KpiSet, KpiCalculator,
-    TrendResult, TrendAnalyzer,
+    KpiCalculator,
+    TrendAnalyzer,
     CampaignAnalyticsStore,
-    AnalyticsSnapshot, CampaignAnalyticsDashboard,
+    CampaignAnalyticsDashboard,
     AnalyticsReportEngine,
 )
 

@@ -318,7 +318,7 @@ class LMEvaluator:
         if self._native:
             # 実際の評価 (ここでは簡略化)
             try:
-                results = self._lm_eval.simple_evaluate(
+                self._lm_eval.simple_evaluate(
                     model=self.model_name,
                     tasks=[t.name for t in tasks],
                     num_fewshot=tasks[0].n_few_shot if tasks else 0,
@@ -331,7 +331,7 @@ class LMEvaluator:
             except Exception:
                 pass
         # fallback: ダミー結果
-        import random, math
+        import math
         rng = lambda: round(0.3 + 0.4 * abs(math.sin(hash(self.model_name) % 100)), 4)
         return [EvalResult(task=t.name, metric="acc", value=rng()) for t in tasks]
 

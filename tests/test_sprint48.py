@@ -18,8 +18,6 @@ Sprint 48 — マルチモーダル統合 テスト
 from __future__ import annotations
 
 import sys
-import math
-import base64
 import pytest
 import torch
 from unittest.mock import MagicMock
@@ -85,7 +83,7 @@ from open_mythos.skills.multimodal import (
     CLIPEmbedding, CLIPModel,
     VisionChatMessage, VisionChatResult, LLaVAModel,
     DiffusionRequest, DiffusionResult, StableDiffusionGenerator,
-    SegmentRequest, SegmentMask, SegmentResult, SAMSegmenter,
+    SegmentRequest, SegmentResult, SAMSegmenter,
 )
 
 

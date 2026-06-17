@@ -33,7 +33,6 @@ from __future__ import annotations
 import json
 import re
 import time
-import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional
@@ -391,7 +390,7 @@ class JudgeAnalyzer:
         config: FusionConfig,
         labels: List[str],
     ) -> FusionAnalysis:
-        from open_mythos.skills.llm_providers import LLMRequest, ProviderType
+        from open_mythos.skills.llm_providers import LLMRequest
         req = LLMRequest(
             prompt=_build_judge_prompt(question, candidates),
             system=_JUDGE_SYSTEM,

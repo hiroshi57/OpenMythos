@@ -24,7 +24,6 @@ Sprint 60 — 広告キャンペーン管理 テスト (80 tests)
 from __future__ import annotations
 
 import pytest
-from unittest.mock import MagicMock
 
 from open_mythos.skills.campaign_manager import (
     CampaignStatus, AdChannel, AdObjective,

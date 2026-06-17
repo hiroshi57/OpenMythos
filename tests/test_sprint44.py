@@ -10,8 +10,6 @@ Sprint 44 — Vector DB 統合 + Instructor 構造化出力 テスト
 from __future__ import annotations
 
 import sys
-import math
-import json
 import pytest
 import torch
 from unittest.mock import MagicMock
@@ -313,7 +311,7 @@ class TestVectorStoreFactory:
 # Section H: InstructorExtractor
 # ---------------------------------------------------------------------------
 
-from open_mythos.skills.instructor_extract import ExtractionSchema, ExtractionResult, InstructorExtractor
+from open_mythos.skills.instructor_extract import ExtractionSchema, InstructorExtractor
 
 
 class TestExtractionSchema:

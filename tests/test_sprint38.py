@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 import torch
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from open_mythos.lora_trainer import (
     DistillInMemoryDataset,

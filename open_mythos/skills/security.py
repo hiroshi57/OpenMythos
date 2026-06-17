@@ -151,7 +151,6 @@ class WebPentester:
             with ctx.wrap_socket(socket.socket(), server_hostname=hostname) as s:
                 s.settimeout(timeout)
                 s.connect((hostname, port))
-                cipher = s.cipher()
                 version = s.version()
             if version in ("TLSv1", "TLSv1.1"):
                 findings.append(PentestFinding(
@@ -176,7 +175,7 @@ class WebPentester:
     def generate_report_md(self, report: PentestReport) -> str:
         """レポートを Markdown 形式で生成する。"""
         lines = [
-            f"# Penetration Test Report\n",
+            "# Penetration Test Report\n",
             f"**Target**: {report.target_url}  \n",
             f"**Risk Score**: {report.risk_score}/10  \n",
             f"**Scan Time**: {report.scan_time_s}s  \n",

@@ -14,7 +14,7 @@ import sys
 import yaml
 import pytest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 # ---------------------------------------------------------------------------
 # transformers モック (autouse)
@@ -225,7 +225,7 @@ class TestMonitorDashboardHtml:
     """monitor.py の HTML ダッシュボード生成を検証"""
 
     def setup_method(self):
-        import tempfile, os
+        import tempfile
         from serve import monitor
         # テスト用に DB を一時ファイルへ差し替え
         self._orig_db = monitor.DB_PATH

@@ -19,7 +19,6 @@ Sprint 49 — 訓練最適化統合 テスト
 from __future__ import annotations
 
 import sys
-import math
 import pytest
 import torch
 from unittest.mock import MagicMock
@@ -82,7 +81,7 @@ from open_mythos.skills.training_optimization import (
     LightningTrainerConfig, LightningTrainResult, LightningTrainer,
     FSDPConfig, FSDPModelInfo, FSDPWrapper,
     SimPOConfig, SimPOTrainResult, SimPOTrainer,
-    SAEConfig, SAETrainResult, SparseAutoencoder,
+    SAEConfig, SparseAutoencoder,
 )
 
 

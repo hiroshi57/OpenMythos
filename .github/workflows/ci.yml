@@ -63,7 +63,7 @@ jobs:
           path: coverage.xml
 
   lint:
-    name: Lint (ruff + black)
+    name: Lint (ruff)
     runs-on: ubuntu-latest
 
     steps:
@@ -79,10 +79,7 @@ jobs:
       - name: Install lint tools
         run: |
           python -m pip install --upgrade pip
-          pip install ruff black
+          pip install ruff
 
       - name: ruff check
         run: ruff check open_mythos/ tests/
-
-      - name: black check
-        run: black --check open_mythos/ tests/

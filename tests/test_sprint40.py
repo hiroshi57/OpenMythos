@@ -14,8 +14,7 @@ import json
 import sys
 import pytest
 import torch
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 # ---------------------------------------------------------------------------
 # transformers モック (autouse)

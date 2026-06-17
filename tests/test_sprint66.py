@@ -16,7 +16,6 @@ from open_mythos.skills.fusion import (
 )
 from open_mythos.skills.ab_test import ABTest, Variant, VariantStats
 from open_mythos.skills.campaign_analytics import CampaignAnalyticsStore
-from open_mythos.skills.budget_optimizer import AllocationStrategy
 from open_mythos.skills.campaign_orchestrator import (
     OrchestrationConfig, WinnerDecision, ReallocationPlan, CampaignOrchestrator,
 )

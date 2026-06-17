@@ -79,24 +79,19 @@ pytest = "*"
 line-length = 88
 exclude = ["examples/*.ipynb"]
 
+[tool.ruff.lint]
+# 本プロジェクトは意図的に縦揃え整形・1行文・lambda 代入等のスタイルを採用しており
+# black も適用しない方針。純粋にスタイル的な以下の警告は無効化する。
+# 実質的な問題 (F401 未使用 import / F811 再定義 / F821 未定義名 / F841 未使用変数 等)
+# は引き続き検出する。
+ignore = [
+    "E401",  # multiple-imports-on-one-line
+    "E402",  # module-import-not-at-top-of-file (遅延 / 条件付き import を許容)
+    "E701",  # multiple-statements-on-one-line (colon)
+    "E702",  # multiple-statements-on-one-line (semicolon)
+    "E731",  # lambda-assignment
+    "E741",  # ambiguous-variable-name
+]
+
 [tool.ruff.lint.per-file-ignores]
 "examples/*.ipynb" = ["E402"]
-
-[tool.black]
-target-version = ["py310"]
-line-length = 88
-include = '\.pyi?$'
-exclude = '''
-/(
-    \.git
-  | \.hg
-  | \.mypy_cache
-  | \.tox
-  | \.venv
-  | _build
-  | buck-out
-  | build
-  | dist
-  | docs
-)/
-'''

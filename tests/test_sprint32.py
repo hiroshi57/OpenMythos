@@ -13,7 +13,6 @@ import pytest
 from open_mythos.error_memory import (
     ErrorMemoryStore,
     MistakeRecord,
-    MISTAKE_CATEGORIES,
 )
 
 
@@ -97,7 +96,7 @@ def test_sqlite_max_records_enforced():
 
 def test_sqlite_append_metadata_stored():
     store = _sql_store()
-    rec = store.append("text", metadata={"key": "val"})
+    store.append("text", metadata={"key": "val"})
     records = store._all_records()
     assert any(r.metadata.get("key") == "val" for r in records)
     store.close()

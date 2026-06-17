@@ -213,7 +213,7 @@ class TestCustomScorer:
         scorer.add_custom_scorer("always_high", lambda t, q: 1.0, weight=2.0)
         result_with = scorer.score("テスト")
         scorer2 = EnsembleScorer()
-        result_without = scorer2.score("テスト")
+        scorer2.score("テスト")
         # カスタムスコアラーが ensemble に寄与している
         assert result_with.ensemble_score >= 0.0  # スコアが存在する
 

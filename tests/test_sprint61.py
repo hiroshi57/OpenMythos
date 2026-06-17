@@ -13,7 +13,6 @@ Sprint 61 — 日本語対応トークナイザー テスト (80 tests)
 """
 from __future__ import annotations
 
-import pytest
 from open_mythos.tokenizer_ja import (
     CharType, classify_char,
     JaTokenizerConfig,

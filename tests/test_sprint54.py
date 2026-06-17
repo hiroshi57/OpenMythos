@@ -81,7 +81,6 @@ _HDR = {"Authorization": "Bearer dev"}
 from open_mythos.assistant import (
     AssistantTool, AssistantObject, Thread, MessageContent, Message,
     RunUsage, Run, AssistantStore, AssistantRunner,
-    get_default_store, reset_default_store,
 )
 
 

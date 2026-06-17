@@ -12,7 +12,6 @@ Sprint 55 — ストリーミング & SSE 応答 テスト (58 tests)
 """
 from __future__ import annotations
 
-import json
 import sys
 import time
 import pytest

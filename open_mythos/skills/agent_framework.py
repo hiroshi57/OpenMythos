@@ -459,7 +459,6 @@ class ParallelCLIRunner:
     def run(self, jobs: List[ParallelJob]) -> List[JobResult]:
         """ジョブリストを並列実行する。"""
         import subprocess, os
-        results = []
         # asyncio で並列実行
         async def run_async() -> List[JobResult]:
             sem = asyncio.Semaphore(self.max_workers)

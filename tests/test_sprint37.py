@@ -11,9 +11,7 @@ Sprint 37: ベンチマーク結果可視化 + E2E 疎通テスト — 40 tests
 
 from __future__ import annotations
 
-import json
 import sys
-import tempfile
 import types
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -523,7 +521,7 @@ class TestDashboard:
 
     def test_dashboard_with_trend(self, tmp_path_factory):
         """trend_reports 付きダッシュボードにトレンドセクションが含まれる"""
-        tmp = tmp_path_factory.mktemp("dash_trend")
+        tmp_path_factory.mktemp("dash_trend")
         r1 = _make_report(timestamp="2026-06-01T09:00:00")
         r2 = _make_report(timestamp="2026-06-03T10:00:00")
         dash = ReportGenerator(r2).to_dashboard(trend_reports=[r1, r2])

@@ -90,7 +90,7 @@ class ModalRunner:
                     duration_s=round(time.perf_counter() - t0, 2),
                     gpu_used=config.gpu, success=True,
                 )
-            except Exception as e:
+            except Exception:
                 pass
         # fallback: ローカル実行
         try:
@@ -297,7 +297,6 @@ class FileWatcher:
 
     def poll(self, paths: List[str], interval_s: float = 1.0, n_checks: int = 1) -> List[FileEvent]:
         """ポーリングでファイル変更を検出する (テスト用)。"""
-        import glob as _glob
         events = []
         snapshots = {}
         for path in paths:
@@ -410,7 +409,7 @@ class SLiMeModel:
             except Exception:
                 pass
         # fallback: ランダムスパース基底
-        import math, random as rnd
+        import random as rnd
         k = self.config.n_components
         dim = len(X[0]) if X else 8
         components = [

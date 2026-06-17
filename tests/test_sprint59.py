@@ -27,7 +27,7 @@ from unittest.mock import MagicMock
 from open_mythos.skills.vuln_scanner import (
     VulnSeverity, VulnCategory, PatchStatus,
     ScanTarget, VulnFinding, VerifyVerdict,
-    PatchCandidate, ScanReport, ScanSession,
+    PatchCandidate, ScanSession,
     VulnStore, VulnScanner, VulnPatcher, ScanReportEngine,
 )
 

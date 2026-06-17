@@ -29,7 +29,6 @@ DebateOrchestrator — 討議型集合知 (Sprint 20 / P1パターン).
 
 from __future__ import annotations
 
-import math
 import re
 import time
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
