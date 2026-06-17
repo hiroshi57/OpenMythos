@@ -457,7 +457,9 @@ bash serve/deploy_cloudrun.sh
 
 ## 理論的背景
 
-Claude Mythos は **Recurrent-Depth Transformer** であると考えられています。通常の Transformer が層を積み重ねるのに対し、RDT は一部の層を複数回再利用します。
+> ℹ️ 本節の「Claude Mythos」は、本プロジェクトが設定した**架空／仮説上の参照モデル**であり、Anthropic の実在製品ではない。OpenMythos はその想定アーキテクチャ（Recurrent-Depth Transformer）を学習目的で理論的に再構成した OSS であり、Anthropic とは無関係・非提携である。
+
+OpenMythos が想定する「Claude Mythos」アーキテクチャは **Recurrent-Depth Transformer (RDT)** です。通常の Transformer が層を積み重ねるのに対し、RDT は一部の層を複数回再利用します。
 
 - **ループ数 = 推論深度**: 推論時にループを増やすだけで深い推論が可能
 - **LTI安定性**: 注入パラメータを `ρ(A) < 1` に制約することで訓練安定性を保証
