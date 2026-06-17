@@ -111,8 +111,8 @@ class ThreatIntelReport:
     report_id:   str
     indicators:  List[ThreatIndicator]
     summary:     str
-    ai_analysis: str                       # Fable 5 / Mythos 5 による分析
-    model_used:  str                       # "claude-fable-5" | "claude-mythos-5" | "hf_lily"
+    ai_analysis: str                       # Fable 5 / Mythos 5 (内部呼称) による分析
+    model_used:  str                       # 実モデル ID: "claude-sonnet-4-5" | "claude-opus-4" | HF Lily モデル ID
     risk_score:  float                     # 0.0〜10.0
     mitre_ttps:  List[str]                = field(default_factory=list)
     created_at:  float                    = field(default_factory=time.time)

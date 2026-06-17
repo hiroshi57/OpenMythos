@@ -1054,6 +1054,10 @@ class MythosVulnAnalyzer:
 
     def __init__(self, anthropic_api_key: Optional[str] = None) -> None:
         self._provider: Any = None
+        # 実際に呼び出される Anthropic モデル ID を保持する。
+        # "Mythos 5" は OpenMythos 内部呼称であり、実体は claude-opus-4。
+        # プロバイダー未構成時はルールベースで応答するためその旨を記録する。
+        self._model_id: str = "rule-based"
         if anthropic_api_key:
             try:
                 from open_mythos.skills.llm_providers import (
@@ -1065,6 +1069,7 @@ class MythosVulnAnalyzer:
                     model=ClaudeModelTier.MYTHOS_5,
                     timeout=120,
                 ))
+                self._model_id = ClaudeModelTier.MYTHOS_5.value  # 実モデル ID: claude-opus-4
             except Exception:
                 pass
 
@@ -1086,7 +1091,7 @@ class MythosVulnAnalyzer:
             },
             "codebert":     codebert_result.to_dict(),
             "ai_analysis":  ai_analysis,
-            "model_used":   "claude-mythos-5",
+            "model_used":   self._model_id,
         }
 
     def _ai_deep_analysis(self, finding: "VulnFinding", urgency: PatchUrgency) -> str:

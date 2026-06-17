@@ -5,6 +5,16 @@
 
 ---
 
+> ⚠️ **免責・前提（重要）**
+>
+> 本ドキュメントで言及する「Claude Mythos」は、**OpenMythos プロジェクトが設定した架空／仮想の参照モデル**であり、Anthropic の実在製品ではない。`claude-mythos` というモデル文字列も実在しない。
+>
+> 以下の表に登場する Mythos 側の数値（インジェクション成功率 7%、スループット、レイテンシ P50 800ms、コスト $15/1M tok など）は、**実測値でも Anthropic 公式データでもなく、比較構成を説明するための例示・推定値**である。実在の Anthropic 製品の性能・脆弱性・価格を表すものとして解釈してはならない。
+>
+> OpenMythos 内の「Fable 5 / Mythos 5」も同様にプロジェクト独自の内部呼称で、実体は Anthropic の `claude-sonnet-4-5` / `claude-opus-4` を呼び出している（`open_mythos/skills/llm_providers.py` 参照）。
+
+---
+
 ## 概要
 
 | 観点 | Claude Mythos (推定) | OpenMythos |
