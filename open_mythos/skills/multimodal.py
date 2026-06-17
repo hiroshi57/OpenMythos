@@ -11,7 +11,7 @@ from __future__ import annotations
 import base64
 import math
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 
 # ---------------------------------------------------------------------------
@@ -347,7 +347,7 @@ class SAMSegmenter:
         """画像をセグメンテーションする。"""
         if self._native and self.checkpoint:
             try:
-                import numpy as np, io, torch
+                import numpy as np, io
                 from PIL import Image as PILImage  # type: ignore
                 img = PILImage.open(io.BytesIO(base64.b64decode(req.image_b64))).convert("RGB")
                 img_np = np.array(img)

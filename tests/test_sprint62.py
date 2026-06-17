@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import json
 import pytest
-from unittest.mock import MagicMock, patch
 
 from open_mythos.skills.campaign_manager import (
     AdChannel, AdCopy, AdObjective,
@@ -26,7 +25,6 @@ from open_mythos.skills.llm_copy_generator import (
     LLMCopyParser,
     LLMCopyGenerator,
     LLMCopyGeneratorFactory,
-    _MockRouter,
 )
 
 

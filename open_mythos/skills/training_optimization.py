@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 
 # ---------------------------------------------------------------------------
@@ -266,7 +266,6 @@ class SimPOTrainer:
         rejected_logprobs: List[float],
     ) -> Dict[str, float]:
         """1 ステップの訓練を実行する。"""
-        import math
         def mean(lst: List[float]) -> float:
             return sum(lst) / len(lst) if lst else 0.0
 
@@ -330,7 +329,6 @@ class SparseAutoencoder:
     def _build_model(self) -> None:
         try:
             import torch.nn as nn
-            import torch
             d_in, d_sae = self.config.d_in, self.config.d_sae
             self._encoder = nn.Linear(d_in, d_sae, bias=True)
             self._decoder = nn.Linear(d_sae, d_in, bias=True)
@@ -364,7 +362,6 @@ class SparseAutoencoder:
     def forward(self, x: Any) -> Dict[str, Any]:
         """符号化 → 復号化 → 損失計算。"""
         try:
-            import torch
             z = self.encode(x)
             x_recon = self.decode(z)
             recon_loss = float(((x - x_recon) ** 2).mean())

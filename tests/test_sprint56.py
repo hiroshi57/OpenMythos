@@ -423,7 +423,6 @@ class TestProviderAPI:
 
     def test_complete_no_preferred(self, client, monkeypatch):
         # API キーなし状態で openmythos のみ試行
-        import os
         r = client.post("/v1/llm/complete", json={"prompt": "テスト"})
         # 503 (all failed) or 200 (if any key set)
         assert r.status_code in (200, 503)

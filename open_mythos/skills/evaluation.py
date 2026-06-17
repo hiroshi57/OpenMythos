@@ -20,11 +20,9 @@ Sprint 57 — LLM 評価フレームワーク
 """
 from __future__ import annotations
 
-import math
-import re
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

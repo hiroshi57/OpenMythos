@@ -9,7 +9,6 @@ ref: skills/research/*-SKILL.md
 from __future__ import annotations
 
 import re
-import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -340,7 +339,7 @@ class JupyterKernelClient:
                 kc = km.client()
                 kc.start_channels()
                 kc.wait_for_ready(timeout=10)
-                msg_id = kc.execute(code)
+                kc.execute(code)
                 outputs = []
                 stdout_parts = []
                 stderr_parts = []
@@ -372,7 +371,7 @@ class JupyterKernelClient:
                     stdout="".join(stdout_parts), stderr="".join(stderr_parts),
                     outputs=outputs, execution_count=ec, success=True,
                 )
-            except Exception as e:
+            except Exception:
                 pass
         # fallback: exec
         import io, sys

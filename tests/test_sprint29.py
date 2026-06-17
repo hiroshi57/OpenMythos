@@ -261,7 +261,7 @@ class TestTaskPlanner:
 
     def test_dependency_outputs_passed_to_next_task(self):
         """前段タスクの出力が後段タスクのコンテキストに渡されること。"""
-        from open_mythos.task_planner import Task, TaskPlanner
+        from open_mythos.task_planner import TaskPlanner
 
         received_contexts = []
 
@@ -327,7 +327,6 @@ class TestIntegration:
 
     def test_kpi_agent_for_task_evaluation(self):
         """KPIAgent (Sprint 21) でタスク達成を評価。"""
-        from open_mythos.kpi_agent import KPIAgent, KPIDefinition
         from open_mythos.task_planner import TaskPlanner
 
         plan_results = []

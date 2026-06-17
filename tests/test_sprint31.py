@@ -5,8 +5,6 @@ LoraTrainer は GPU なし環境ではシミュレーションにフォールバ
 CI (CPU only) でも全テスト PASS する。
 """
 
-import pytest
-import torch
 
 from open_mythos.lora_trainer import (
     LoraTrainerConfig,
@@ -128,7 +126,7 @@ def test_distill_dataset_custom_tokenize():
         called.append(text)
         return [1, 2, 3]
     samples = _make_samples(1)
-    ds = DistillInMemoryDataset(samples, tokenize_fn=my_tokenize)
+    DistillInMemoryDataset(samples, tokenize_fn=my_tokenize)
     assert len(called) == 1
 
 def test_distill_dataset_empty_samples():

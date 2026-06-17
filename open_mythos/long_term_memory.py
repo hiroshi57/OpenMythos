@@ -45,7 +45,10 @@ import math
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import numpy as np  # 型注釈 "np.ndarray" 用 (実体は各メソッド内で遅延 import)
 
 
 # ---------------------------------------------------------------------------

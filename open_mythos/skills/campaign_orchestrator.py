@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from open_mythos.skills.ab_test import (
-    ABTest, ABTestAnalyzer, Variant,
+    ABTest, ABTestAnalyzer,
 )
 from open_mythos.skills.budget_optimizer import (
     BudgetOptimizer, AllocationStrategy, OptimizationResult, BudgetConstraint,

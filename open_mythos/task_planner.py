@@ -441,7 +441,7 @@ class TaskPlanner:
             all_names = [t.name for t in tasks]
             tasks.append(Task(
                 name="synthesize_results",
-                goal=f"結果を統合して最終アウトプットを生成する",
+                goal="結果を統合して最終アウトプットを生成する",
                 task_type="generation",
                 priority=10,
                 depends_on=all_names,

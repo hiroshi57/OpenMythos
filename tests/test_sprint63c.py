@@ -10,7 +10,6 @@ Sprint 63C — 日本語形態素解析強化 テスト
 """
 from __future__ import annotations
 
-import pytest
 
 from open_mythos.tokenizer_ja import (
     PartOfSpeech,

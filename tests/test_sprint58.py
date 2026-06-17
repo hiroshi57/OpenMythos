@@ -23,8 +23,8 @@ import torch
 from unittest.mock import MagicMock
 
 from open_mythos.skills.llmo_dashboard import (
-    CepCategory, CepEntry, CepStore,
-    MentionSnapshot, CompetitorEntry, CompetitorAnalysis,
+    CepCategory, CepStore,
+    MentionSnapshot, CompetitorAnalysis,
     LlmoDashboard, LlmoReportEngine,
 )
 

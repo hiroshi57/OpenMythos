@@ -2,7 +2,6 @@
 Sprint 30 — GrowingAIOrchestrator テストスイート (40 tests)
 """
 
-import pytest
 from open_mythos.growing_ai_orchestrator import (
     PatternType,
     GrowthContext,

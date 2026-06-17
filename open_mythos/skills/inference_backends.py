@@ -11,7 +11,7 @@ from __future__ import annotations
 import math
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, Generator, List, Optional
+from typing import Any, Dict, List, Optional
 
 
 # ---------------------------------------------------------------------------
@@ -54,7 +54,7 @@ class FlashAttentionOptimizer:
             return self.config.backend
         # Flash Attention 2 を優先
         try:
-            import flash_attn  # type: ignore
+            import flash_attn  # type: ignore  # noqa: F401  (可用性プローブ: import 成否で分岐)
             return "flash"
         except ImportError:
             pass
@@ -174,7 +174,7 @@ class GuidanceGenerator:
                     tokens_used=len(str(result).split()),
                     success=True,
                 )
-            except Exception as e:
+            except Exception:
                 pass
         # fallback: 変数置換
         text = template.template
