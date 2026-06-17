@@ -5,6 +5,16 @@
 
 ---
 
+> ⚠️ **免責・前提（重要）**
+>
+> 本ドキュメントで言及する「Claude Mythos」は、**OpenMythos プロジェクトが設定した架空／仮想の参照モデル**であり、Anthropic の実在製品ではない。`claude-mythos` というモデル文字列も実在しない。
+>
+> 以下の表に登場する Mythos 側の数値（インジェクション成功率 7%、スループット、レイテンシ P50 800ms、コスト $15/1M tok など）は、**実測値でも Anthropic 公式データでもなく、比較構成を説明するための例示・推定値**である。実在の Anthropic 製品の性能・脆弱性・価格を表すものとして解釈してはならない。
+>
+> 本プロジェクトは「Claude Mythos のアーキテクチャ（Recurrent-Depth Transformer）」を理論的に再構成した学習用 OSS であり、Anthropic とは無関係・非提携である。
+
+---
+
 ## 概要
 
 | 観点 | Claude Mythos (推定) | OpenMythos |
