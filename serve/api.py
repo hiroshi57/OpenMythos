@@ -44,6 +44,7 @@ from open_mythos.agents import MythosAgent, OpenMythosLLM
 from serve.auth import RateLimitMiddleware, verify_api_key
 from serve.dashboard import router as _dashboard_router
 from serve.ad_router import router as _ad_router
+from serve.chatwork_router import router as _chatwork_router
 
 try:
     from prometheus_client import (
@@ -214,6 +215,7 @@ app.add_middleware(
 # Sprint 39: ショーケースダッシュボード + Prometheus
 app.include_router(_dashboard_router)
 app.include_router(_ad_router)
+app.include_router(_chatwork_router)
 
 
 @app.get(
