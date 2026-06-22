@@ -1,18 +1,25 @@
 """
-Sprint 66B — A/B → 予算最適化 自動連携オーケストレーター
+Sprint 66B / 67A — A/B → 予算最適化 自動連携 + 異常検知 → 自動予算停止
 
 A/B テストの勝者判定 (ab_test) と予算最適化 (budget_optimizer)、
 異常検知 (anomaly_detector) を統合し、広告運用の自動化ワークフローを提供する。
 
-ワークフロー:
+ワークフロー (Sprint 66B):
   1. A/B テストの勝者を判定（統計的有意差を考慮）
   2. 勝者キャンペーンに予算を重点再配分
   3. 異常検知でKPI急変を監視しアラート
+
+自動凍結ワークフロー (Sprint 67A):
+  1. AnomalyDetector で Critical アラートを検知
+  2. Critical 対象キャンペーンの予算配分を 0 に凍結
+  3. FreezeDecision / FrozenBudgetPlan で結果を返す
 
 オブジェクト:
   OrchestrationConfig   : ワークフロー設定 (勝者ボーナス倍率 / 有意差要求)
   WinnerDecision        : A/B 勝者判定結果
   ReallocationPlan      : 予算再配分プラン
+  FreezeDecision        : 凍結判定結果 (Sprint 67A)
+  FrozenBudgetPlan      : 凍結後の予算プラン (Sprint 67A)
   CampaignOrchestrator  : 統合ワークフローエンジン
 
 設計方針:
@@ -32,6 +39,9 @@ from open_mythos.skills.budget_optimizer import (
     BudgetOptimizer, AllocationStrategy, OptimizationResult, BudgetConstraint,
 )
 from open_mythos.skills.campaign_analytics import CampaignAnalyticsStore
+from open_mythos.skills.anomaly_detector import (
+    AnomalyDetector, AlertSeverity, AlertStore,
+)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -87,6 +97,54 @@ class ReallocationPlan:
         }
 
 
+@dataclass
+class FreezeDecision:
+    """
+    異常検知 → 自動予算凍結の判定結果 (Sprint 67A)
+
+    freeze_campaign_ids : Critical アラートが検知されたキャンペーン ID リスト
+    frozen              : 少なくとも 1 件を凍結した場合 True
+    alert_count         : 検知された Critical アラート総数
+    reason              : 判定理由
+    """
+    freeze_campaign_ids: List[str]
+    frozen:              bool
+    alert_count:         int
+    reason:              str
+    timestamp:           float = field(default_factory=time.time)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "freeze_campaign_ids": self.freeze_campaign_ids,
+            "frozen":              self.frozen,
+            "alert_count":         self.alert_count,
+            "reason":              self.reason,
+            "timestamp":           self.timestamp,
+        }
+
+
+@dataclass
+class FrozenBudgetPlan:
+    """
+    凍結後の予算配分プラン (Sprint 67A)
+
+    凍結対象キャンペーンは amount=0 / share=0 に強制。
+    残りの総予算は非凍結キャンペーンへ再分配する。
+    """
+    freeze_decision:  FreezeDecision
+    optimization:     OptimizationResult
+    remaining_budget: float
+    timestamp:        float = field(default_factory=time.time)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "freeze_decision":  self.freeze_decision.to_dict(),
+            "optimization":     self.optimization.to_dict(),
+            "remaining_budget": self.remaining_budget,
+            "timestamp":        self.timestamp,
+        }
+
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # CampaignOrchestrator
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -112,11 +170,13 @@ class CampaignOrchestrator:
         config: Optional[OrchestrationConfig] = None,
         ab_analyzer: Optional[ABTestAnalyzer] = None,
         optimizer: Optional[BudgetOptimizer] = None,
+        anomaly_detector: Optional[AnomalyDetector] = None,
     ) -> None:
         self.config = config or OrchestrationConfig()
         self.analytics_store = analytics_store or CampaignAnalyticsStore()
         self.ab_analyzer = ab_analyzer or ABTestAnalyzer()
         self.optimizer = optimizer or BudgetOptimizer(store=self.analytics_store)
+        self.anomaly_detector = anomaly_detector or AnomalyDetector()
 
     # ---- 勝者判定 ----
 
@@ -209,3 +269,84 @@ class CampaignOrchestrator:
         """勝者判定 → 再配分を一括実行し dict で返す（API 向け）"""
         plan = self.reallocate(test, total_budget, campaign_ids, winner_campaign_id)
         return plan.to_dict()
+
+    # ---- Sprint 67A: 異常検知 → 自動予算停止 ----
+
+    def freeze_if_critical(
+        self,
+        campaign_ids: List[str],
+        total_budget: float,
+        alert_store: Optional[AlertStore] = None,
+        metric_list: Optional[List[str]] = None,
+    ) -> FrozenBudgetPlan:
+        """
+        Critical アラートが検知されたキャンペーンの予算を 0 に凍結し、
+        残予算を非凍結キャンペーンへ再配分する。
+
+        Args:
+            campaign_ids  : 対象キャンペーン ID リスト
+            total_budget  : 総予算
+            alert_store   : 既存 AlertStore（指定時はそのアラートを参照）。
+                            None のときは analytics_store から再検知する。
+            metric_list   : 検知対象指標（None = デフォルト全指標）
+
+        Returns:
+            FrozenBudgetPlan
+        """
+        # 1) Critical アラート対象キャンペーンを特定
+        if alert_store is not None:
+            critical = alert_store.list_by_severity(AlertSeverity.CRITICAL)
+            freeze_ids = list({a.campaign_id for a in critical if a.campaign_id in campaign_ids})
+            alert_count = len(critical)
+        else:
+            freeze_ids = []
+            alert_count = 0
+            for cid in campaign_ids:
+                metrics = self.analytics_store.get(cid)
+                if metrics is None:
+                    continue
+                alerts = self.anomaly_detector.detect_multi(metrics, metric_list)
+                critical_here = [a for a in alerts if a.severity == AlertSeverity.CRITICAL]
+                alert_count += len(critical_here)
+                if critical_here:
+                    freeze_ids.append(cid)
+
+        frozen = bool(freeze_ids)
+        if frozen:
+            reason = f"Critical アラート検知: {', '.join(freeze_ids)} を凍結"
+        else:
+            reason = "Critical アラートなし — 凍結対象なし"
+
+        freeze_decision = FreezeDecision(
+            freeze_campaign_ids=freeze_ids,
+            frozen=frozen,
+            alert_count=alert_count,
+            reason=reason,
+        )
+
+        # 2) 非凍結キャンペーンのみで予算最適化
+        active_ids = [c for c in campaign_ids if c not in freeze_ids]
+        remaining = total_budget  # 凍結分も含む総額をそのまま残余とする
+
+        if active_ids:
+            optimization = self.optimizer.optimize(
+                total_budget=remaining,
+                campaign_ids=active_ids,
+                strategy=self.config.strategy,
+            )
+        else:
+            # 全キャンペーンが凍結 → 空の最適化結果
+            from open_mythos.skills.budget_optimizer import OptimizationResult
+            optimization = OptimizationResult(
+                strategy=self.config.strategy,
+                total_budget=remaining,
+                allocations=[],
+                allocated_total=0.0,
+                unallocated=remaining,
+            )
+
+        return FrozenBudgetPlan(
+            freeze_decision=freeze_decision,
+            optimization=optimization,
+            remaining_budget=remaining,
+        )

@@ -7202,3 +7202,190 @@ def anomaly_alerts():
 @app.get("/v1/anomaly/alerts/report/md", tags=["anomaly"], summary="アラートレポート Markdown — Sprint 66")
 def anomaly_alerts_md():
     return Response(content=_anomaly_report.markdown(), media_type="text/markdown")
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Sprint 67A — 異常検知 → 自動予算停止
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+from open_mythos.skills.campaign_orchestrator import (  # noqa: E402
+    FreezeDecision as _FreezeDecision,
+    FrozenBudgetPlan as _FrozenBudgetPlan,
+)
+
+
+class _FreezeReq(BaseModel):
+    campaign_ids:  list
+    total_budget:  float
+    use_alert_store: bool = True   # True: 既存 _alert_store を参照, False: 再検知
+
+
+@app.post("/v1/orchestrator/freeze", tags=["orchestrator"], summary="Critical アラートで予算を自動凍結 — Sprint 67")
+def orchestrator_freeze(req: _FreezeReq):
+    """
+    _alert_store に蓄積された Critical アラートを参照して
+    該当キャンペーンの予算を 0 に凍結し、残予算を再配分する。
+    use_alert_store=False のときは analytics_store から再検知する。
+    """
+    alert_store_arg = _alert_store if req.use_alert_store else None
+    plan = _orchestrator.freeze_if_critical(
+        campaign_ids=req.campaign_ids,
+        total_budget=req.total_budget,
+        alert_store=alert_store_arg,
+    )
+    return plan.to_dict()
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Sprint 67B — Fusion 結果キャッシュ
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+from open_mythos.skills.fusion_cache import (  # noqa: E402
+    FusionCache as _FusionCache,
+    CachedFusionEngine as _CachedFusionEngine,
+)
+
+_fusion_cache        = _FusionCache(ttl=300.0, max_size=128)
+_cached_fusion_engine = _CachedFusionEngine(_fusion_engine, cache=_fusion_cache)
+
+
+class _CachedFusionReq(BaseModel):
+    question:  str
+    system:    Optional[str] = None
+    candidates: list = []
+    judge_provider:  Optional[str] = None
+    caller_provider: Optional[str] = None
+
+
+@app.post("/v1/fusion/cached", tags=["fusion"], summary="Fusion キャッシュ付き実行 — Sprint 67")
+def fusion_cached_run(req: _CachedFusionReq):
+    """
+    同一 question+system の 2 回目以降はキャッシュから即返す。
+    candidates 指定があるときはキャッシュを使わず毎回生成する（異なる設定のため）。
+    """
+    if req.candidates:
+        # カスタム候補が指定された場合はキャッシュ対象外
+        specs = [
+            _CandidateSpec(
+                label=c.get("label", f"candidate-{i}"),
+                preferred_provider=c.get("preferred_provider"),
+                temperature=float(c.get("temperature", 0.7)),
+                max_tokens=int(c.get("max_tokens", 512)),
+            )
+            for i, c in enumerate(req.candidates)
+        ]
+        config = _FusionConfig(
+            candidates=specs,
+            judge_provider=req.judge_provider,
+            caller_provider=req.caller_provider,
+        )
+        engine = _FusionEngine(config=config, router=_fusion_engine._router)
+        result = engine.run(req.question, system=req.system)
+    else:
+        result = _cached_fusion_engine.run(req.question, system=req.system)
+
+    return result.to_dict()
+
+
+@app.get("/v1/fusion/cache/stats", tags=["fusion"], summary="Fusion キャッシュ統計 — Sprint 67")
+def fusion_cache_stats():
+    return _fusion_cache.stats()
+
+
+@app.delete("/v1/fusion/cache/clear", tags=["fusion"], summary="Fusion キャッシュクリア — Sprint 67")
+def fusion_cache_clear():
+    n = _fusion_cache.clear()
+    return {"cleared": n}
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Sprint 67C — 広告運用 統合ダッシュボード API
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+from open_mythos.skills.campaign_analytics import KpiCalculator as _KpiCalculator  # noqa: E402
+
+
+@app.get("/v1/dashboard/summary", tags=["dashboard"], summary="広告運用サマリー — Sprint 67")
+def dashboard_summary():
+    """
+    KPI・アラート・A/B テストを横断した統合サマリーを 1 エンドポイントで返す。
+
+    レスポンス構造:
+      campaigns     : キャンペーン一覧 (ID・KPI 主要指標)
+      alert_summary : 異常検知サマリー (件数・重大度別)
+      abtest_summary: A/B テスト一覧 (ID・状態)
+    """
+    # --- キャンペーン KPI ---
+    calc = _KpiCalculator()
+    campaign_summaries = []
+    for cid, metrics in _analytics_store._metrics.items():
+        kpis = calc.compute(metrics)
+        campaign_summaries.append({
+            "campaign_id": cid,
+            "impressions": sum(p.impressions for p in metrics.points),
+            "clicks":      sum(p.clicks for p in metrics.points),
+            "spend":       round(sum(p.spend for p in metrics.points), 4),
+            "revenue":     round(sum(p.revenue for p in metrics.points), 4),
+            "ctr":         round(kpis.ctr, 4),
+            "roas":        round(kpis.roas, 4),
+        })
+
+    # --- アラートサマリー ---
+    alert_summary = _anomaly_report.summary_json()
+    # alerts 全件リストは重いので件数のみ
+    alert_summary_light = {k: v for k, v in alert_summary.items() if k != "alerts"}
+    alert_summary_light["critical_ids"] = list({
+        a["campaign_id"] for a in alert_summary.get("alerts", [])
+        if a["severity"] == "critical"
+    })
+
+    # --- A/B テストサマリー ---
+    abtest_list = []
+    for tid, test in _abtest_store._tests.items():
+        abtest_list.append({
+            "id":     test.id,
+            "name":   test.name,
+            "status": test.status.value,
+            "variant_count": len(test.variants),
+        })
+
+    return {
+        "campaigns":      campaign_summaries,
+        "alert_summary":  alert_summary_light,
+        "abtest_summary": abtest_list,
+    }
+
+
+@app.get("/v1/dashboard/campaigns", tags=["dashboard"], summary="キャンペーン一覧 + KPI — Sprint 67")
+def dashboard_campaigns():
+    """全キャンペーンの KPI を一覧で返す。"""
+    calc = _KpiCalculator()
+    result = []
+    for cid, metrics in _analytics_store._metrics.items():
+        kpis = calc.compute(metrics)
+        result.append({
+            "campaign_id":  cid,
+            "data_points":  len(metrics.points),
+            "impressions":  sum(p.impressions for p in metrics.points),
+            "clicks":       sum(p.clicks for p in metrics.points),
+            "conversions":  sum(p.conversions for p in metrics.points),
+            "spend":        round(sum(p.spend for p in metrics.points), 4),
+            "revenue":      round(sum(p.revenue for p in metrics.points), 4),
+            "ctr":          round(kpis.ctr, 4),
+            "cvr":          round(kpis.cvr, 4),
+            "cpc":          round(kpis.cpc, 4),
+            "roas":         round(kpis.roas, 4),
+            "roi":          round(kpis.roi, 4),
+        })
+    return {"campaigns": result, "total": len(result)}
+
+
+@app.get("/v1/dashboard/alerts/critical", tags=["dashboard"], summary="Critical アラート一覧 — Sprint 67")
+def dashboard_critical_alerts():
+    """Critical 深刻度のアラートのみを返す。"""
+    from open_mythos.skills.anomaly_detector import AlertSeverity as _AS
+    critical = _alert_store.list_by_severity(_AS.CRITICAL)
+    return {
+        "critical_count": len(critical),
+        "alerts": [a.to_dict() for a in critical],
+    }
