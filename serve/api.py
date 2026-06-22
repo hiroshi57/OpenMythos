@@ -7572,3 +7572,146 @@ def intel_category_map(req: _CategoryMapReq):
         "matches": [m.to_dict() for m in matches],
         "primary": matches[0].to_dict() if matches else None,
     }
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Sprint 69 — 時系列予測 (TimesFM + マルチモデル)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+from open_mythos.skills.time_series import (  # noqa: E402
+    TimesFMForecasterFactory as _TSFactory,
+    CampaignForecaster       as _CampaignForecaster,
+    ForecastStore            as _ForecastStore,
+    ForecastReportEngine     as _ForecastReportEngine,
+)
+
+# デフォルトは LinearTrend (起動コスト 0)。
+# TimesFM を使いたい場合は /v1/forecast/load でモデルをロードする。
+_ts_forecaster       = _TSFactory.rule_based()
+_ts_campaign_fc      = _CampaignForecaster(_ts_forecaster, _analytics_store)
+_forecast_store      = _ForecastStore()
+_forecast_report     = _ForecastReportEngine(_forecast_store)
+
+
+class _ForecastReq(BaseModel):
+    metric:  str   = "clicks"
+    horizon: int   = 7
+    model:   str   = "linear_trend"   # "linear_trend" | "timesfm" | "mock"
+
+
+class _BatchForecastReq(BaseModel):
+    campaign_ids: list
+    metric:  str = "clicks"
+    horizon: int = 7
+    model:   str = "linear_trend"
+
+
+def _get_forecaster(model_name: str):
+    """モデル名からフォーキャスターを返す"""
+    if model_name == "timesfm":
+        return _TSFactory.from_pretrained()
+    elif model_name == "mock":
+        return _TSFactory.from_mock()
+    else:
+        return _TSFactory.rule_based()
+
+
+# NOTE: 固定パス (/batch, /models) を先に定義し、/{campaign_id} に捕捉されないようにする
+
+@app.get(
+    "/v1/forecast/models",
+    tags=["forecast"],
+    summary="利用可能モデル一覧 — Sprint 69",
+)
+def forecast_models():
+    """利用可能な予測モデルの一覧を返す。"""
+    return {"models": _TSFactory.available_models()}
+
+
+@app.post(
+    "/v1/forecast/batch",
+    tags=["forecast"],
+    summary="バッチ予測 — Sprint 69",
+)
+def forecast_batch(req: _BatchForecastReq):
+    """複数キャンペーンを一括予測する。"""
+    fc = _CampaignForecaster(_get_forecaster(req.model), _analytics_store)
+    results = fc.forecast_batch(req.campaign_ids, metric=req.metric, horizon=req.horizon)
+    for r in results.values():
+        _forecast_store.save(r)
+    return {
+        "metric":    req.metric,
+        "horizon":   req.horizon,
+        "forecasts": {cid: r.to_dict() for cid, r in results.items()},
+    }
+
+
+@app.post(
+    "/v1/forecast/{campaign_id}",
+    tags=["forecast"],
+    summary="キャンペーン KPI 予測 — Sprint 69",
+)
+def forecast_campaign(campaign_id: str, req: _ForecastReq):
+    """
+    指定キャンペーンの KPI 指標を予測する。
+
+    model:
+      - linear_trend : 線形トレンド外挿 (高速・外部依存なし)
+      - timesfm      : Google TimesFM 2.5 (初回はモデルロードが発生)
+      - mock         : テスト用モック
+    """
+    fc = _CampaignForecaster(_get_forecaster(req.model), _analytics_store)
+    try:
+        result = fc.forecast_metric(campaign_id, metric=req.metric, horizon=req.horizon)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    _forecast_store.save(result)
+    return result.to_dict()
+
+
+@app.post(
+    "/v1/forecast/{campaign_id}/all",
+    tags=["forecast"],
+    summary="全指標一括予測 — Sprint 69",
+)
+def forecast_campaign_all(campaign_id: str, req: _ForecastReq):
+    """指定キャンペーンの全 KPI 指標を一括予測する。"""
+    fc = _CampaignForecaster(_get_forecaster(req.model), _analytics_store)
+    try:
+        results = fc.forecast_all_metrics(campaign_id, horizon=req.horizon)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    for r in results.values():
+        _forecast_store.save(r)
+    return {
+        "campaign_id": campaign_id,
+        "forecasts": {m: r.to_dict() for m, r in results.items()},
+    }
+
+
+@app.get(
+    "/v1/forecast/{campaign_id}/history",
+    tags=["forecast"],
+    summary="予測履歴 — Sprint 69",
+)
+def forecast_history(campaign_id: str, metric: Optional[str] = None):
+    """キャンペーンの予測履歴を返す。"""
+    if metric:
+        latest = _forecast_store.latest(campaign_id, metric)
+        if latest is None:
+            raise HTTPException(404, f"No forecast found for {campaign_id}/{metric}")
+        return latest.to_dict()
+    results = _forecast_store.list_by_campaign(campaign_id)
+    return {"campaign_id": campaign_id, "forecasts": [r.to_dict() for r in results]}
+
+
+@app.get(
+    "/v1/forecast/report/md/{forecast_id}",
+    tags=["forecast"],
+    summary="予測レポート Markdown — Sprint 69",
+)
+def forecast_report_md(forecast_id: str):
+    result = _forecast_store.get(forecast_id)
+    if result is None:
+        raise HTTPException(404, f"Forecast not found: {forecast_id}")
+    return Response(content=_forecast_report.markdown(result), media_type="text/markdown")
