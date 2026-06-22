@@ -7389,3 +7389,186 @@ def dashboard_critical_alerts():
         "critical_count": len(critical),
         "alerts": [a.to_dict() for a in critical],
     }
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Sprint 68 — セキュリティインテリジェンス + カテゴリ分類
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+from open_mythos.skills.security_intel import (  # noqa: E402
+    ThreatSeverity as _ThreatSeverity,
+    ThreatSource   as _ThreatSource,
+    ThreatCategory as _ThreatCategory,
+    SecurityThreat as _SecurityThreat,
+    SecurityIntelStore  as _SecurityIntelStore,
+    ThreatEnricher      as _ThreatEnricher,
+    ThreatCollector     as _ThreatCollector,
+    SecurityIntelDashboard as _SecurityIntelDashboard,
+    IntelReportEngine   as _IntelReportEngine,
+)
+from open_mythos.skills.security import ThreatCategoryMapper as _ThreatCategoryMapper  # noqa: E402
+
+# シングルトン
+_intel_store   = _SecurityIntelStore()
+_intel_enricher = _ThreatEnricher()   # LLM なしなら rule-based
+_intel_collector = _ThreatCollector(store=_intel_store, enricher=_intel_enricher)
+_intel_dashboard = _SecurityIntelDashboard(_intel_store)
+_intel_report    = _IntelReportEngine(_intel_store)
+_threat_mapper   = _ThreatCategoryMapper()
+
+
+# ---- リクエストモデル ----
+
+class _ThreatCreateReq(BaseModel):
+    title:      str
+    summary:    str
+    source:     str = "manual"
+    severity:   str = "medium"
+    category:   str = "general"
+    source_url: Optional[str] = None
+    tags:       list = []
+    is_featured: bool = False
+
+
+class _CollectReq(BaseModel):
+    sources: list = []   # 空 = 全ソース。例: ["nvd", "cisa", "ai", "manual"]
+    enrich:  bool = False
+
+
+class _CategoryMapReq(BaseModel):
+    title:   str
+    summary: str = ""
+
+
+# ---- エンドポイント ----
+
+@app.get("/v1/intel/threats", tags=["intel"], summary="脅威情報一覧 — Sprint 68")
+def intel_list_threats(
+    severity: Optional[str] = None,
+    source:   Optional[str] = None,
+    category: Optional[str] = None,
+    featured: Optional[bool] = None,
+    limit:    int = 50,
+):
+    """脅威情報をフィルタ付きで一覧取得する。"""
+    if featured:
+        threats = _intel_store.list_featured()
+    elif severity:
+        try:
+            sev = _ThreatSeverity(severity)
+            threats = _intel_store.list_by_severity(sev)
+        except ValueError:
+            raise HTTPException(400, f"Invalid severity: {severity}")
+    elif source:
+        try:
+            src = _ThreatSource(source)
+            threats = _intel_store.list_by_source(src)
+        except ValueError:
+            raise HTTPException(400, f"Invalid source: {source}")
+    elif category:
+        try:
+            cat = _ThreatCategory(category)
+            threats = _intel_store.list_by_category(cat)
+        except ValueError:
+            raise HTTPException(400, f"Invalid category: {category}")
+    else:
+        threats = _intel_store.list_all(limit=limit)
+    return {"threats": [t.to_dict() for t in threats[:limit]], "total": len(threats)}
+
+
+@app.get("/v1/intel/threats/{threat_id}", tags=["intel"], summary="脅威詳細 — Sprint 68")
+def intel_get_threat(threat_id: str):
+    t = _intel_store.get(threat_id)
+    if t is None:
+        raise HTTPException(404, f"Threat not found: {threat_id}")
+    return t.to_dict()
+
+
+@app.post("/v1/intel/threats", tags=["intel"], summary="脅威情報手動登録 — Sprint 68")
+def intel_create_threat(req: _ThreatCreateReq):
+    """手動で脅威情報を登録し、診断カテゴリを自動付与する。"""
+    try:
+        source   = _ThreatSource(req.source)
+        severity = _ThreatSeverity(req.severity)
+        category = _ThreatCategory(req.category)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    import uuid as _uuid
+    threat = _SecurityThreat(
+        id=str(_uuid.uuid4()),
+        title=req.title,
+        summary=req.summary,
+        source=source,
+        severity=severity,
+        category=category,
+        source_url=req.source_url,
+        tags=req.tags,
+        is_featured=req.is_featured,
+    )
+    # 診断カテゴリ自動付与
+    matches = _threat_mapper.map(req.title, req.summary)
+    threat.diagnosis_categories = [m.category.value for m in matches]
+
+    _intel_store.add(threat)
+    return threat.to_dict()
+
+
+@app.post("/v1/intel/collect", tags=["intel"], summary="情報収集トリガー — Sprint 68")
+def intel_collect(req: _CollectReq):
+    """
+    指定ソースから脅威情報を収集して登録する。
+    sources=[] のときは全ソース (nvd/cisa/ai/manual) を収集する。
+    enrich=True のときは AI 富化も実行する（LLM API キーが必要）。
+    """
+    collector = _ThreatCollector(
+        store=_intel_store,
+        enricher=_intel_enricher,
+        enrich_on_collect=req.enrich,
+    )
+    sources = req.sources or ["nvd", "cisa", "ai", "manual"]
+    collected: Dict[str, int] = {}
+    if "nvd"    in sources: collected["nvd"]    = len(collector.collect_nvd())
+    if "cisa"   in sources: collected["cisa"]   = len(collector.collect_cisa())
+    if "ai"     in sources: collected["ai"]     = len(collector.collect_ai_feed())
+    if "manual" in sources: collected["manual"] = len(collector.collect_manual())
+    return {"collected": collected, "total": sum(collected.values())}
+
+
+@app.post("/v1/intel/threats/{threat_id}/enrich", tags=["intel"], summary="個別AI富化 — Sprint 68")
+def intel_enrich_threat(threat_id: str):
+    """指定した脅威を AI で富化する（LLM 不在時は rule-based）。"""
+    t = _intel_store.get(threat_id)
+    if t is None:
+        raise HTTPException(404, f"Threat not found: {threat_id}")
+    t.enrichment = _intel_enricher.enrich(t)
+    return t.to_dict()
+
+
+@app.get("/v1/intel/summary", tags=["intel"], summary="インテリジェンスサマリー — Sprint 68")
+def intel_summary():
+    return _intel_dashboard.summary()
+
+
+@app.get("/v1/intel/feed/featured", tags=["intel"], summary="注目脅威フィード — Sprint 68")
+def intel_featured_feed(limit: int = 10):
+    return {"feed": _intel_dashboard.featured_feed(limit=limit)}
+
+
+@app.get("/v1/intel/report/md", tags=["intel"], summary="インテルレポート Markdown — Sprint 68")
+def intel_report_md(limit: int = 20):
+    return Response(content=_intel_report.markdown(limit=limit), media_type="text/markdown")
+
+
+@app.post("/v1/intel/category-map", tags=["intel"], summary="脅威→診断カテゴリ判定 — Sprint 68")
+def intel_category_map(req: _CategoryMapReq):
+    """
+    タイトル・サマリーから診断カテゴリ(A〜F)を判定する。
+    (security-app の threat-category-map.ts 相当)
+    """
+    matches = _threat_mapper.map(req.title, req.summary)
+    return {
+        "title":   req.title,
+        "matches": [m.to_dict() for m in matches],
+        "primary": matches[0].to_dict() if matches else None,
+    }

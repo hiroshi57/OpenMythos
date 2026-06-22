@@ -1,17 +1,24 @@
 """
-Sprint 53 — セキュリティ統合
+Sprint 53 / 68A — セキュリティ統合 + 診断カテゴリ A〜F 分類
 
-Hermes Skills: web-pentest / oss-forensics
-ref: skills/security/*-SKILL.md
+Sprint 53: Web ペネトレーションテスト / OSS フォレンジクス
+Sprint 68A: DiagnosisCategory A〜F マッピング (security-app/threat-category-map.ts 移植)
 
-セキュリティテスト・OSS 検査ツールを OpenMythos に統合する。
+診断カテゴリ:
+  A: 技術的対策     (パッチ・暗号化・認証)
+  B: 人・プロセス   (フィッシング・教育・サプライチェーン)
+  C: 法令・規定     (個人情報・コンプライアンス・GDPR)
+  D: インシデント対応 (侵害・ランサム・フォレンジック)
+  E: 経営・ガバナンス (経営リスク・ガバナンス体制)
+  F: AI 利用リスク  (プロンプトインジェクション・AIモデルリスク)
 """
 from __future__ import annotations
 
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from enum import Enum
+from typing import Any, Dict, List, Optional, Tuple
 
 
 # ---------------------------------------------------------------------------
@@ -333,3 +340,153 @@ class OSSForensics:
 
 
 import os  # noqa: E402 (moved to end to avoid circular)
+
+
+# ---------------------------------------------------------------------------
+# Sprint 68A — 診断カテゴリ A〜F + 脅威カテゴリマッパー
+# (security-app/frontend/src/lib/security/threat-category-map.ts を Python 移植)
+# ---------------------------------------------------------------------------
+
+class DiagnosisCategory(str, Enum):
+    """セキュリティ診断カテゴリ（security-app の A〜F 分類に準拠）"""
+    A = "A"   # 技術的対策
+    B = "B"   # 人・プロセス
+    C = "C"   # 法令・規定
+    D = "D"   # インシデント対応
+    E = "E"   # 経営・ガバナンス
+    F = "F"   # AI 利用リスク
+
+
+CATEGORY_META: Dict[str, Dict[str, str]] = {
+    "A": {"label": "技術的対策",      "description": "ツール・システムによる防御"},
+    "B": {"label": "人・プロセス",    "description": "人・プロセスによる対応"},
+    "C": {"label": "法令・規定",      "description": "規定・法令への対応"},
+    "D": {"label": "インシデント対応", "description": "インシデント対応力"},
+    "E": {"label": "経営・ガバナンス","description": "経営レベルの統治体制"},
+    "F": {"label": "AI利用リスク",    "description": "生成AI・AIツールのリスク管理"},
+}
+
+
+@dataclass
+class CategoryMatch:
+    """脅威に対する診断カテゴリの判定結果"""
+    category:    DiagnosisCategory
+    label:       str
+    description: str
+    reason:      str
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "category":    self.category.value,
+            "label":       self.label,
+            "description": self.description,
+            "reason":      self.reason,
+        }
+
+
+# カテゴリ判定ルール (正規表現パターン + 理由)
+_CATEGORY_RULES: List[Tuple[DiagnosisCategory, List[re.Pattern], str]] = [
+    (
+        DiagnosisCategory.A,
+        [
+            re.compile(r"patch|update|vulnerability|cve|exploit|rce|sql.?inject|xss|csrf|buffer.?overflow", re.I),
+            re.compile(r"パッチ|更新|脆弱性|エクスプロイト|リモートコード|SQLインジェクション|クロスサイト", re.I),
+            re.compile(r"firewall|vpn|tls|ssl|certificate|encryption|暗号化|ファイアウォール", re.I),
+            re.compile(r"authentication|mfa|2fa|password|credential|認証|パスワード|多要素", re.I),
+            re.compile(r"malware|ransomware|trojan|virus|マルウェア|ランサムウェア|トロイ", re.I),
+        ],
+        "技術的な脆弱性・システム設定の対策が必要な脅威です",
+    ),
+    (
+        DiagnosisCategory.B,
+        [
+            re.compile(r"phishing|social.?engineer|spear.?phishing|フィッシング|ソーシャルエンジニアリング", re.I),
+            re.compile(r"insider.?threat|insider|内部不正|内部脅威", re.I),
+            re.compile(r"training|awareness|education|訓練|教育|意識向上", re.I),
+            re.compile(r"supply.?chain|third.?party|vendor|サプライチェーン|サードパーティ|ベンダー", re.I),
+        ],
+        "人・プロセス面での対策強化（セキュリティ教育・手順整備）が求められます",
+    ),
+    (
+        DiagnosisCategory.C,
+        [
+            re.compile(r"gdpr|privacy|personal.?data|data.?protection|個人情報|プライバシー|保護法", re.I),
+            re.compile(r"compliance|regulation|法令|規制|コンプライアンス", re.I),
+            re.compile(r"pci.?dss|hipaa|sox|iso.?27001|nist|規格", re.I),
+            re.compile(r"data.?breach|information.?leak|data.?leakage|情報漏洩|漏えい", re.I),
+        ],
+        "法令・規制への対応・プライバシー保護の観点で診断が必要です",
+    ),
+    (
+        DiagnosisCategory.D,
+        [
+            re.compile(r"incident|breach|compromise|intrusion|インシデント|侵害|不正アクセス", re.I),
+            re.compile(r"ransomware|data.?exfil|lateral.?movement|横展開", re.I),
+            re.compile(r"backup|recovery|restore|disaster|バックアップ|復旧|リカバリ", re.I),
+            re.compile(r"ioc|indicator.?of.?compromise|forensic|フォレンジック|ログ分析", re.I),
+        ],
+        "インシデント発生時の検知・対応・復旧体制の整備が必要です",
+    ),
+    (
+        DiagnosisCategory.E,
+        [
+            re.compile(r"governance|board|executive|ciso|ceo|cto|経営|ガバナンス|取締役", re.I),
+            re.compile(r"risk.?management|business.?continuity|bcp|リスク管理|事業継続", re.I),
+            re.compile(r"budget|investment|cost.?of.?breach|予算|投資|経営判断", re.I),
+            re.compile(r"policy|strategy|cybersecurity.?strategy|ポリシー|戦略", re.I),
+        ],
+        "経営レベルでのセキュリティ方針・ガバナンス体制の整備が必要です",
+    ),
+    (
+        DiagnosisCategory.F,
+        [
+            re.compile(r"prompt.?inject|jailbreak|llm|generative.?ai|chatgpt|copilot|プロンプトインジェクション|生成AI", re.I),
+            re.compile(r"ai.?risk|model.?risk|hallucination|幻覚|AIリスク|AIモデル", re.I),
+            re.compile(r"deepfake|synthetic.?media|disinformation|ディープフェイク|偽情報", re.I),
+            re.compile(r"data.?poison|training.?data|model.?theft|データポイズニング|モデル盗用", re.I),
+        ],
+        "生成AI・AIツール利用に伴うリスク管理・ガバナンスが必要です",
+    ),
+]
+
+
+class ThreatCategoryMapper:
+    """
+    脅威のタイトル・サマリーから診断カテゴリ(A〜F)を判定する。
+    (security-app の threat-category-map.ts を Python 移植)
+
+    Usage:
+        mapper = ThreatCategoryMapper()
+        matches = mapper.map("Ransomware attack via phishing email", "...")
+        # → [CategoryMatch(D), CategoryMatch(B), ...]
+    """
+
+    def map(
+        self,
+        title: str,
+        summary: str = "",
+        max_categories: int = 3,
+    ) -> List[CategoryMatch]:
+        """
+        title + summary を正規表現で解析し、該当するカテゴリを返す。
+        max_categories: 最大返却数（スコア順）
+        """
+        text = f"{title} {summary}"
+        results: List[CategoryMatch] = []
+        for cat, patterns, reason in _CATEGORY_RULES:
+            if any(p.search(text) for p in patterns):
+                meta = CATEGORY_META[cat.value]
+                results.append(CategoryMatch(
+                    category=cat,
+                    label=meta["label"],
+                    description=meta["description"],
+                    reason=reason,
+                ))
+        return results[:max_categories]
+
+    def primary_category(
+        self, title: str, summary: str = ""
+    ) -> Optional[CategoryMatch]:
+        """最も優先度の高い 1 カテゴリのみを返す。"""
+        matches = self.map(title, summary, max_categories=1)
+        return matches[0] if matches else None
