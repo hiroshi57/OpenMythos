@@ -355,6 +355,19 @@
 
 ---
 
+## Sprint 71 候補テーマ — 主要都市地図ビジュアライザ
+
+> 参照: [tokyo-danmenzu.pages.dev](https://tokyo-danmenzu.pages.dev/?view=3d&aux=1&lbl=1&lang=ja#12/35.67/139.75/0/50)（東京地下断面図・3D地質断面ビューア / @chizutodesign）
+> コンセプト: 東京・大阪・名古屋・横浜・福岡の主要都市地下構造・鉄道路線断面を GeoJSON + SVG/3D で可視化
+
+| Option | テーマ | コアモジュール | 理由 |
+|--------|--------|--------------|------|
+| **A** | **主要都市メトロ断面図データ** | `skills/city_map.py` | 東京・大阪等の地下鉄路線 GeoJSON + 地質層データ (丸ノ内線等を起点) |
+| **B** | **3D 断面図 SVG レンダラー** | `skills/map_renderer.py` | station/layer データから SVG/PNG 断面図を生成 (`/v1/map/cross-section`) |
+| **C** | **都市地図 API (全市横断)** | `serve/api.py` 拡張 | `/v1/map/cities` `/v1/map/{city}/lines` `/v1/map/{city}/{line}/front-view` |
+
+---
+
 ## 技術的知見メモ
 
 - `freqs_cis` は必ず `[:T]` スライス (apply_rope ブロードキャストエラー防止)
