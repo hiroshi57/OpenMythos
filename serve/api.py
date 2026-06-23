@@ -44,6 +44,7 @@ from open_mythos.agents import MythosAgent, OpenMythosLLM
 from serve.auth import RateLimitMiddleware, verify_api_key
 from serve.dashboard import router as _dashboard_router
 from serve.ad_router import router as _ad_router
+from serve.map_router import router as _map_router
 
 try:
     from prometheus_client import (
@@ -200,6 +201,7 @@ app = FastAPI(
         {"name": "grow", "description": "統合オーケストレーター — GrowingAIOrchestrator (P1〜P10 連携)"},
         {"name": "guard", "description": "MistakeGuardMiddleware — 全 API ミス透過チェック"},
         {"name": "hermes", "description": "Layer 2 Ultracode Orchestrator — Plan→Spawn→Parallel→Verify→Report (Sprint 43)"},
+        {"name": "map", "description": "Sprint 71: 主要都市地下断面・路線ビジュアライザ — city_map / map_renderer"},
     ],
 )
 
@@ -214,6 +216,7 @@ app.add_middleware(
 # Sprint 39: ショーケースダッシュボード + Prometheus
 app.include_router(_dashboard_router)
 app.include_router(_ad_router)
+app.include_router(_map_router)
 
 
 @app.get(

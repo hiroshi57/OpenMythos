@@ -4,6 +4,46 @@ All notable changes to OpenMythos are documented here.
 
 ---
 
+## [0.74.0] — 2026-06-23
+
+### Sprint 71: 主要都市地図ビジュアライザ (Metro 地下断面)
+
+> 参照: [tokyo-danmenzu.pages.dev](https://tokyo-danmenzu.pages.dev/) （東京地下断面図・3D地質断面ビューア / @chizutodesign）
+> 政令指定都市＋首都圏主要市の地下鉄路線×地質層の地下断面を GeoJSON + SVG で可視化。
+
+#### `open_mythos/skills/city_map.py` 追加 (候補A)
+- データモデル: `GeoPoint` / `Station` / `GeologyLayer` / `Line` / `City` / `CrossSection` (全て `to_dict()`、City/Line/Station は `from_dict()` も)
+- 対象13都市の同梱サンプル: 東京/横浜/大阪/名古屋/札幌/福岡/神戸/川崎/京都/さいたま/広島/仙台/千葉 (各代表1〜2路線)
+- `SampleCityDataSource` (外部依存ゼロのデフォルト) / `GTFSCityDataSource` (公共交通オープンデータ GTFS zip を `urllib`/`zipfile`/`csv` で取り込み、取得・パース失敗時は自動フォールバック → `generated_by="sample(fallback)"`)
+- `GeologyModel`: 都市別地質プロファイル (沖積層/関東ローム/大阪層群 等) と駅深度をルールベース推定 (GTFS に深度情報が無いため)。地下鉄=地下/モノレール=高架を判別
+- `CrossSectionBuilder` (データ源+地質モデル統合) / `CityMapStore` (インメモリ) / `CityMapFactory` (`from_sample`/`from_gtfs`/`available_cities`)
+
+#### `open_mythos/skills/map_renderer.py` 追加 (候補B)
+- 標準ライブラリのみで SVG 文字列を構築 (外部描画ライブラリ無し)
+- `CrossSectionSvgRenderer`: 地質層を色帯 `<rect>`、駅を `<circle>`+`<text>`、路線を `<polyline>`、地質層凡例を描画
+- `FrontViewSvgRenderer`: 路線を正面から見た駅並び
+- `MapRenderer` (ファサード): `cross_section_svg` / `front_view_svg` / `to_png` (cairosvg lazy import、無ければ None フォールバック)
+
+#### `serve/map_router.py` 追加 (候補C)
+- `GET /v1/map/cities` (13都市一覧) / `GET /v1/map/{city}/lines`
+- `GET /v1/map/{city}/{line}/cross-section` (`?format=svg|json|png`、png は cairosvg 不在時 SVG フォールバック)
+- `GET /v1/map/{city}/{line}/front-view` / `POST /v1/map/cross-section` (gtfs_url 指定可)
+- `GET /map`: ブラウザUI (都市・路線セレクタ + SVG プレビュー)
+
+#### `serve/api.py` 更新
+- `_map_router` を include、`openapi_tags` に `map` 追加
+
+#### `open_mythos/skills/__init__.py` 更新
+- city_map / map_renderer の主要クラスを re-export
+
+#### `pyproject.toml` 更新
+- `[tool.poetry.extras] map = ["cairosvg"]` + `cairosvg>=2.7.0` を optional 依存として追加 (PNG 出力用)
+
+#### テスト: `tests/test_sprint71.py` 追加 — 67 PASS (Section A〜I)
+#### バージョン: v0.74.0
+
+---
+
 ## [0.39.0] — 2026-06-06
 
 ### Sprint 36: 1B スケール・PyPI 公開・Janome 統合・lm-eval・CWV シミュレーター

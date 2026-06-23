@@ -355,16 +355,21 @@
 
 ---
 
-## Sprint 71 候補テーマ — 主要都市地図ビジュアライザ
+## Sprint 71 — 主要都市地図ビジュアライザ（完了 / v0.74.0）
 
 > 参照: [tokyo-danmenzu.pages.dev](https://tokyo-danmenzu.pages.dev/?view=3d&aux=1&lbl=1&lang=ja#12/35.67/139.75/0/50)（東京地下断面図・3D地質断面ビューア / @chizutodesign）
-> コンセプト: 東京・大阪・名古屋・横浜・福岡の主要都市地下構造・鉄道路線断面を GeoJSON + SVG/3D で可視化
+> 政令指定都市＋首都圏主要市（13都市）の地下鉄路線×地質層の地下断面を GeoJSON + SVG で可視化。A+B+C フル実装。
 
-| Option | テーマ | コアモジュール | 理由 |
-|--------|--------|--------------|------|
-| **A** | **主要都市メトロ断面図データ** | `skills/city_map.py` | 東京・大阪等の地下鉄路線 GeoJSON + 地質層データ (丸ノ内線等を起点) |
-| **B** | **3D 断面図 SVG レンダラー** | `skills/map_renderer.py` | station/layer データから SVG/PNG 断面図を生成 (`/v1/map/cross-section`) |
-| **C** | **都市地図 API (全市横断)** | `serve/api.py` 拡張 | `/v1/map/cities` `/v1/map/{city}/lines` `/v1/map/{city}/{line}/front-view` |
+| task-id | テーマ | コアモジュール | 状態 |
+|---------|--------|--------------|------|
+| 71.A | 主要都市メトロ断面図データ（13都市・GTFS連携+フォールバック+地質モデル） | `open_mythos/skills/city_map.py` | cc:完了 |
+| 71.B | 断面図 SVG レンダラー（地質層帯/駅/路線/凡例・PNGはcairosvg任意） | `open_mythos/skills/map_renderer.py` | cc:完了 |
+| 71.C | 都市地図 API（`/v1/map/cities` `/{city}/lines` `/{city}/{line}/cross-section` `/front-view` `POST /cross-section` `/map` UI） | `serve/map_router.py` + `serve/api.py` | cc:完了 |
+
+対象13都市: 東京/横浜/大阪/名古屋/札幌/福岡/神戸/川崎/京都/さいたま/広島/仙台/千葉。
+GTFS には地下深度・地質情報が無いため `GeologyModel` がルールベース推定（絶対値は非保証、順序整合のみ）。
+オフライン/テスト環境では `SampleCityDataSource` へ自動フォールバック（`generated_by="sample(fallback)"`）。
+テスト: `tests/test_sprint71.py` 67 PASS。
 
 ---
 
