@@ -7715,3 +7715,220 @@ def forecast_report_md(forecast_id: str):
     if result is None:
         raise HTTPException(404, f"Forecast not found: {forecast_id}")
     return Response(content=_forecast_report.markdown(result), media_type="text/markdown")
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Sprint 70A — 予測アラート (ForecastAlert)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+from open_mythos.skills.forecast_alert import (  # noqa: E402
+    AlertThreshold     as _AlertThreshold70,
+    ForecastAlertRule  as _ForecastAlertRule,
+    ForecastAlertRuleStore as _ForecastAlertRuleStore,
+    ForecastAlertEngine    as _ForecastAlertEngine,
+)
+
+_fa_rule_store  = _ForecastAlertRuleStore()
+_fa_engine      = _ForecastAlertEngine(forecast_store=_forecast_store, rule_store=_fa_rule_store)
+
+
+class _ForecastAlertRuleReq(BaseModel):
+    campaign_id: str
+    metric:      str   = "clicks"
+    upper_limit: Optional[float] = None
+    lower_limit: Optional[float] = None
+    severity:    str   = "warning"
+
+
+@app.get(
+    "/v1/forecast/alert/rules",
+    tags=["forecast-alert"],
+    summary="予測アラートルール一覧 — Sprint 70A",
+)
+def forecast_alert_rules_list():
+    return {"rules": [r.to_dict() for r in _fa_rule_store.list()]}
+
+
+@app.post(
+    "/v1/forecast/alert/rules",
+    tags=["forecast-alert"],
+    summary="予測アラートルール追加 — Sprint 70A",
+)
+def forecast_alert_rules_add(req: _ForecastAlertRuleReq):
+    rule_id = str(uuid.uuid4())[:8]
+    threshold = _AlertThreshold70(
+        metric=req.metric,
+        upper_limit=req.upper_limit,
+        lower_limit=req.lower_limit,
+    )
+    rule = _ForecastAlertRule(
+        id=rule_id, campaign_id=req.campaign_id,
+        threshold=threshold, severity=req.severity,
+    )
+    _fa_rule_store.add(rule)
+    return {"rule_id": rule_id, "rule": rule.to_dict()}
+
+
+@app.delete(
+    "/v1/forecast/alert/rules/{rule_id}",
+    tags=["forecast-alert"],
+    summary="予測アラートルール削除 — Sprint 70A",
+)
+def forecast_alert_rules_delete(rule_id: str):
+    _fa_rule_store.delete(rule_id)
+    return {"deleted": rule_id}
+
+
+@app.get(
+    "/v1/forecast/alert/check/{campaign_id}",
+    tags=["forecast-alert"],
+    summary="予測アラートチェック — Sprint 70A",
+)
+def forecast_alert_check(campaign_id: str):
+    checks = _fa_engine.check_all(campaign_id)
+    return {
+        "campaign_id": campaign_id,
+        "checks": [c.to_dict() for c in checks],
+        "triggered_count": sum(1 for c in checks if c.triggered),
+    }
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Sprint 70B — レポート配信 Webhook (ReportDispatcher)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+from open_mythos.skills.report_dispatcher import (  # noqa: E402
+    WebhookTarget   as _WebhookTarget,
+    WebhookStore    as _WebhookStore70,
+    ReportDispatcher as _ReportDispatcher,
+)
+
+_webhook_store   = _WebhookStore70()
+_report_dispatch = _ReportDispatcher(
+    webhook_store=_webhook_store,
+    analytics_store=_analytics_store,
+)
+
+
+class _WebhookAddReq(BaseModel):
+    name:    str
+    url:     str
+    type:    str  = "generic"
+    enabled: bool = True
+
+
+class _DispatchReq(BaseModel):
+    webhook_id:  str
+    report_type: str = "generic"
+    campaign_id: Optional[str] = None
+
+
+class _DispatchAllReq(BaseModel):
+    report_type: str = "generic"
+    campaign_id: Optional[str] = None
+
+
+@app.get(
+    "/v1/report/webhooks",
+    tags=["report-dispatch"],
+    summary="Webhook 一覧 — Sprint 70B",
+)
+def webhooks_list():
+    return {"webhooks": [wh.to_dict() for wh in _webhook_store.list()]}
+
+
+@app.post(
+    "/v1/report/webhooks",
+    tags=["report-dispatch"],
+    summary="Webhook 追加 — Sprint 70B",
+)
+def webhooks_add(req: _WebhookAddReq):
+    webhook_id = str(uuid.uuid4())[:8]
+    wh = _WebhookTarget(
+        id=webhook_id, name=req.name, url=req.url,
+        type=req.type, enabled=req.enabled,
+    )
+    _webhook_store.add(wh)
+    return {"webhook_id": webhook_id, "webhook": wh.to_dict()}
+
+
+@app.delete(
+    "/v1/report/webhooks/{webhook_id}",
+    tags=["report-dispatch"],
+    summary="Webhook 削除 — Sprint 70B",
+)
+def webhooks_delete(webhook_id: str):
+    _webhook_store.delete(webhook_id)
+    return {"deleted": webhook_id}
+
+
+@app.post(
+    "/v1/report/dispatch",
+    tags=["report-dispatch"],
+    summary="レポート配信 (mock) — Sprint 70B",
+)
+def report_dispatch(req: _DispatchReq):
+    result = _report_dispatch.dispatch_mock(req.webhook_id, req.report_type, req.campaign_id)
+    return {"result": result.to_dict()}
+
+
+@app.post(
+    "/v1/report/dispatch/all",
+    tags=["report-dispatch"],
+    summary="全 Webhook にレポート配信 (mock) — Sprint 70B",
+)
+def report_dispatch_all(req: _DispatchAllReq):
+    results = _report_dispatch.dispatch_all_mock(req.report_type, req.campaign_id)
+    return {"results": [r.to_dict() for r in results], "count": len(results)}
+
+
+@app.get(
+    "/v1/report/dispatch/history",
+    tags=["report-dispatch"],
+    summary="配信履歴 — Sprint 70B",
+)
+def report_dispatch_history():
+    return {"history": [r.to_dict() for r in _report_dispatch.history()]}
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Sprint 70C — 自然言語クエリ (NLQ)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+from open_mythos.skills.nlq_agent import (  # noqa: E402
+    NLQParser   as _NLQParser,
+    NLQExecutor as _NLQExecutor,
+)
+
+_nlq_parser   = _NLQParser()
+_nlq_executor = _NLQExecutor(
+    analytics_store=_analytics_store,
+    forecast_store=_forecast_store,
+    alert_store=_alert_store,
+)
+
+
+class _NLQReq(BaseModel):
+    text: str
+
+
+@app.post(
+    "/v1/nlq/query",
+    tags=["nlq"],
+    summary="自然言語クエリ実行 — Sprint 70C",
+)
+def nlq_query(req: _NLQReq):
+    if not req.text:
+        return {
+            "intent": "unknown",
+            "query": {"raw": "", "intent": "unknown", "campaign_id": None, "metric": None, "params": {}},
+            "result": {"query": {}, "intent": "unknown", "data": None,
+                       "message": "空のクエリです。", "success": False},
+        }
+    query = _nlq_parser.parse(req.text)
+    result = _nlq_executor.execute(query)
+    return {
+        "intent": query.intent.value,
+        "query":  query.to_dict(),
+        "result": result.to_dict(),
+    }
