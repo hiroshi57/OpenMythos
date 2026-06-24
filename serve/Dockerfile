@@ -36,15 +36,14 @@ RUN uv pip install --system torch --index-url https://download.pytorch.org/whl/c
         pydantic \
         starlette
 
-# Install the package itself (non-editable; poetry-core needed for build backend)
-RUN uv pip install --system poetry-core && \
-    uv pip install --system --no-build-isolation .
+# Package is already copied to /app — set PYTHONPATH so it's importable without pip install
 
 # Non-root user for security
 RUN useradd -m -u 1000 mythos && chown -R mythos:mythos /app
 USER mythos
 
 # Runtime environment defaults (override via -e or docker-compose.yml)
+ENV PYTHONPATH=/app
 ENV DEVICE=cpu
 ENV DEFAULT_LOOPS=4
 ENV MAX_LOOPS=16

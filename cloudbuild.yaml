@@ -4,6 +4,7 @@ steps:
     args:
       - 'clone'
       - '--depth=1'
+      - '--branch=feature/sprint75-env-transfer-dashboard'
       - 'https://github.com/hiroshi57/OpenMythos'
       - '/workspace/src'
 
