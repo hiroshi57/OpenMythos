@@ -8362,3 +8362,154 @@ def map_compare_report(cities: str = "tokyo,osaka,nagoya,yokohama,fukuoka"):
         raise HTTPException(status_code=422, detail="cities is empty")
     report = _map_report_engine.generate_multi_city_report(city_list)
     return report.to_dict()
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Sprint 73A — 地図アニメーション
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+from open_mythos.skills.map_animator import (  # noqa: E402
+    AnimationConfig as _AnimationConfig,
+    MapAnimator as _MapAnimator,
+    SurveyDataset as _SurveyDataset,
+)
+
+_map_animator = _MapAnimator()
+
+
+@app.get(
+    "/v1/map/{city}/animate",
+    tags=["map-animate"],
+    summary="時系列地質断面 SVG アニメーション — Sprint 73A",
+)
+def map_animate(city: str, title: str = ""):
+    from fastapi import HTTPException
+    try:
+        city_enum = _CityName(city)
+    except ValueError:
+        raise HTTPException(status_code=404, detail=f"City not found: {city}")
+    snapshots = _SurveyDataset.build(city_enum)
+    result = _map_animator.animate(snapshots, title or None)
+    return result.to_dict()
+
+
+@app.get(
+    "/v1/map/{city}/animate/snapshots",
+    tags=["map-animate"],
+    summary="時系列スナップショット一覧 — Sprint 73A",
+)
+def map_animate_snapshots(city: str):
+    from fastapi import HTTPException
+    try:
+        city_enum = _CityName(city)
+    except ValueError:
+        raise HTTPException(status_code=404, detail=f"City not found: {city}")
+    snapshots = _SurveyDataset.build(city_enum)
+    return {
+        "city": city,
+        "snapshots": [s.to_dict() for s in snapshots],
+        "count": len(snapshots),
+    }
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Sprint 73B — 経路探索 API
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+from open_mythos.skills.route_finder import (  # noqa: E402
+    RouteGraphBuilder as _RouteGraphBuilder,
+    RouteFinder as _RouteFinder,
+)
+
+_route_graph = _RouteGraphBuilder.build(_city_map_store)
+_route_finder = _RouteFinder(_route_graph)
+
+
+@app.get(
+    "/v1/map/route/{from_id}/{to_id}",
+    tags=["map-route"],
+    summary="最短経路探索 — Sprint 73B",
+)
+def map_route(from_id: str, to_id: str):
+    result = _route_finder.find(from_id, to_id)
+    return result.to_dict()
+
+
+@app.get(
+    "/v1/map-route/graph/stats",
+    tags=["map-route"],
+    summary="路線グラフ統計 — Sprint 73B",
+)
+def map_route_graph_stats():
+    return {
+        "station_count": len(_route_graph.station_ids()),
+        "edge_count": _route_graph.edge_count(),
+    }
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Sprint 73C — データインポート API
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+from open_mythos.skills.map_importer import (  # noqa: E402
+    MapImporter as _MapImporter,
+)
+
+_map_importer = _MapImporter(_city_map_store)
+
+
+class _CSVImportReq(BaseModel):
+    csv_text: str
+
+
+class _GeoJSONImportReq(BaseModel):
+    geojson_text: str
+
+
+@app.post(
+    "/v1/map/import/stations/csv",
+    tags=["map-import"],
+    summary="駅データ CSV インポート — Sprint 73C",
+)
+def map_import_stations_csv(req: _CSVImportReq):
+    result = _map_importer.import_stations_csv(req.csv_text)
+    return result.to_dict()
+
+
+@app.post(
+    "/v1/map/import/lines/csv",
+    tags=["map-import"],
+    summary="路線データ CSV インポート — Sprint 73C",
+)
+def map_import_lines_csv(req: _CSVImportReq):
+    result = _map_importer.import_lines_csv(req.csv_text)
+    return result.to_dict()
+
+
+@app.post(
+    "/v1/map/import/geology/csv",
+    tags=["map-import"],
+    summary="地質層 CSV インポート — Sprint 73C",
+)
+def map_import_geology_csv(req: _CSVImportReq):
+    result = _map_importer.import_geology_csv(req.csv_text)
+    return result.to_dict()
+
+
+@app.post(
+    "/v1/map/import/geojson",
+    tags=["map-import"],
+    summary="GeoJSON インポート (駅) — Sprint 73C",
+)
+def map_import_geojson(req: _GeoJSONImportReq):
+    result = _map_importer.import_geojson(req.geojson_text)
+    return result.to_dict()
+
+
+@app.get(
+    "/v1/map-import/summary",
+    tags=["map-import"],
+    summary="インポート後ストアサマリー — Sprint 73C",
+)
+def map_import_summary():
+    return _map_importer.summary()
