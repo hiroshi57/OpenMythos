@@ -46,8 +46,10 @@
 | 67 | **異常検知自動予算停止 + Fusionキャッシュ + 統合ダッシュボード** | `skills/fusion_cache.py` `campaign_orchestrator.py` | 3703 | v0.70 |
 | 68 | **セキュリティインテリジェンス統合 + リスクカテゴリ分類** | `skills/security_intel.py` `skills/security.py` | 3780 | v0.71 |
 | 69 | **時系列予測統合 TimesFM + マルチモデル** | `skills/time_series.py` | 3842 | v0.72 |
+| 70 | **予測アラート統合 + レポートWebhook + NLQエージェント** | `skills/forecast_alert.py` `skills/report_dispatcher.py` `skills/nlq_agent.py` | 3937 | v0.73 |
+| 71 | **主要都市地図ビジュアライザ** | `skills/city_map.py` `skills/map_renderer.py` | 4014 | v0.74 |
 
-> **累計テスト数**: 3842 PASS (Sprint 69: +62) — **Sprint 70 候補検討中**
+> **累計テスト数**: 4014 PASS (Sprint 71: +77) — **Sprint 72 候補検討中**
 
 ---
 
@@ -355,16 +357,26 @@
 
 ---
 
-## Sprint 71 候補テーマ — 主要都市地図ビジュアライザ
+## Sprint 71 詳細 (最新 / 完了)
 
-> 参照: [tokyo-danmenzu.pages.dev](https://tokyo-danmenzu.pages.dev/?view=3d&aux=1&lbl=1&lang=ja#12/35.67/139.75/0/50)（東京地下断面図・3D地質断面ビューア / @chizutodesign）
-> コンセプト: 東京・大阪・名古屋・横浜・福岡の主要都市地下構造・鉄道路線断面を GeoJSON + SVG/3D で可視化
+### Sprint 71: 主要都市地図ビジュアライザ — v0.74.0
+> 参照: [tokyo-danmenzu.pages.dev](https://tokyo-danmenzu.pages.dev/?view=3d&aux=1&lbl=1&lang=ja#12/35.67/139.75/0/50)
+> 東京・大阪・名古屋・横浜・福岡の地下鉄路線 GeoJSON + 地質層データ + SVG 断面図レンダラー
+
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 71A | `skills/city_map.py` — CityMapDataset: 5都市メトロデータ + 地質層プリセット + GeoJSON | cc:完了 |
+| 71B | `skills/map_renderer.py` — SVGCrossSectionRenderer + CrossSectionEngine | cc:完了 |
+| 71C | `serve/api.py` — `/v1/map/*` 7エンドポイント (cities/lines/stations/geology/geojson/cross-section/summary) | cc:完了 |
+| 71T | `tests/test_sprint71.py` — 77 PASS (累計 4014) | cc:完了 |
+
+## Sprint 72 候補テーマ
 
 | Option | テーマ | コアモジュール | 理由 |
 |--------|--------|--------------|------|
-| **A** | **主要都市メトロ断面図データ** | `skills/city_map.py` | 東京・大阪等の地下鉄路線 GeoJSON + 地質層データ (丸ノ内線等を起点) |
-| **B** | **3D 断面図 SVG レンダラー** | `skills/map_renderer.py` | station/layer データから SVG/PNG 断面図を生成 (`/v1/map/cross-section`) |
-| **C** | **都市地図 API (全市横断)** | `serve/api.py` 拡張 | `/v1/map/cities` `/v1/map/{city}/lines` `/v1/map/{city}/{line}/front-view` |
+| **A** | **地図比較ビュー (都市間断面比較)** | `skills/map_comparator.py` | 2都市の地質層・駅深度を横並び SVG で比較 |
+| **B** | **インタラクティブ路線データ編集** | `skills/map_editor.py` | 路線・駅・地質層を CRUD で管理する Editor API |
+| **C** | **地図レポート生成 (Markdown/PDF)** | `skills/map_report.py` | 都市の地下鉄プロファイルを Markdown レポートで出力 |
 
 ---
 

@@ -7932,3 +7932,155 @@ def nlq_query(req: _NLQReq):
         "query":  query.to_dict(),
         "result": result.to_dict(),
     }
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Sprint 71C — 主要都市地図 API
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+from open_mythos.skills.city_map import (  # noqa: E402
+    CityName as _CityName,
+    CityMapDataset as _CityMapDataset,
+)
+from open_mythos.skills.map_renderer import (  # noqa: E402
+    CrossSectionConfig as _CrossSectionConfig,
+    CrossSectionEngine as _CrossSectionEngine,
+)
+
+_city_map_store = _CityMapDataset.build()
+_cross_section_engine = _CrossSectionEngine(_city_map_store)
+
+
+@app.get(
+    "/v1/map/cities",
+    tags=["map"],
+    summary="利用可能な都市一覧 — Sprint 71C",
+)
+def map_cities():
+    cities = _city_map_store.cities()
+    return {
+        "cities": cities,
+        "count": len(cities),
+    }
+
+
+@app.get(
+    "/v1/map/{city}/lines",
+    tags=["map"],
+    summary="都市の路線一覧 — Sprint 71C",
+)
+def map_city_lines(city: str):
+    try:
+        city_enum = _CityName(city)
+    except ValueError:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail=f"City not found: {city}")
+    lines = _city_map_store.lines.list_by_city(city_enum)
+    return {
+        "city": city,
+        "lines": [ln.to_dict() for ln in lines],
+        "count": len(lines),
+    }
+
+
+@app.get(
+    "/v1/map/{city}/stations",
+    tags=["map"],
+    summary="都市の全駅一覧 — Sprint 71C",
+)
+def map_city_stations(city: str):
+    try:
+        city_enum = _CityName(city)
+    except ValueError:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail=f"City not found: {city}")
+    stations = _city_map_store.stations.list_by_city(city_enum)
+    return {
+        "city": city,
+        "stations": [st.to_dict() for st in stations],
+        "count": len(stations),
+    }
+
+
+@app.get(
+    "/v1/map/{city}/geology",
+    tags=["map"],
+    summary="都市の地質層データ — Sprint 71C",
+)
+def map_city_geology(city: str):
+    try:
+        city_enum = _CityName(city)
+    except ValueError:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail=f"City not found: {city}")
+    layers = _city_map_store.geology.list_by_city(city_enum)
+    return {
+        "city": city,
+        "geology_layers": [gl.to_dict() for gl in layers],
+        "count": len(layers),
+    }
+
+
+@app.get(
+    "/v1/map/{city}/geojson",
+    tags=["map"],
+    summary="都市の GeoJSON — Sprint 71C",
+)
+def map_city_geojson(city: str):
+    try:
+        city_enum = _CityName(city)
+    except ValueError:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail=f"City not found: {city}")
+    data = _city_map_store.get_city_data(city_enum)
+    return data.to_geojson()
+
+
+@app.get(
+    "/v1/map/{city}/{line_id}/cross-section",
+    tags=["map"],
+    summary="路線断面図 SVG 生成 — Sprint 71C",
+)
+def map_cross_section(city: str, line_id: str, title: str = ""):
+    try:
+        city_enum = _CityName(city)
+    except ValueError:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail=f"City not found: {city}")
+    result = _cross_section_engine.generate(
+        city_enum, line_id, title or None
+    )
+    if result is None:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=404,
+            detail=f"Line not found: {line_id} in {city}",
+        )
+    return result.to_dict()
+
+
+@app.get(
+    "/v1/map/{city}/summary",
+    tags=["map"],
+    summary="都市データサマリー — Sprint 71C",
+)
+def map_city_summary(city: str):
+    try:
+        city_enum = _CityName(city)
+    except ValueError:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail=f"City not found: {city}")
+    data = _city_map_store.get_city_data(city_enum)
+    max_depth = max((st.depth_m for st in data.stations), default=0.0)
+    avg_depth = (
+        sum(st.depth_m for st in data.stations) / len(data.stations)
+        if data.stations else 0.0
+    )
+    return {
+        "city": city,
+        "lines": len(data.lines),
+        "stations": len(data.stations),
+        "geology_layers": len(data.geology_layers),
+        "max_station_depth_m": max_depth,
+        "avg_station_depth_m": round(avg_depth, 1),
+    }
