@@ -50,8 +50,9 @@
 | 71 | **主要都市地図ビジュアライザ** | `skills/city_map.py` `skills/map_renderer.py` | 4014 | v0.74 |
 | 72 | **地図拡張 比較/編集/レポート** | `skills/map_comparator.py` `skills/map_editor.py` `skills/map_report.py` | 4085 | v0.75 |
 | 73 | **地図アニメーション/経路探索/インポート** | `skills/map_animator.py` `skills/route_finder.py` `skills/map_importer.py` | 4161 | v0.76 |
+| 74 | **混雑シミュレーション/アクセシビリティ/地下水位** | `skills/crowd_simulator.py` `skills/accessibility.py` `skills/groundwater.py` | 4238 | v0.77 |
 
-> **累計テスト数**: 4161 PASS (Sprint 73: +76) — **Sprint 74 候補検討中**
+> **累計テスト数**: 4238 PASS (Sprint 74: +77) — **Sprint 75 候補検討中**
 
 ---
 
@@ -396,13 +397,25 @@
 | 73D | `serve/api.py` — 9エンドポイント追加 | cc:完了 |
 | 73T | `tests/test_sprint73.py` — 76 PASS (累計 4161) | cc:完了 |
 
-## Sprint 74 候補テーマ
+## Sprint 74 詳細 (最新 / 完了)
+
+### Sprint 74: 混雑シミュレーション/アクセシビリティ/地下水位 — v0.77.0
+
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 74A | `skills/crowd_simulator.py` — 時間帯別混雑 + CrowdDataset 16駅 | cc:完了 |
+| 74B | `skills/accessibility.py` — 8機能100点スコアリング + AccessibilityDataset | cc:完了 |
+| 74C | `skills/groundwater.py` — 4因子浸水リスク評価 + GroundwaterDataset | cc:完了 |
+| 74D | `serve/api.py` — 11エンドポイント追加 | cc:完了 |
+| 74T | `tests/test_sprint74.py` — 77 PASS (累計 4238) | cc:完了 |
+
+## Sprint 75 候補テーマ
 
 | Option | テーマ | コアモジュール | 理由 |
 |--------|--------|--------------|------|
-| **A** | **駅混雑シミュレーション** | `skills/crowd_simulator.py` | 乗降客数モデル + 時間帯別混雑度 API |
-| **B** | **アクセシビリティ分析** | `skills/accessibility.py` | 駅のエレベーター/バリアフリー度スコア |
-| **C** | **地下水位モニタリング** | `skills/groundwater.py` | 地質層と水位データを重ね合わせた浸水リスク |
+| **A** | **駅環境センサー統合** | `skills/env_sensor.py` | 気温・湿度・CO2・騒音レベルの駅内環境モニタリング |
+| **B** | **乗り換え最適化** | `skills/transfer_optimizer.py` | 混雑・アクセシビリティ・所要時間を統合した最適乗換提案 |
+| **C** | **都市インフラダッシュボード** | `skills/infra_dashboard.py` | 混雑・アクセシビリティ・地下水位を統合した都市インフラ可視化 |
 
 ---
 

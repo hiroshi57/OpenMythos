@@ -8513,3 +8513,199 @@ def map_import_geojson(req: _GeoJSONImportReq):
 )
 def map_import_summary():
     return _map_importer.summary()
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Sprint 74A — 駅混雑シミュレーション API
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+from open_mythos.skills.crowd_simulator import (  # noqa: E402
+    CrowdDataset as _CrowdDataset,
+    CrowdSimulator as _CrowdSimulator,
+)
+
+_crowd_sim = _CrowdDataset.build()
+
+
+@app.get(
+    "/v1/crowd/{station_id}/snapshot",
+    tags=["crowd"],
+    summary="時点混雑スナップショット — Sprint 74A",
+)
+def crowd_snapshot(station_id: str, hour: int = 8):
+    from fastapi import HTTPException
+    result = _crowd_sim.snapshot(station_id, hour)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Station not found: {station_id}")
+    return result.to_dict()
+
+
+@app.get(
+    "/v1/crowd/{station_id}/daily",
+    tags=["crowd"],
+    summary="1日の混雑プロファイル — Sprint 74A",
+)
+def crowd_daily(station_id: str):
+    from fastapi import HTTPException
+    result = _crowd_sim.daily_profile(station_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Station not found: {station_id}")
+    return result.to_dict()
+
+
+@app.get(
+    "/v1/crowd/compare",
+    tags=["crowd"],
+    summary="複数駅の混雑比較 — Sprint 74A",
+)
+def crowd_compare(stations: str = "tokyo-shinjuku,tokyo-ginza", hour: int = 8):
+    ids = [s.strip() for s in stations.split(",") if s.strip()]
+    results = _crowd_sim.compare(ids, hour)
+    return {
+        "hour": hour,
+        "stations": [r.to_dict() for r in results],
+        "count": len(results),
+    }
+
+
+@app.get(
+    "/v1/crowd/stations",
+    tags=["crowd"],
+    summary="混雑データ登録駅一覧 — Sprint 74A",
+)
+def crowd_stations():
+    ids = _crowd_sim.all_station_ids()
+    return {"station_ids": ids, "count": len(ids)}
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Sprint 74B — アクセシビリティ分析 API
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+from open_mythos.skills.accessibility import (  # noqa: E402
+    AccessibilityDataset as _AccessDataset,
+    AccessibilityAnalyzer as _AccessAnalyzer,
+)
+
+_access_analyzer = _AccessDataset.build()
+
+
+@app.get(
+    "/v1/access/{station_id}/score",
+    tags=["accessibility"],
+    summary="駅アクセシビリティスコア — Sprint 74B",
+)
+def access_score(station_id: str):
+    from fastapi import HTTPException
+    result = _access_analyzer.score(station_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Station not found: {station_id}")
+    return result.to_dict()
+
+
+@app.get(
+    "/v1/access/rank",
+    tags=["accessibility"],
+    summary="アクセシビリティランキング — Sprint 74B",
+)
+def access_rank(city: str = ""):
+    if city:
+        try:
+            city_enum = _CityName(city)
+        except ValueError:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=422, detail=f"Unknown city: {city}")
+        scores = _access_analyzer.rank(city_enum)
+    else:
+        scores = _access_analyzer.rank()
+    return {"ranking": [s.to_dict() for s in scores], "count": len(scores)}
+
+
+@app.get(
+    "/v1/access/{city}/report",
+    tags=["accessibility"],
+    summary="都市アクセシビリティレポート — Sprint 74B",
+)
+def access_city_report(city: str):
+    from fastapi import HTTPException
+    try:
+        city_enum = _CityName(city)
+    except ValueError:
+        raise HTTPException(status_code=404, detail=f"City not found: {city}")
+    report = _access_analyzer.city_report(city_enum)
+    return report.to_dict()
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Sprint 74C — 地下水位モニタリング API
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+from open_mythos.skills.groundwater import (  # noqa: E402
+    GroundwaterDataset as _GWDataset,
+    FloodRiskAssessor as _FloodRiskAssessor,
+    Season as _Season,
+)
+
+_gw_assessor = _GWDataset.build()
+
+
+@app.get(
+    "/v1/groundwater/{city}",
+    tags=["groundwater"],
+    summary="都市の地下水プロファイル — Sprint 74C",
+)
+def groundwater_profile(city: str):
+    from fastapi import HTTPException
+    try:
+        city_enum = _CityName(city)
+    except ValueError:
+        raise HTTPException(status_code=404, detail=f"City not found: {city}")
+    profile = _gw_assessor.get_profile(city_enum)
+    if profile is None:
+        raise HTTPException(status_code=404, detail=f"Groundwater data not found: {city}")
+    return profile.to_dict()
+
+
+@app.get(
+    "/v1/groundwater/{city}/risk",
+    tags=["groundwater"],
+    summary="都市レベル浸水リスク評価 — Sprint 74C",
+)
+def groundwater_city_risk(city: str, season: str = "summer"):
+    from fastapi import HTTPException
+    try:
+        city_enum = _CityName(city)
+    except ValueError:
+        raise HTTPException(status_code=404, detail=f"City not found: {city}")
+    try:
+        season_enum = _Season(season)
+    except ValueError:
+        raise HTTPException(status_code=422, detail=f"Unknown season: {season}")
+    result = _gw_assessor.city_risk(city_enum, season_enum)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Data not found: {city}")
+    return result.to_dict()
+
+
+@app.get(
+    "/v1/groundwater/{city}/{station_id}/flood-risk",
+    tags=["groundwater"],
+    summary="駅別浸水リスク評価 — Sprint 74C",
+)
+def groundwater_station_risk(city: str, station_id: str, season: str = "summer"):
+    from fastapi import HTTPException
+    try:
+        city_enum = _CityName(city)
+    except ValueError:
+        raise HTTPException(status_code=404, detail=f"City not found: {city}")
+    try:
+        season_enum = _Season(season)
+    except ValueError:
+        raise HTTPException(status_code=422, detail=f"Unknown season: {season}")
+    # 駅の深度を CityMapStore から取得
+    station = _city_map_store.stations.get(station_id)
+    depth = station.depth_m if station else 15.0
+    result = _gw_assessor.station_risk(city_enum, station_id, depth, season_enum)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Data not found: {city}")
+    return result.to_dict()
