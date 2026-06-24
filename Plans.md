@@ -51,8 +51,9 @@
 | 72 | **地図拡張 比較/編集/レポート** | `skills/map_comparator.py` `skills/map_editor.py` `skills/map_report.py` | 4085 | v0.75 |
 | 73 | **地図アニメーション/経路探索/インポート** | `skills/map_animator.py` `skills/route_finder.py` `skills/map_importer.py` | 4161 | v0.76 |
 | 74 | **混雑シミュレーション/アクセシビリティ/地下水位** | `skills/crowd_simulator.py` `skills/accessibility.py` `skills/groundwater.py` | 4238 | v0.77 |
+| 75 | **環境センサー/乗り換え最適化/インフラダッシュボード** | `skills/env_sensor.py` `skills/transfer_optimizer.py` `skills/infra_dashboard.py` | 4319 | v0.78 |
 
-> **累計テスト数**: 4238 PASS (Sprint 74: +77) — **Sprint 75 候補検討中**
+> **累計テスト数**: 4319 PASS (Sprint 75: +81) — **Sprint 76 候補検討中**
 
 ---
 

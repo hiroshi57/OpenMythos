@@ -8709,3 +8709,178 @@ def groundwater_station_risk(city: str, station_id: str, season: str = "summer")
     if result is None:
         raise HTTPException(status_code=404, detail=f"Data not found: {city}")
     return result.to_dict()
+
+
+# ─────────────────────────────────────────────────────────────────
+# Sprint 75A — 駅環境センサー
+# ─────────────────────────────────────────────────────────────────
+
+from open_mythos.skills.env_sensor import (
+    EnvSensorDataset as _EnvSensorDataset,
+    SensorStatus as _SensorStatus,
+    SensorType as _SensorType,
+)
+
+_env_analyzer = _EnvSensorDataset.build()
+
+
+@app.get(
+    "/v1/env/{station_id}/snapshot",
+    tags=["env_sensor"],
+    summary="駅環境スナップショット — Sprint 75A",
+)
+def env_snapshot(station_id: str):
+    from fastapi import HTTPException
+    env = _env_analyzer.snapshot(station_id)
+    if env is None:
+        raise HTTPException(status_code=404, detail=f"Station not found: {station_id}")
+    return env.to_dict()
+
+
+@app.get(
+    "/v1/env/compare",
+    tags=["env_sensor"],
+    summary="複数駅環境比較 — Sprint 75A",
+)
+def env_compare(stations: str):
+    """stations: カンマ区切りの station_id リスト"""
+    ids = [s.strip() for s in stations.split(",") if s.strip()]
+    result = _env_analyzer.compare(ids)
+    return result.to_dict()
+
+
+@app.get(
+    "/v1/env/{city}/alerts",
+    tags=["env_sensor"],
+    summary="都市内アラート駅一覧 — Sprint 75A",
+)
+def env_alerts(city: str, min_status: str = "warning"):
+    from fastapi import HTTPException
+    try:
+        city_enum = _CityName(city)
+    except ValueError:
+        raise HTTPException(status_code=404, detail=f"City not found: {city}")
+    try:
+        status_enum = _SensorStatus(min_status)
+    except ValueError:
+        raise HTTPException(status_code=422, detail=f"Unknown status: {min_status}")
+    alerts = _env_analyzer.alert_stations(city=city_enum, min_status=status_enum)
+    return {"city": city, "min_status": min_status, "alerts": [e.to_dict() for e in alerts]}
+
+
+# ─────────────────────────────────────────────────────────────────
+# Sprint 75B — 乗り換え最適化
+# ─────────────────────────────────────────────────────────────────
+
+from open_mythos.skills.transfer_optimizer import (
+    OptimizationDataset as _OptDataset,
+    OptimizationWeight as _OptWeight,
+    WEIGHT_BALANCED as _WEIGHT_BALANCED,
+)
+
+_opt_dataset = _OptDataset.build()
+_transfer_optimizer = _opt_dataset.optimizer()
+
+
+@app.get(
+    "/v1/transfer/optimize",
+    tags=["transfer"],
+    summary="乗り換え最適化 (全プリセット) — Sprint 75B",
+)
+def transfer_optimize(from_id: str, to_id: str, hour: int = 8):
+    options = _transfer_optimizer.optimize(from_id, to_id, hour)
+    return {
+        "from_id": from_id,
+        "to_id": to_id,
+        "hour": hour,
+        "options": [o.to_dict() for o in options],
+    }
+
+
+@app.get(
+    "/v1/transfer/score",
+    tags=["transfer"],
+    summary="乗り換えスコア (カスタム重み) — Sprint 75B",
+)
+def transfer_score(
+    from_id: str,
+    to_id: str,
+    hour: int = 8,
+    crowd_w: float = 0.4,
+    access_w: float = 0.3,
+    time_w: float = 0.3,
+):
+    from fastapi import HTTPException
+    try:
+        weight = _OptWeight(crowd_w=crowd_w, access_w=access_w, time_w=time_w, label="custom")
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    result = _transfer_optimizer.score_route(from_id, to_id, hour, weight)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Route not found: {from_id} -> {to_id}")
+    return result.to_dict()
+
+
+# ─────────────────────────────────────────────────────────────────
+# Sprint 75C — 都市インフラダッシュボード
+# ─────────────────────────────────────────────────────────────────
+
+from open_mythos.skills.infra_dashboard import (
+    DashboardDataset as _DashDataset,
+    MetricStatus as _MetricStatus,
+)
+
+_dash_dataset = _DashDataset.build()
+_infra_dashboard = _dash_dataset.dashboard()
+
+
+@app.get(
+    "/v1/infra/summary",
+    tags=["infra_dashboard"],
+    summary="複数都市インフラサマリー — Sprint 75C",
+)
+def infra_summary(cities: str = "tokyo,osaka", hour: int = 8):
+    city_names = []
+    for c in cities.split(","):
+        c = c.strip()
+        try:
+            city_names.append(_CityName(c))
+        except ValueError:
+            pass
+    result = _infra_dashboard.multi_city_summary(city_names, hour)
+    return {"hour": hour, "cities": result}
+
+
+@app.get(
+    "/v1/infra/{city}/alerts",
+    tags=["infra_dashboard"],
+    summary="都市別インフラアラート駅 — Sprint 75C",
+)
+def infra_alerts(city: str, hour: int = 8):
+    from fastapi import HTTPException
+    try:
+        city_enum = _CityName(city)
+    except ValueError:
+        raise HTTPException(status_code=404, detail=f"City not found: {city}")
+    panels = _infra_dashboard.alert_stations(city_enum, hour)
+    return {
+        "city": city,
+        "hour": hour,
+        "alert_count": len(panels),
+        "panels": [p.to_dict() for p in panels],
+    }
+
+
+@app.get(
+    "/v1/infra/{city}",
+    tags=["infra_dashboard"],
+    summary="都市インフラダッシュボード — Sprint 75C",
+)
+def infra_city(city: str, hour: int = 8):
+    from fastapi import HTTPException
+    try:
+        city_enum = _CityName(city)
+    except ValueError:
+        raise HTTPException(status_code=404, detail=f"City not found: {city}")
+    db = _infra_dashboard.city_panel(city_enum, hour)
+    return db.to_dict()
