@@ -8084,3 +8084,281 @@ def map_city_summary(city: str):
         "max_station_depth_m": max_depth,
         "avg_station_depth_m": round(avg_depth, 1),
     }
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Sprint 72A — 都市間断面比較
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+from open_mythos.skills.map_comparator import (  # noqa: E402
+    MapComparator as _MapComparator,
+    ComparisonConfig as _ComparisonConfig,
+)
+
+_map_comparator = _MapComparator(_city_map_store)
+
+
+@app.get(
+    "/v1/map/compare/{city_a}/{city_b}",
+    tags=["map"],
+    summary="2都市断面比較 SVG — Sprint 72A",
+)
+def map_compare(city_a: str, city_b: str):
+    from fastapi import HTTPException
+    try:
+        ca = _CityName(city_a)
+        cb = _CityName(city_b)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=f"City not found: {e}")
+    result = _map_comparator.compare(ca, cb)
+    return result.to_dict()
+
+
+@app.get(
+    "/v1/map/compare/{city_a}/{city_b}/stats",
+    tags=["map"],
+    summary="2都市深度統計比較 — Sprint 72A",
+)
+def map_compare_stats(city_a: str, city_b: str):
+    from fastapi import HTTPException
+    try:
+        ca = _CityName(city_a)
+        cb = _CityName(city_b)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=f"City not found: {e}")
+    result = _map_comparator.compare(ca, cb)
+    return {
+        "city_a": result.stats_a.to_dict(),
+        "city_b": result.stats_b.to_dict(),
+        "deeper_city": result.deeper_city,
+        "geology_diff": result.geology_diff,
+    }
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Sprint 72B — 路線データ編集 API
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+from open_mythos.skills.map_editor import (  # noqa: E402
+    MapEditor as _MapEditor,
+    EditAction as _EditAction,
+)
+from open_mythos.skills.city_map import (  # noqa: E402
+    Station as _Station, MetroLine as _MetroLine,
+    GeologyLayer as _GeologyLayer, GeoCoord as _GeoCoord,
+    LineType as _LineType, GeologyLayerType as _GeologyLayerType,
+)
+
+_map_editor = _MapEditor(_city_map_store)
+
+
+class _AddLineReq(BaseModel):
+    id: str
+    name: str
+    name_en: str
+    city: str
+    line_type: str = "subway"
+    color: str = "#999999"
+    total_length_km: float = 0.0
+    opened_year: int = None
+
+
+class _UpdateLineReq(BaseModel):
+    name: str = None
+    name_en: str = None
+    color: str = None
+    total_length_km: float = None
+    opened_year: int = None
+
+
+class _AddStationReq(BaseModel):
+    id: str
+    name: str
+    name_en: str
+    line_id: str
+    city: str
+    lat: float
+    lon: float
+    depth_m: float
+    platform_count: int = 2
+    opened_year: int = None
+
+
+class _UpdateStationReq(BaseModel):
+    name: str = None
+    name_en: str = None
+    depth_m: float = None
+    platform_count: int = None
+    opened_year: int = None
+
+
+class _AddGeologyReq(BaseModel):
+    id: str
+    city: str
+    layer_type: str
+    name: str
+    depth_from_m: float
+    depth_to_m: float
+    color: str = "#CCCCCC"
+    n_value: float = None
+
+
+class _UpdateGeologyReq(BaseModel):
+    name: str = None
+    depth_from_m: float = None
+    depth_to_m: float = None
+    color: str = None
+    n_value: float = None
+
+
+@app.post(
+    "/v1/map-editor/lines",
+    tags=["map-editor"],
+    summary="路線追加 — Sprint 72B",
+)
+def editor_add_line(req: _AddLineReq):
+    from fastapi import HTTPException
+    try:
+        city_enum = _CityName(req.city)
+        line_type_enum = _LineType(req.line_type)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    line = _MetroLine(
+        id=req.id, name=req.name, name_en=req.name_en,
+        city=city_enum, line_type=line_type_enum,
+        color=req.color, total_length_km=req.total_length_km,
+        opened_year=req.opened_year,
+    )
+    result = _map_editor.add_line(line)
+    return result.to_dict()
+
+
+@app.patch(
+    "/v1/map-editor/lines/{line_id}",
+    tags=["map-editor"],
+    summary="路線更新 — Sprint 72B",
+)
+def editor_update_line(line_id: str, req: _UpdateLineReq):
+    kwargs = {k: v for k, v in req.dict().items() if v is not None}
+    result = _map_editor.update_line(line_id, **kwargs)
+    return result.to_dict()
+
+
+@app.delete(
+    "/v1/map-editor/lines/{line_id}",
+    tags=["map-editor"],
+    summary="路線削除 — Sprint 72B",
+)
+def editor_delete_line(line_id: str):
+    result = _map_editor.delete_line(line_id)
+    return result.to_dict()
+
+
+@app.post(
+    "/v1/map-editor/stations",
+    tags=["map-editor"],
+    summary="駅追加 — Sprint 72B",
+)
+def editor_add_station(req: _AddStationReq):
+    from fastapi import HTTPException
+    try:
+        city_enum = _CityName(req.city)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    station = _Station(
+        id=req.id, name=req.name, name_en=req.name_en,
+        line_id=req.line_id, city=city_enum,
+        coord=_GeoCoord(req.lat, req.lon),
+        depth_m=req.depth_m, platform_count=req.platform_count,
+        opened_year=req.opened_year,
+    )
+    result = _map_editor.add_station(station)
+    return result.to_dict()
+
+
+@app.patch(
+    "/v1/map-editor/stations/{station_id}",
+    tags=["map-editor"],
+    summary="駅更新 — Sprint 72B",
+)
+def editor_update_station(station_id: str, req: _UpdateStationReq):
+    kwargs = {k: v for k, v in req.dict().items() if v is not None}
+    result = _map_editor.update_station(station_id, **kwargs)
+    return result.to_dict()
+
+
+@app.delete(
+    "/v1/map-editor/stations/{station_id}",
+    tags=["map-editor"],
+    summary="駅削除 — Sprint 72B",
+)
+def editor_delete_station(station_id: str):
+    result = _map_editor.delete_station(station_id)
+    return result.to_dict()
+
+
+@app.get(
+    "/v1/map-editor/history",
+    tags=["map-editor"],
+    summary="編集履歴 — Sprint 72B",
+)
+def editor_history():
+    return {
+        "history": _map_editor.history_dicts(),
+        "count": len(_map_editor.history),
+    }
+
+
+@app.get(
+    "/v1/map-editor/summary",
+    tags=["map-editor"],
+    summary="エディタ状態サマリー — Sprint 72B",
+)
+def editor_summary():
+    return _map_editor.summary()
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Sprint 72C — 地図レポート生成
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+from open_mythos.skills.map_report import (  # noqa: E402
+    MapReportEngine as _MapReportEngine,
+)
+
+_map_report_engine = _MapReportEngine(_city_map_store)
+
+
+@app.get(
+    "/v1/map/{city}/report/md",
+    tags=["map-report"],
+    summary="都市地図レポート (Markdown) — Sprint 72C",
+)
+def map_city_report_md(city: str):
+    from fastapi import HTTPException
+    try:
+        city_enum = _CityName(city)
+    except ValueError:
+        raise HTTPException(status_code=404, detail=f"City not found: {city}")
+    report = _map_report_engine.generate_city_report(city_enum)
+    return report.to_dict()
+
+
+@app.get(
+    "/v1/map/report/compare",
+    tags=["map-report"],
+    summary="複数都市比較レポート — Sprint 72C",
+)
+def map_compare_report(cities: str = "tokyo,osaka,nagoya,yokohama,fukuoka"):
+    from fastapi import HTTPException
+    city_list = []
+    for c in cities.split(","):
+        c = c.strip()
+        try:
+            city_list.append(_CityName(c))
+        except ValueError:
+            raise HTTPException(status_code=422, detail=f"Unknown city: {c}")
+    if not city_list:
+        raise HTTPException(status_code=422, detail="cities is empty")
+    report = _map_report_engine.generate_multi_city_report(city_list)
+    return report.to_dict()

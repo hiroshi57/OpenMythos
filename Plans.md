@@ -48,8 +48,9 @@
 | 69 | **時系列予測統合 TimesFM + マルチモデル** | `skills/time_series.py` | 3842 | v0.72 |
 | 70 | **予測アラート統合 + レポートWebhook + NLQエージェント** | `skills/forecast_alert.py` `skills/report_dispatcher.py` `skills/nlq_agent.py` | 3937 | v0.73 |
 | 71 | **主要都市地図ビジュアライザ** | `skills/city_map.py` `skills/map_renderer.py` | 4014 | v0.74 |
+| 72 | **地図拡張 比較/編集/レポート** | `skills/map_comparator.py` `skills/map_editor.py` `skills/map_report.py` | 4085 | v0.75 |
 
-> **累計テスト数**: 4014 PASS (Sprint 71: +77) — **Sprint 72 候補検討中**
+> **累計テスト数**: 4085 PASS (Sprint 72: +71) — **Sprint 73 候補検討中**
 
 ---
 
@@ -370,13 +371,25 @@
 | 71C | `serve/api.py` — `/v1/map/*` 7エンドポイント (cities/lines/stations/geology/geojson/cross-section/summary) | cc:完了 |
 | 71T | `tests/test_sprint71.py` — 77 PASS (累計 4014) | cc:完了 |
 
-## Sprint 72 候補テーマ
+## Sprint 72 詳細 (最新 / 完了)
+
+### Sprint 72: 地図拡張 比較/編集/レポート — v0.75.0
+
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 72A | `skills/map_comparator.py` — MapComparator: 2都市断面比較SVG + DepthStats + geology diff | cc:完了 |
+| 72B | `skills/map_editor.py` — MapEditor: Line/Station/Geology CRUD + 変更履歴 | cc:完了 |
+| 72C | `skills/map_report.py` — MapReportEngine: 単都市/複数都市 Markdown レポート | cc:完了 |
+| 72D | `serve/api.py` — `/v1/map/compare/*` `/v1/map-editor/*` `/v1/map/*/report/md` `/v1/map/report/compare` | cc:完了 |
+| 72T | `tests/test_sprint72.py` — 71 PASS (累計 4085) | cc:完了 |
+
+## Sprint 73 候補テーマ
 
 | Option | テーマ | コアモジュール | 理由 |
 |--------|--------|--------------|------|
-| **A** | **地図比較ビュー (都市間断面比較)** | `skills/map_comparator.py` | 2都市の地質層・駅深度を横並び SVG で比較 |
-| **B** | **インタラクティブ路線データ編集** | `skills/map_editor.py` | 路線・駅・地質層を CRUD で管理する Editor API |
-| **C** | **地図レポート生成 (Markdown/PDF)** | `skills/map_report.py` | 都市の地下鉄プロファイルを Markdown レポートで出力 |
+| **A** | **地図アニメーション (時系列断面変化)** | `skills/map_animator.py` | 地質調査年次ごとの層変化を SVG アニメで表現 |
+| **B** | **経路探索エンジン** | `skills/route_finder.py` | 2駅間の最短経路 (乗換案内) をグラフ探索 |
+| **C** | **地図データインポート (CSV/GeoJSON)** | `skills/map_importer.py` | 外部データを一括インポートして CityMapStore に登録 |
 
 ---
 
