@@ -1,0 +1,32 @@
+steps:
+  # GitHub からソースをクローン (GCS ソースアップロードを不要にする)
+  - name: 'alpine/git'
+    args:
+      - 'clone'
+      - '--depth=1'
+      - 'https://github.com/hiroshi57/OpenMythos'
+      - '/workspace/src'
+
+  # Docker イメージをビルド
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '--platform'
+      - 'linux/amd64'
+      - '-t'
+      - '$_IMAGE'
+      - '-f'
+      - '/workspace/src/serve/Dockerfile'
+      - '/workspace/src'
+
+images:
+  - '$_IMAGE'
+
+substitutions:
+  _IMAGE: 'asia-northeast1-docker.pkg.dev/fluid-firefly-471605-n3/openmythos/serve:latest'
+
+options:
+  machineType: 'E2_MEDIUM'
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: '1200s'

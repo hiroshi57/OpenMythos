@@ -36,8 +36,9 @@ RUN uv pip install --system torch --index-url https://download.pytorch.org/whl/c
         pydantic \
         starlette
 
-# Install the package itself (editable for flexibility)
-RUN uv pip install --system -e .
+# Install the package itself (non-editable; poetry-core needed for build backend)
+RUN uv pip install --system poetry-core && \
+    uv pip install --system --no-build-isolation .
 
 # Non-root user for security
 RUN useradd -m -u 1000 mythos && chown -R mythos:mythos /app
