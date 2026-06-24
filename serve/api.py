@@ -7202,3 +7202,733 @@ def anomaly_alerts():
 @app.get("/v1/anomaly/alerts/report/md", tags=["anomaly"], summary="アラートレポート Markdown — Sprint 66")
 def anomaly_alerts_md():
     return Response(content=_anomaly_report.markdown(), media_type="text/markdown")
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Sprint 67A — 異常検知 → 自動予算停止
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+from open_mythos.skills.campaign_orchestrator import (  # noqa: E402
+    FreezeDecision as _FreezeDecision,
+    FrozenBudgetPlan as _FrozenBudgetPlan,
+)
+
+
+class _FreezeReq(BaseModel):
+    campaign_ids:  list
+    total_budget:  float
+    use_alert_store: bool = True   # True: 既存 _alert_store を参照, False: 再検知
+
+
+@app.post("/v1/orchestrator/freeze", tags=["orchestrator"], summary="Critical アラートで予算を自動凍結 — Sprint 67")
+def orchestrator_freeze(req: _FreezeReq):
+    """
+    _alert_store に蓄積された Critical アラートを参照して
+    該当キャンペーンの予算を 0 に凍結し、残予算を再配分する。
+    use_alert_store=False のときは analytics_store から再検知する。
+    """
+    alert_store_arg = _alert_store if req.use_alert_store else None
+    plan = _orchestrator.freeze_if_critical(
+        campaign_ids=req.campaign_ids,
+        total_budget=req.total_budget,
+        alert_store=alert_store_arg,
+    )
+    return plan.to_dict()
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Sprint 67B — Fusion 結果キャッシュ
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+from open_mythos.skills.fusion_cache import (  # noqa: E402
+    FusionCache as _FusionCache,
+    CachedFusionEngine as _CachedFusionEngine,
+)
+
+_fusion_cache        = _FusionCache(ttl=300.0, max_size=128)
+_cached_fusion_engine = _CachedFusionEngine(_fusion_engine, cache=_fusion_cache)
+
+
+class _CachedFusionReq(BaseModel):
+    question:  str
+    system:    Optional[str] = None
+    candidates: list = []
+    judge_provider:  Optional[str] = None
+    caller_provider: Optional[str] = None
+
+
+@app.post("/v1/fusion/cached", tags=["fusion"], summary="Fusion キャッシュ付き実行 — Sprint 67")
+def fusion_cached_run(req: _CachedFusionReq):
+    """
+    同一 question+system の 2 回目以降はキャッシュから即返す。
+    candidates 指定があるときはキャッシュを使わず毎回生成する（異なる設定のため）。
+    """
+    if req.candidates:
+        # カスタム候補が指定された場合はキャッシュ対象外
+        specs = [
+            _CandidateSpec(
+                label=c.get("label", f"candidate-{i}"),
+                preferred_provider=c.get("preferred_provider"),
+                temperature=float(c.get("temperature", 0.7)),
+                max_tokens=int(c.get("max_tokens", 512)),
+            )
+            for i, c in enumerate(req.candidates)
+        ]
+        config = _FusionConfig(
+            candidates=specs,
+            judge_provider=req.judge_provider,
+            caller_provider=req.caller_provider,
+        )
+        engine = _FusionEngine(config=config, router=_fusion_engine._router)
+        result = engine.run(req.question, system=req.system)
+    else:
+        result = _cached_fusion_engine.run(req.question, system=req.system)
+
+    return result.to_dict()
+
+
+@app.get("/v1/fusion/cache/stats", tags=["fusion"], summary="Fusion キャッシュ統計 — Sprint 67")
+def fusion_cache_stats():
+    return _fusion_cache.stats()
+
+
+@app.delete("/v1/fusion/cache/clear", tags=["fusion"], summary="Fusion キャッシュクリア — Sprint 67")
+def fusion_cache_clear():
+    n = _fusion_cache.clear()
+    return {"cleared": n}
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Sprint 67C — 広告運用 統合ダッシュボード API
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+from open_mythos.skills.campaign_analytics import KpiCalculator as _KpiCalculator  # noqa: E402
+
+
+@app.get("/v1/dashboard/summary", tags=["dashboard"], summary="広告運用サマリー — Sprint 67")
+def dashboard_summary():
+    """
+    KPI・アラート・A/B テストを横断した統合サマリーを 1 エンドポイントで返す。
+
+    レスポンス構造:
+      campaigns     : キャンペーン一覧 (ID・KPI 主要指標)
+      alert_summary : 異常検知サマリー (件数・重大度別)
+      abtest_summary: A/B テスト一覧 (ID・状態)
+    """
+    # --- キャンペーン KPI ---
+    calc = _KpiCalculator()
+    campaign_summaries = []
+    for cid, metrics in _analytics_store._metrics.items():
+        kpis = calc.compute(metrics)
+        campaign_summaries.append({
+            "campaign_id": cid,
+            "impressions": sum(p.impressions for p in metrics.points),
+            "clicks":      sum(p.clicks for p in metrics.points),
+            "spend":       round(sum(p.spend for p in metrics.points), 4),
+            "revenue":     round(sum(p.revenue for p in metrics.points), 4),
+            "ctr":         round(kpis.ctr, 4),
+            "roas":        round(kpis.roas, 4),
+        })
+
+    # --- アラートサマリー ---
+    alert_summary = _anomaly_report.summary_json()
+    # alerts 全件リストは重いので件数のみ
+    alert_summary_light = {k: v for k, v in alert_summary.items() if k != "alerts"}
+    alert_summary_light["critical_ids"] = list({
+        a["campaign_id"] for a in alert_summary.get("alerts", [])
+        if a["severity"] == "critical"
+    })
+
+    # --- A/B テストサマリー ---
+    abtest_list = []
+    for tid, test in _abtest_store._tests.items():
+        abtest_list.append({
+            "id":     test.id,
+            "name":   test.name,
+            "status": test.status.value,
+            "variant_count": len(test.variants),
+        })
+
+    return {
+        "campaigns":      campaign_summaries,
+        "alert_summary":  alert_summary_light,
+        "abtest_summary": abtest_list,
+    }
+
+
+@app.get("/v1/dashboard/campaigns", tags=["dashboard"], summary="キャンペーン一覧 + KPI — Sprint 67")
+def dashboard_campaigns():
+    """全キャンペーンの KPI を一覧で返す。"""
+    calc = _KpiCalculator()
+    result = []
+    for cid, metrics in _analytics_store._metrics.items():
+        kpis = calc.compute(metrics)
+        result.append({
+            "campaign_id":  cid,
+            "data_points":  len(metrics.points),
+            "impressions":  sum(p.impressions for p in metrics.points),
+            "clicks":       sum(p.clicks for p in metrics.points),
+            "conversions":  sum(p.conversions for p in metrics.points),
+            "spend":        round(sum(p.spend for p in metrics.points), 4),
+            "revenue":      round(sum(p.revenue for p in metrics.points), 4),
+            "ctr":          round(kpis.ctr, 4),
+            "cvr":          round(kpis.cvr, 4),
+            "cpc":          round(kpis.cpc, 4),
+            "roas":         round(kpis.roas, 4),
+            "roi":          round(kpis.roi, 4),
+        })
+    return {"campaigns": result, "total": len(result)}
+
+
+@app.get("/v1/dashboard/alerts/critical", tags=["dashboard"], summary="Critical アラート一覧 — Sprint 67")
+def dashboard_critical_alerts():
+    """Critical 深刻度のアラートのみを返す。"""
+    from open_mythos.skills.anomaly_detector import AlertSeverity as _AS
+    critical = _alert_store.list_by_severity(_AS.CRITICAL)
+    return {
+        "critical_count": len(critical),
+        "alerts": [a.to_dict() for a in critical],
+    }
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Sprint 68 — セキュリティインテリジェンス + カテゴリ分類
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+from open_mythos.skills.security_intel import (  # noqa: E402
+    ThreatSeverity as _ThreatSeverity,
+    ThreatSource   as _ThreatSource,
+    ThreatCategory as _ThreatCategory,
+    SecurityThreat as _SecurityThreat,
+    SecurityIntelStore  as _SecurityIntelStore,
+    ThreatEnricher      as _ThreatEnricher,
+    ThreatCollector     as _ThreatCollector,
+    SecurityIntelDashboard as _SecurityIntelDashboard,
+    IntelReportEngine   as _IntelReportEngine,
+)
+from open_mythos.skills.security import ThreatCategoryMapper as _ThreatCategoryMapper  # noqa: E402
+
+# シングルトン
+_intel_store   = _SecurityIntelStore()
+_intel_enricher = _ThreatEnricher()   # LLM なしなら rule-based
+_intel_collector = _ThreatCollector(store=_intel_store, enricher=_intel_enricher)
+_intel_dashboard = _SecurityIntelDashboard(_intel_store)
+_intel_report    = _IntelReportEngine(_intel_store)
+_threat_mapper   = _ThreatCategoryMapper()
+
+
+# ---- リクエストモデル ----
+
+class _ThreatCreateReq(BaseModel):
+    title:      str
+    summary:    str
+    source:     str = "manual"
+    severity:   str = "medium"
+    category:   str = "general"
+    source_url: Optional[str] = None
+    tags:       list = []
+    is_featured: bool = False
+
+
+class _CollectReq(BaseModel):
+    sources: list = []   # 空 = 全ソース。例: ["nvd", "cisa", "ai", "manual"]
+    enrich:  bool = False
+
+
+class _CategoryMapReq(BaseModel):
+    title:   str
+    summary: str = ""
+
+
+# ---- エンドポイント ----
+
+@app.get("/v1/intel/threats", tags=["intel"], summary="脅威情報一覧 — Sprint 68")
+def intel_list_threats(
+    severity: Optional[str] = None,
+    source:   Optional[str] = None,
+    category: Optional[str] = None,
+    featured: Optional[bool] = None,
+    limit:    int = 50,
+):
+    """脅威情報をフィルタ付きで一覧取得する。"""
+    if featured:
+        threats = _intel_store.list_featured()
+    elif severity:
+        try:
+            sev = _ThreatSeverity(severity)
+            threats = _intel_store.list_by_severity(sev)
+        except ValueError:
+            raise HTTPException(400, f"Invalid severity: {severity}")
+    elif source:
+        try:
+            src = _ThreatSource(source)
+            threats = _intel_store.list_by_source(src)
+        except ValueError:
+            raise HTTPException(400, f"Invalid source: {source}")
+    elif category:
+        try:
+            cat = _ThreatCategory(category)
+            threats = _intel_store.list_by_category(cat)
+        except ValueError:
+            raise HTTPException(400, f"Invalid category: {category}")
+    else:
+        threats = _intel_store.list_all(limit=limit)
+    return {"threats": [t.to_dict() for t in threats[:limit]], "total": len(threats)}
+
+
+@app.get("/v1/intel/threats/{threat_id}", tags=["intel"], summary="脅威詳細 — Sprint 68")
+def intel_get_threat(threat_id: str):
+    t = _intel_store.get(threat_id)
+    if t is None:
+        raise HTTPException(404, f"Threat not found: {threat_id}")
+    return t.to_dict()
+
+
+@app.post("/v1/intel/threats", tags=["intel"], summary="脅威情報手動登録 — Sprint 68")
+def intel_create_threat(req: _ThreatCreateReq):
+    """手動で脅威情報を登録し、診断カテゴリを自動付与する。"""
+    try:
+        source   = _ThreatSource(req.source)
+        severity = _ThreatSeverity(req.severity)
+        category = _ThreatCategory(req.category)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    import uuid as _uuid
+    threat = _SecurityThreat(
+        id=str(_uuid.uuid4()),
+        title=req.title,
+        summary=req.summary,
+        source=source,
+        severity=severity,
+        category=category,
+        source_url=req.source_url,
+        tags=req.tags,
+        is_featured=req.is_featured,
+    )
+    # 診断カテゴリ自動付与
+    matches = _threat_mapper.map(req.title, req.summary)
+    threat.diagnosis_categories = [m.category.value for m in matches]
+
+    _intel_store.add(threat)
+    return threat.to_dict()
+
+
+@app.post("/v1/intel/collect", tags=["intel"], summary="情報収集トリガー — Sprint 68")
+def intel_collect(req: _CollectReq):
+    """
+    指定ソースから脅威情報を収集して登録する。
+    sources=[] のときは全ソース (nvd/cisa/ai/manual) を収集する。
+    enrich=True のときは AI 富化も実行する（LLM API キーが必要）。
+    """
+    collector = _ThreatCollector(
+        store=_intel_store,
+        enricher=_intel_enricher,
+        enrich_on_collect=req.enrich,
+    )
+    sources = req.sources or ["nvd", "cisa", "ai", "manual"]
+    collected: Dict[str, int] = {}
+    if "nvd"    in sources: collected["nvd"]    = len(collector.collect_nvd())
+    if "cisa"   in sources: collected["cisa"]   = len(collector.collect_cisa())
+    if "ai"     in sources: collected["ai"]     = len(collector.collect_ai_feed())
+    if "manual" in sources: collected["manual"] = len(collector.collect_manual())
+    return {"collected": collected, "total": sum(collected.values())}
+
+
+@app.post("/v1/intel/threats/{threat_id}/enrich", tags=["intel"], summary="個別AI富化 — Sprint 68")
+def intel_enrich_threat(threat_id: str):
+    """指定した脅威を AI で富化する（LLM 不在時は rule-based）。"""
+    t = _intel_store.get(threat_id)
+    if t is None:
+        raise HTTPException(404, f"Threat not found: {threat_id}")
+    t.enrichment = _intel_enricher.enrich(t)
+    return t.to_dict()
+
+
+@app.get("/v1/intel/summary", tags=["intel"], summary="インテリジェンスサマリー — Sprint 68")
+def intel_summary():
+    return _intel_dashboard.summary()
+
+
+@app.get("/v1/intel/feed/featured", tags=["intel"], summary="注目脅威フィード — Sprint 68")
+def intel_featured_feed(limit: int = 10):
+    return {"feed": _intel_dashboard.featured_feed(limit=limit)}
+
+
+@app.get("/v1/intel/report/md", tags=["intel"], summary="インテルレポート Markdown — Sprint 68")
+def intel_report_md(limit: int = 20):
+    return Response(content=_intel_report.markdown(limit=limit), media_type="text/markdown")
+
+
+@app.post("/v1/intel/category-map", tags=["intel"], summary="脅威→診断カテゴリ判定 — Sprint 68")
+def intel_category_map(req: _CategoryMapReq):
+    """
+    タイトル・サマリーから診断カテゴリ(A〜F)を判定する。
+    (security-app の threat-category-map.ts 相当)
+    """
+    matches = _threat_mapper.map(req.title, req.summary)
+    return {
+        "title":   req.title,
+        "matches": [m.to_dict() for m in matches],
+        "primary": matches[0].to_dict() if matches else None,
+    }
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Sprint 69 — 時系列予測 (TimesFM + マルチモデル)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+from open_mythos.skills.time_series import (  # noqa: E402
+    TimesFMForecasterFactory as _TSFactory,
+    CampaignForecaster       as _CampaignForecaster,
+    ForecastStore            as _ForecastStore,
+    ForecastReportEngine     as _ForecastReportEngine,
+)
+
+# デフォルトは LinearTrend (起動コスト 0)。
+# TimesFM を使いたい場合は /v1/forecast/load でモデルをロードする。
+_ts_forecaster       = _TSFactory.rule_based()
+_ts_campaign_fc      = _CampaignForecaster(_ts_forecaster, _analytics_store)
+_forecast_store      = _ForecastStore()
+_forecast_report     = _ForecastReportEngine(_forecast_store)
+
+
+class _ForecastReq(BaseModel):
+    metric:  str   = "clicks"
+    horizon: int   = 7
+    model:   str   = "linear_trend"   # "linear_trend" | "timesfm" | "mock"
+
+
+class _BatchForecastReq(BaseModel):
+    campaign_ids: list
+    metric:  str = "clicks"
+    horizon: int = 7
+    model:   str = "linear_trend"
+
+
+def _get_forecaster(model_name: str):
+    """モデル名からフォーキャスターを返す"""
+    if model_name == "timesfm":
+        return _TSFactory.from_pretrained()
+    elif model_name == "mock":
+        return _TSFactory.from_mock()
+    else:
+        return _TSFactory.rule_based()
+
+
+# NOTE: 固定パス (/batch, /models) を先に定義し、/{campaign_id} に捕捉されないようにする
+
+@app.get(
+    "/v1/forecast/models",
+    tags=["forecast"],
+    summary="利用可能モデル一覧 — Sprint 69",
+)
+def forecast_models():
+    """利用可能な予測モデルの一覧を返す。"""
+    return {"models": _TSFactory.available_models()}
+
+
+@app.post(
+    "/v1/forecast/batch",
+    tags=["forecast"],
+    summary="バッチ予測 — Sprint 69",
+)
+def forecast_batch(req: _BatchForecastReq):
+    """複数キャンペーンを一括予測する。"""
+    fc = _CampaignForecaster(_get_forecaster(req.model), _analytics_store)
+    results = fc.forecast_batch(req.campaign_ids, metric=req.metric, horizon=req.horizon)
+    for r in results.values():
+        _forecast_store.save(r)
+    return {
+        "metric":    req.metric,
+        "horizon":   req.horizon,
+        "forecasts": {cid: r.to_dict() for cid, r in results.items()},
+    }
+
+
+@app.post(
+    "/v1/forecast/{campaign_id}",
+    tags=["forecast"],
+    summary="キャンペーン KPI 予測 — Sprint 69",
+)
+def forecast_campaign(campaign_id: str, req: _ForecastReq):
+    """
+    指定キャンペーンの KPI 指標を予測する。
+
+    model:
+      - linear_trend : 線形トレンド外挿 (高速・外部依存なし)
+      - timesfm      : Google TimesFM 2.5 (初回はモデルロードが発生)
+      - mock         : テスト用モック
+    """
+    fc = _CampaignForecaster(_get_forecaster(req.model), _analytics_store)
+    try:
+        result = fc.forecast_metric(campaign_id, metric=req.metric, horizon=req.horizon)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    _forecast_store.save(result)
+    return result.to_dict()
+
+
+@app.post(
+    "/v1/forecast/{campaign_id}/all",
+    tags=["forecast"],
+    summary="全指標一括予測 — Sprint 69",
+)
+def forecast_campaign_all(campaign_id: str, req: _ForecastReq):
+    """指定キャンペーンの全 KPI 指標を一括予測する。"""
+    fc = _CampaignForecaster(_get_forecaster(req.model), _analytics_store)
+    try:
+        results = fc.forecast_all_metrics(campaign_id, horizon=req.horizon)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    for r in results.values():
+        _forecast_store.save(r)
+    return {
+        "campaign_id": campaign_id,
+        "forecasts": {m: r.to_dict() for m, r in results.items()},
+    }
+
+
+@app.get(
+    "/v1/forecast/{campaign_id}/history",
+    tags=["forecast"],
+    summary="予測履歴 — Sprint 69",
+)
+def forecast_history(campaign_id: str, metric: Optional[str] = None):
+    """キャンペーンの予測履歴を返す。"""
+    if metric:
+        latest = _forecast_store.latest(campaign_id, metric)
+        if latest is None:
+            raise HTTPException(404, f"No forecast found for {campaign_id}/{metric}")
+        return latest.to_dict()
+    results = _forecast_store.list_by_campaign(campaign_id)
+    return {"campaign_id": campaign_id, "forecasts": [r.to_dict() for r in results]}
+
+
+@app.get(
+    "/v1/forecast/report/md/{forecast_id}",
+    tags=["forecast"],
+    summary="予測レポート Markdown — Sprint 69",
+)
+def forecast_report_md(forecast_id: str):
+    result = _forecast_store.get(forecast_id)
+    if result is None:
+        raise HTTPException(404, f"Forecast not found: {forecast_id}")
+    return Response(content=_forecast_report.markdown(result), media_type="text/markdown")
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Sprint 70A — 予測アラート (ForecastAlert)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+from open_mythos.skills.forecast_alert import (  # noqa: E402
+    AlertThreshold     as _AlertThreshold70,
+    ForecastAlertRule  as _ForecastAlertRule,
+    ForecastAlertRuleStore as _ForecastAlertRuleStore,
+    ForecastAlertEngine    as _ForecastAlertEngine,
+)
+
+_fa_rule_store  = _ForecastAlertRuleStore()
+_fa_engine      = _ForecastAlertEngine(forecast_store=_forecast_store, rule_store=_fa_rule_store)
+
+
+class _ForecastAlertRuleReq(BaseModel):
+    campaign_id: str
+    metric:      str   = "clicks"
+    upper_limit: Optional[float] = None
+    lower_limit: Optional[float] = None
+    severity:    str   = "warning"
+
+
+@app.get(
+    "/v1/forecast/alert/rules",
+    tags=["forecast-alert"],
+    summary="予測アラートルール一覧 — Sprint 70A",
+)
+def forecast_alert_rules_list():
+    return {"rules": [r.to_dict() for r in _fa_rule_store.list()]}
+
+
+@app.post(
+    "/v1/forecast/alert/rules",
+    tags=["forecast-alert"],
+    summary="予測アラートルール追加 — Sprint 70A",
+)
+def forecast_alert_rules_add(req: _ForecastAlertRuleReq):
+    rule_id = str(uuid.uuid4())[:8]
+    threshold = _AlertThreshold70(
+        metric=req.metric,
+        upper_limit=req.upper_limit,
+        lower_limit=req.lower_limit,
+    )
+    rule = _ForecastAlertRule(
+        id=rule_id, campaign_id=req.campaign_id,
+        threshold=threshold, severity=req.severity,
+    )
+    _fa_rule_store.add(rule)
+    return {"rule_id": rule_id, "rule": rule.to_dict()}
+
+
+@app.delete(
+    "/v1/forecast/alert/rules/{rule_id}",
+    tags=["forecast-alert"],
+    summary="予測アラートルール削除 — Sprint 70A",
+)
+def forecast_alert_rules_delete(rule_id: str):
+    _fa_rule_store.delete(rule_id)
+    return {"deleted": rule_id}
+
+
+@app.get(
+    "/v1/forecast/alert/check/{campaign_id}",
+    tags=["forecast-alert"],
+    summary="予測アラートチェック — Sprint 70A",
+)
+def forecast_alert_check(campaign_id: str):
+    checks = _fa_engine.check_all(campaign_id)
+    return {
+        "campaign_id": campaign_id,
+        "checks": [c.to_dict() for c in checks],
+        "triggered_count": sum(1 for c in checks if c.triggered),
+    }
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Sprint 70B — レポート配信 Webhook (ReportDispatcher)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+from open_mythos.skills.report_dispatcher import (  # noqa: E402
+    WebhookTarget   as _WebhookTarget,
+    WebhookStore    as _WebhookStore70,
+    ReportDispatcher as _ReportDispatcher,
+)
+
+_webhook_store   = _WebhookStore70()
+_report_dispatch = _ReportDispatcher(
+    webhook_store=_webhook_store,
+    analytics_store=_analytics_store,
+)
+
+
+class _WebhookAddReq(BaseModel):
+    name:    str
+    url:     str
+    type:    str  = "generic"
+    enabled: bool = True
+
+
+class _DispatchReq(BaseModel):
+    webhook_id:  str
+    report_type: str = "generic"
+    campaign_id: Optional[str] = None
+
+
+class _DispatchAllReq(BaseModel):
+    report_type: str = "generic"
+    campaign_id: Optional[str] = None
+
+
+@app.get(
+    "/v1/report/webhooks",
+    tags=["report-dispatch"],
+    summary="Webhook 一覧 — Sprint 70B",
+)
+def webhooks_list():
+    return {"webhooks": [wh.to_dict() for wh in _webhook_store.list()]}
+
+
+@app.post(
+    "/v1/report/webhooks",
+    tags=["report-dispatch"],
+    summary="Webhook 追加 — Sprint 70B",
+)
+def webhooks_add(req: _WebhookAddReq):
+    webhook_id = str(uuid.uuid4())[:8]
+    wh = _WebhookTarget(
+        id=webhook_id, name=req.name, url=req.url,
+        type=req.type, enabled=req.enabled,
+    )
+    _webhook_store.add(wh)
+    return {"webhook_id": webhook_id, "webhook": wh.to_dict()}
+
+
+@app.delete(
+    "/v1/report/webhooks/{webhook_id}",
+    tags=["report-dispatch"],
+    summary="Webhook 削除 — Sprint 70B",
+)
+def webhooks_delete(webhook_id: str):
+    _webhook_store.delete(webhook_id)
+    return {"deleted": webhook_id}
+
+
+@app.post(
+    "/v1/report/dispatch",
+    tags=["report-dispatch"],
+    summary="レポート配信 (mock) — Sprint 70B",
+)
+def report_dispatch(req: _DispatchReq):
+    result = _report_dispatch.dispatch_mock(req.webhook_id, req.report_type, req.campaign_id)
+    return {"result": result.to_dict()}
+
+
+@app.post(
+    "/v1/report/dispatch/all",
+    tags=["report-dispatch"],
+    summary="全 Webhook にレポート配信 (mock) — Sprint 70B",
+)
+def report_dispatch_all(req: _DispatchAllReq):
+    results = _report_dispatch.dispatch_all_mock(req.report_type, req.campaign_id)
+    return {"results": [r.to_dict() for r in results], "count": len(results)}
+
+
+@app.get(
+    "/v1/report/dispatch/history",
+    tags=["report-dispatch"],
+    summary="配信履歴 — Sprint 70B",
+)
+def report_dispatch_history():
+    return {"history": [r.to_dict() for r in _report_dispatch.history()]}
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Sprint 70C — 自然言語クエリ (NLQ)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+from open_mythos.skills.nlq_agent import (  # noqa: E402
+    NLQParser   as _NLQParser,
+    NLQExecutor as _NLQExecutor,
+)
+
+_nlq_parser   = _NLQParser()
+_nlq_executor = _NLQExecutor(
+    analytics_store=_analytics_store,
+    forecast_store=_forecast_store,
+    alert_store=_alert_store,
+)
+
+
+class _NLQReq(BaseModel):
+    text: str
+
+
+@app.post(
+    "/v1/nlq/query",
+    tags=["nlq"],
+    summary="自然言語クエリ実行 — Sprint 70C",
+)
+def nlq_query(req: _NLQReq):
+    if not req.text:
+        return {
+            "intent": "unknown",
+            "query": {"raw": "", "intent": "unknown", "campaign_id": None, "metric": None, "params": {}},
+            "result": {"query": {}, "intent": "unknown", "data": None,
+                       "message": "空のクエリです。", "success": False},
+        }
+    query = _nlq_parser.parse(req.text)
+    result = _nlq_executor.execute(query)
+    return {
+        "intent": query.intent.value,
+        "query":  query.to_dict(),
+        "result": result.to_dict(),
+    }

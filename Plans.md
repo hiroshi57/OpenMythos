@@ -43,8 +43,11 @@
 | 64 | **A/B+分析API + 形態素連携 + 予算最適化** | `serve/api.py` `skills/budget_optimizer.py` | 3542 | v0.67 |
 | 65 | **Fusion マルチモデル融合 (OpenRouter移植)** | `skills/fusion.py` | 3593 | v0.68 |
 | 66 | **Fusionストリーミング + A/B予算連携 + 異常検知** | `skills/campaign_orchestrator.py` `skills/anomaly_detector.py` | 3650 | v0.69 |
+| 67 | **異常検知自動予算停止 + Fusionキャッシュ + 統合ダッシュボード** | `skills/fusion_cache.py` `campaign_orchestrator.py` | 3703 | v0.70 |
+| 68 | **セキュリティインテリジェンス統合 + リスクカテゴリ分類** | `skills/security_intel.py` `skills/security.py` | 3780 | v0.71 |
+| 69 | **時系列予測統合 TimesFM + マルチモデル** | `skills/time_series.py` | 3842 | v0.72 |
 
-> **累計テスト数**: ~3650 PASS (Sprint 66: +57) — **Sprint 67 候補検討中**
+> **累計テスト数**: 3842 PASS (Sprint 69: +62) — **Sprint 70 候補検討中**
 
 ---
 
@@ -252,13 +255,116 @@
 
 ---
 
-## Sprint 67 候補テーマ
+---
+
+## Sprint 67 詳細 (完了)
+
+### Sprint 67: 異常検知自動予算停止 + Fusionキャッシュ + 統合ダッシュボード — v0.70.0
+> 候補 A/B/C を一括実装。異常検知→自動凍結・Fusionキャッシュ・統合ダッシュボードの 3 レイヤーを整備。
+
+#### 67A: 異常検知 → 自動予算停止 (`skills/campaign_orchestrator.py` 拡張)
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 67A.1 | FreezeDecision / FrozenBudgetPlan (凍結判定データモデル) | cc:完了 |
+| 67A.2 | CampaignOrchestrator.freeze_if_critical — Critical アラートで予算配分を自動凍結 | cc:完了 |
+| 67A.3 | `/v1/orchestrator/freeze` — 凍結実行 API | cc:完了 |
+
+#### 67B: Fusion 結果キャッシュ (`skills/fusion_cache.py`)
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 67B.1 | FusionCache — LRU + TTL、hit/miss 統計、eviction | cc:完了 |
+| 67B.2 | CachedFusionEngine — FusionEngine ラッパー (stream はキャッシュ不使用) | cc:完了 |
+| 67B.3 | `/v1/fusion/cached` `/v1/fusion/cache/stats` `/v1/fusion/cache/clear` | cc:完了 |
+
+#### 67C: 広告運用 統合ダッシュボード API (`serve/api.py`)
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 67C.1 | `/v1/dashboard/summary` — KPI/アラート/A-B/予測を 1 エンドポイントに集約 | cc:完了 |
+| 67C.2 | `/v1/dashboard/campaigns` — 全キャンペーン横断集計 | cc:完了 |
+| 67C.3 | `/v1/dashboard/alerts/critical` — Critical アラート一覧 | cc:完了 |
+
+| 67.T | `tests/test_sprint67.py` — 53 tests PASS (累計 3703) | cc:完了 |
+
+---
+
+## Sprint 68 詳細 (完了)
+
+### Sprint 68: セキュリティインテリジェンス統合 + リスクカテゴリ分類 — v0.71.0
+> VulnScanner (Sprint 59) に連動する脅威インテリジェンス収集・分類・対応プレイブック層を追加。
+
+#### 68A: リスクカテゴリ分類 (`skills/security.py` 拡張)
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 68A.1 | DiagnosisCategory (A〜F: 技術的脆弱性/フィッシング/コンプライアンス/インシデント/ガバナンス/AIリスク) | cc:完了 |
+| 68A.2 | ThreatCategoryMapper — キーワードルール + 日本語パターン対応 | cc:完了 |
+| 68A.3 | CategoryMatch (マッチ結果 + 信頼スコア) | cc:完了 |
+
+#### 68B: セキュリティインテリジェンス (`skills/security_intel.py`)
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 68B.1 | ThreatSeverity / ThreatSource / ThreatCategory (Enum 層) | cc:完了 |
+| 68B.2 | ResponsePlaybook / ThreatEnrichment / SecurityThreat (データモデル) | cc:完了 |
+| 68B.3 | SecurityIntelStore (CRUD + フィルタ) / ThreatEnricher (LLM + ルールベース) | cc:完了 |
+| 68B.4 | ThreatCollector (NVD/OSINT/内部ソース収集) / SecurityIntelDashboard / IntelReportEngine | cc:完了 |
+
+#### 68C: セキュリティインテリジェンス API (`serve/api.py`)
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 68C.1 | `/v1/intel/collect` `/v1/intel/threats` `/v1/intel/threats/{id}` (収集・一覧・詳細) | cc:完了 |
+| 68C.2 | `/v1/intel/summary` `/v1/intel/feed/featured` `/v1/intel/report/md` (サマリー・注目・レポート) | cc:完了 |
+| 68C.3 | `/v1/intel/category-map` — テキストからリスクカテゴリ分類 | cc:完了 |
+
+| 68.T | `tests/test_sprint68.py` — 77 tests PASS (累計 3780) | cc:完了 |
+
+---
+
+## Sprint 69 詳細 (完了)
+
+### Sprint 69: 時系列予測統合 TimesFM + マルチモデル — v0.72.0
+> Google TimesFM アーキテクチャを軽量移植。LinearTrend / Mock / TimesFM の 3 モデルを統合。
+
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 69.1 | `skills/time_series.py` — ForecastPoint / ForecastResult (データモデル) | cc:完了 |
+| 69.2 | `skills/time_series.py` — LinearTrendForecaster (最小二乗法トレンド) | cc:完了 |
+| 69.3 | `skills/time_series.py` — MockForecaster (テスト用決定論的予測) | cc:完了 |
+| 69.4 | `skills/time_series.py` — TimesFMForecaster (patch embedding + self-attention) | cc:完了 |
+| 69.5 | `skills/time_series.py` — TimesFMForecasterFactory (from_env/from_mock/linear) | cc:完了 |
+| 69.6 | `skills/time_series.py` — CampaignForecaster / ForecastStore / ForecastReportEngine | cc:完了 |
+| 69.7 | `serve/api.py` — `/v1/forecast/{id}` `/v1/forecast/{id}/all` `/v1/forecast/batch` | cc:完了 |
+| 69.8 | `serve/api.py` — `/v1/forecast/{id}/history` `/v1/forecast/report/md/{fid}` `/v1/forecast/models` | cc:完了 |
+| 69.T | `tests/test_sprint69.py` — 62 tests PASS (累計 3842) | cc:完了 |
+
+#### TimesFM 対応表
+| Google TimesFM | time_series.py | 役割 |
+|----------------|----------------|------|
+| patch embedding | `TimesFMForecaster._patch_embed` | 時系列分割→埋め込み |
+| self-attention | `TimesFMForecaster._attention` | パターン抽出 |
+| projection head | `TimesFMForecaster._project` | 予測値生成 |
+| multimodel factory | `TimesFMForecasterFactory` | LinearTrend/Mock/TimesFM 切替 |
+
+---
+
+## Sprint 70 候補テーマ
 
 | Option | テーマ | コアモジュール | 理由 |
 |--------|--------|--------------|------|
-| **A** | **異常検知 → 自動予算停止** | `campaign_orchestrator.py` 拡張 | Critical アラートで予算配分を自動凍結 |
-| B | **Fusion 結果キャッシュ** | `skills/fusion_cache.py` | 同一質問の再計算を回避 |
-| C | **広告運用 統合ダッシュボード API** | `serve/api.py` 拡張 | 全 KPI/アラート/A-B を 1 エンドポイントに集約 |
+| **A** | **予測×異常検知 統合アラート** | `skills/forecast_alert.py` | 予測値を AnomalyDetector に流し込み将来アラートを生成 |
+| **B** | **レポート自動配信 Webhook** | `skills/report_dispatcher.py` | 定期レポートを Slack/webhook に POST、`/v1/report/dispatch` |
+| **C** | **自然言語クエリ (NLQ) インターフェース** | `skills/nlq_agent.py` | 「先週の CTR は？」を API クエリに変換するエージェント |
+
+---
+
+## Sprint 71 候補テーマ — 主要都市地図ビジュアライザ
+
+> 参照: [tokyo-danmenzu.pages.dev](https://tokyo-danmenzu.pages.dev/?view=3d&aux=1&lbl=1&lang=ja#12/35.67/139.75/0/50)（東京地下断面図・3D地質断面ビューア / @chizutodesign）
+> コンセプト: 東京・大阪・名古屋・横浜・福岡の主要都市地下構造・鉄道路線断面を GeoJSON + SVG/3D で可視化
+
+| Option | テーマ | コアモジュール | 理由 |
+|--------|--------|--------------|------|
+| **A** | **主要都市メトロ断面図データ** | `skills/city_map.py` | 東京・大阪等の地下鉄路線 GeoJSON + 地質層データ (丸ノ内線等を起点) |
+| **B** | **3D 断面図 SVG レンダラー** | `skills/map_renderer.py` | station/layer データから SVG/PNG 断面図を生成 (`/v1/map/cross-section`) |
+| **C** | **都市地図 API (全市横断)** | `serve/api.py` 拡張 | `/v1/map/cities` `/v1/map/{city}/lines` `/v1/map/{city}/{line}/front-view` |
 
 ---
 
