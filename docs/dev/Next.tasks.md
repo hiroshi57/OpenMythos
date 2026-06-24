@@ -62,9 +62,9 @@
 
 | task-id | 内容 | 優先度 | DoD |
 | ------- | ---- | ------ | --- |
-| 35.1 | **社内 SEO データ変換** — `scripts/csv_to_jsonl.py --inspect` で列名確認 → `content_quality` タスク形式に変換 | 🔴 必須 | `data/seo_train.jsonl` 生成 |
-| 35.2 | **LoRA FT 実行** — GCP T4 GPU で LoraTrainer を社内データで実行。`scripts/pretrain_gcp.sh` ベース | 🔴 必須 | perplexity < 20 確認 |
-| 35.3 | **Opus 4.8 API との精度比較** — 同一入力で LLMO スコア・人間評価を比較。「OpenMythos が自社タスクで上回る」を数値証明 | 🔴 必須 | 比較レポートを `benchmark/results/` に保存 |
+| 35.1 ✅ | **社内 SEO データ変換** — 実CSV未入手のため `scripts/generate_seo_train.py --n 200` で content_quality 形式の合成データ生成。実CSV入手後は `--input <csv> --auto-map` で差替え | 🔴 必須 | `data/seo_train.jsonl` 生成（200件・UTF-8）✅ |
+| 35.2 ⏳ | **LoRA FT 実行** — GCP T4 GPU で `scripts/run_seo_ft.py` を実行。ラッパー `scripts/run_seo_ft_gcp.sh` 作成済み（要 GCP 実行）。ローカルは venv が Application Control でブロック＋torch 未導入のため実行不可 | 🔴 必須 | GCP で perplexity < 20 確認（未実行） |
+| 35.3 ⏳ | **Opus 4.8 API との精度比較** — `scripts/run_benchmark_comparison.py` を実 API 対応に強化（`ANTHROPIC_API_KEY` で `claude-opus-4-8` を LLMO 採点に使用、未設定時はシミュレーションへフォールバック）。torch 未導入でもローカル動作するよう import 堅牢化。`--no-api` でローカル検証済み。実 API 実行と FT モデル採点接続が残 | 🔴 必須 | 比較レポートを `benchmark/results/` に保存（枠組み完成・実API実行は残） |
 | 35.4 | **A/B ルーター本番接続** — `serve/api.py` の A/B ルーターで OpenMythos と Claude API を 20% vs 80% 並走 | 🟡 重要 | 実トラフィックでの比較開始 |
 | 35.5 | **ROAS シミュレーター強化** — `calculate_roi()` 拡張。モンテカルロ推定で信頼区間付き ROAS 予測 | 🟡 重要 | `roas_simulate(ad_spend, ctr, cvr, aov, n=1000)` |
 
