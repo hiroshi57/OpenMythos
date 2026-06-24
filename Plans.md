@@ -49,8 +49,9 @@
 | 70 | **予測アラート統合 + レポートWebhook + NLQエージェント** | `skills/forecast_alert.py` `skills/report_dispatcher.py` `skills/nlq_agent.py` | 3937 | v0.73 |
 | 71 | **主要都市地図ビジュアライザ** | `skills/city_map.py` `skills/map_renderer.py` | 4014 | v0.74 |
 | 72 | **地図拡張 比較/編集/レポート** | `skills/map_comparator.py` `skills/map_editor.py` `skills/map_report.py` | 4085 | v0.75 |
+| 73 | **地図アニメーション/経路探索/インポート** | `skills/map_animator.py` `skills/route_finder.py` `skills/map_importer.py` | 4161 | v0.76 |
 
-> **累計テスト数**: 4085 PASS (Sprint 72: +71) — **Sprint 73 候補検討中**
+> **累計テスト数**: 4161 PASS (Sprint 73: +76) — **Sprint 74 候補検討中**
 
 ---
 
@@ -383,13 +384,25 @@
 | 72D | `serve/api.py` — `/v1/map/compare/*` `/v1/map-editor/*` `/v1/map/*/report/md` `/v1/map/report/compare` | cc:完了 |
 | 72T | `tests/test_sprint72.py` — 71 PASS (累計 4085) | cc:完了 |
 
-## Sprint 73 候補テーマ
+## Sprint 73 詳細 (最新 / 完了)
+
+### Sprint 73: 地図アニメーション/経路探索/インポート — v0.76.0
+
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 73A | `skills/map_animator.py` — SMIL SVG アニメ (1960/1980/2000/2020 地質変化) | cc:完了 |
+| 73B | `skills/route_finder.py` — Dijkstra 最短経路 + 乗換コスト | cc:完了 |
+| 73C | `skills/map_importer.py` — CSV/GeoJSON 一括インポート | cc:完了 |
+| 73D | `serve/api.py` — 9エンドポイント追加 | cc:完了 |
+| 73T | `tests/test_sprint73.py` — 76 PASS (累計 4161) | cc:完了 |
+
+## Sprint 74 候補テーマ
 
 | Option | テーマ | コアモジュール | 理由 |
 |--------|--------|--------------|------|
-| **A** | **地図アニメーション (時系列断面変化)** | `skills/map_animator.py` | 地質調査年次ごとの層変化を SVG アニメで表現 |
-| **B** | **経路探索エンジン** | `skills/route_finder.py` | 2駅間の最短経路 (乗換案内) をグラフ探索 |
-| **C** | **地図データインポート (CSV/GeoJSON)** | `skills/map_importer.py` | 外部データを一括インポートして CityMapStore に登録 |
+| **A** | **駅混雑シミュレーション** | `skills/crowd_simulator.py` | 乗降客数モデル + 時間帯別混雑度 API |
+| **B** | **アクセシビリティ分析** | `skills/accessibility.py` | 駅のエレベーター/バリアフリー度スコア |
+| **C** | **地下水位モニタリング** | `skills/groundwater.py` | 地質層と水位データを重ね合わせた浸水リスク |
 
 ---
 
