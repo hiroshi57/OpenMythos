@@ -53,8 +53,9 @@
 | 74 | **混雑シミュレーション/アクセシビリティ/地下水位** | `skills/crowd_simulator.py` `skills/accessibility.py` `skills/groundwater.py` | 4238 | v0.77 |
 | 75 | **環境センサー/乗り換え最適化/インフラダッシュボード** | `skills/env_sensor.py` `skills/transfer_optimizer.py` `skills/infra_dashboard.py` | 4319 | v0.78 |
 | 76 | **交通量分析/エネルギーモニタリング/群衆予測** | `skills/traffic_analyzer.py` `skills/energy_monitor.py` `skills/crowd_predictor.py` | 4381 | v0.79 |
+| 77 | **災害アラート/水質モニタリング/騒音マッピング** | `skills/disaster_alert.py` `skills/water_quality.py` `skills/noise_mapper.py` | 4446 | v0.80 |
 
-> **累計テスト数**: 4381 PASS (Sprint 76: +62) — **Sprint 77 候補検討中**
+> **累計テスト数**: 4446 PASS (Sprint 77: +65) — **Sprint 78 候補検討中**
 
 ---
 

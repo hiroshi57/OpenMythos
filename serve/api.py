@@ -9100,3 +9100,186 @@ def crowd_daily_forecast(
         spot_name=spot_name, city=city, weather=weather_e, event=event_e
     )
     return {"spot_name": spot_name, "city": city, "forecasts": [f.to_dict() for f in forecasts]}
+
+
+# ---------------------------------------------------------------------------
+# Sprint 77 — 災害アラート / 水質モニタリング / 騒音マッピング
+# ---------------------------------------------------------------------------
+
+from open_mythos.skills.disaster_alert import (
+    DisasterAlertManager as _AlertManager,
+    AlertStore as _AlertStore,
+    DisasterType as _DisasterType,
+    AlertLevel as _AlertLevel,
+)
+from open_mythos.skills.water_quality import (
+    WaterQualityMonitor as _WQMonitor,
+    WaterQualityStore as _WQStore,
+    WaterParam as _WaterParam,
+    SourceType as _SourceType,
+)
+from open_mythos.skills.noise_mapper import (
+    NoiseMapper as _NoiseMapper,
+    NoiseMeasurementStore as _NoiseStore,
+    ZoneType as _ZoneType,
+)
+
+_alert_store = _AlertStore()
+_alert_manager = _AlertManager(store=_alert_store)
+
+_wq_store = _WQStore()
+_wq_monitor = _WQMonitor(store=_wq_store)
+
+_noise_store = _NoiseStore()
+_noise_mapper = _NoiseMapper(store=_noise_store)
+
+
+# ── 災害アラート ──────────────────────────────────────────────────
+
+class _AlertIn(BaseModel):
+    alert_id: str
+    disaster_type: str
+    city: str
+    level: Optional[str] = None
+    magnitude: Optional[float] = None
+    description: str = ""
+    affected_areas: List[str] = []
+
+
+@app.post("/v1/disaster/alerts", tags=["disaster"], summary="災害アラート発令 — Sprint 77A")
+def disaster_issue(body: _AlertIn):
+    try:
+        dtype = _DisasterType(body.disaster_type)
+        level = _AlertLevel(body.level) if body.level else None
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    alert = _alert_manager.issue_alert(
+        alert_id=body.alert_id,
+        disaster_type=dtype,
+        city=body.city,
+        level=level,
+        magnitude=body.magnitude,
+        description=body.description,
+        affected_areas=body.affected_areas,
+    )
+    return alert.to_dict()
+
+
+@app.get("/v1/disaster/alerts", tags=["disaster"], summary="発令中アラート一覧 — Sprint 77A")
+def disaster_active(city: Optional[str] = None):
+    alerts = _alert_manager.get_active_alerts(city)
+    return {"alerts": [a.to_dict() for a in alerts], "count": len(alerts)}
+
+
+@app.patch("/v1/disaster/alerts/{alert_id}/resolve", tags=["disaster"], summary="アラート解除 — Sprint 77A")
+def disaster_resolve(alert_id: str):
+    ok = _alert_manager.resolve_alert(alert_id)
+    if not ok:
+        raise HTTPException(404, f"alert '{alert_id}' not found")
+    return {"ok": True, "alert_id": alert_id, "status": "resolved"}
+
+
+@app.get("/v1/disaster/summary/{city}", tags=["disaster"], summary="都市災害サマリー — Sprint 77A")
+def disaster_city_summary(city: str):
+    return _alert_manager.city_summary(city).to_dict()
+
+
+# ── 水質モニタリング ──────────────────────────────────────────────
+
+class _WaterReadingIn(BaseModel):
+    reading_id: str
+    station_id: str
+    city: str
+    source_type: str
+    param: str
+    value: float
+    hour: int = Field(default=12, ge=0, le=23)
+    day: int = Field(default=1, ge=1, le=31)
+
+
+@app.post("/v1/water/readings", tags=["water"], summary="水質計測値登録 — Sprint 77B")
+def water_add_reading(body: _WaterReadingIn):
+    try:
+        src = _SourceType(body.source_type)
+        param = _WaterParam(body.param)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    r = _wq_monitor.add_reading(
+        reading_id=body.reading_id,
+        station_id=body.station_id,
+        city=body.city,
+        source_type=src,
+        param=param,
+        value=body.value,
+        hour=body.hour,
+        day=body.day,
+    )
+    return r.to_dict()
+
+
+@app.get("/v1/water/unsafe/{city}", tags=["water"], summary="基準超過水質 — Sprint 77B")
+def water_unsafe(city: str):
+    readings = _wq_monitor.get_unsafe_readings(city)
+    return {"city": city, "unsafe": [r.to_dict() for r in readings], "count": len(readings)}
+
+
+@app.get("/v1/water/report/{city}", tags=["water"], summary="都市水質レポート — Sprint 77B")
+def water_city_report(city: str):
+    return _wq_monitor.city_report(city)
+
+
+@app.get("/v1/water/station/{station_id}", tags=["water"], summary="観測所サマリー — Sprint 77B")
+def water_station_summary(station_id: str, param: str = "ph"):
+    try:
+        p = _WaterParam(param)
+    except ValueError:
+        raise HTTPException(400, f"Invalid param: {param}")
+    summary = _wq_monitor.station_summary(station_id, p)
+    if summary is None:
+        raise HTTPException(404, f"No readings for station={station_id} param={param}")
+    return summary.to_dict()
+
+
+# ── 騒音マッピング ────────────────────────────────────────────────
+
+class _NoiseMeasurementIn(BaseModel):
+    measurement_id: str
+    location_name: str
+    city: str
+    zone_type: str
+    db_level: float = Field(ge=0.0, le=200.0)
+    hour: int = Field(default=12, ge=0, le=23)
+
+
+@app.post("/v1/noise/measurements", tags=["noise"], summary="騒音計測値登録 — Sprint 77C")
+def noise_add_measurement(body: _NoiseMeasurementIn):
+    try:
+        zone = _ZoneType(body.zone_type)
+    except ValueError:
+        raise HTTPException(400, f"Invalid zone_type: {body.zone_type}")
+    m = _noise_mapper.add_measurement(
+        measurement_id=body.measurement_id,
+        location_name=body.location_name,
+        city=body.city,
+        zone_type=zone,
+        db_level=body.db_level,
+        hour=body.hour,
+    )
+    return m.to_dict()
+
+
+@app.get("/v1/noise/violations", tags=["noise"], summary="騒音規制超過一覧 — Sprint 77C")
+def noise_violations(city: Optional[str] = None):
+    violations = _noise_mapper.get_violations(city)
+    return {"violations": [m.to_dict() for m in violations], "count": len(violations)}
+
+
+@app.get("/v1/noise/map/{city}", tags=["noise"], summary="騒音マップ — Sprint 77C")
+def noise_map(city: str):
+    cells = _noise_mapper.generate_map(city)
+    return {"city": city, "map": [c.to_dict() for c in cells]}
+
+
+@app.get("/v1/noise/report/{city}", tags=["noise"], summary="都市騒音レポート — Sprint 77C")
+def noise_city_report(city: str):
+    return _noise_mapper.city_report(city).to_dict()
