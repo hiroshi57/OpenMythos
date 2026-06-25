@@ -396,22 +396,54 @@ def generate_html(map_data: CityMapData, width: int = 1000, height: int = 700) -
   <ellipse cx="29" cy="37" rx="3.5" ry="2.5" fill="#c8e6c9" opacity="0.6"/>
   <ellipse cx="42" cy="35" rx="4" ry="3" fill="#c8e6c9" opacity="0.55"/>
 
-  <!-- 幹線道路ネットワーク -->
-  <g stroke="#ffffff" stroke-width="0.55" fill="none" stroke-linecap="round" opacity="0.8">
-    <!-- 環状7号線 (縦) -->
-    <path d="M 24,1 L 24,62"/>
-    <!-- 環状8号線 (縦) -->
-    <path d="M 8,20 L 8,70"/>
-    <!-- 甲州街道 (横) -->
-    <path d="M 1,39 L 65,39"/>
-    <!-- 明治通り (横) -->
-    <path d="M 22,16 L 66,16"/>
-    <!-- 山手通り (縦) -->
-    <path d="M 43,1 L 43,60"/>
+  <!-- 幹線道路ネットワーク (warm-gray: 陸地背景 #f5f0e8 より視認できる色) -->
+  <g fill="none" stroke-linecap="round">
+    <!-- 環状7号線 (縦) — 幹線 -->
+    <path d="M 24,1 L 24,62"       stroke="#c4bba6" stroke-width="0.9"/>
+    <!-- 環状8号線 (縦) — 幹線 -->
+    <path d="M 8,20 L 8,70"        stroke="#c4bba6" stroke-width="0.9"/>
+    <!-- 甲州街道 (横) — 幹線 -->
+    <path d="M 1,39 L 65,39"       stroke="#c4bba6" stroke-width="0.9"/>
+    <!-- 明治通り (横) — 幹線 -->
+    <path d="M 22,16 L 66,16"      stroke="#c4bba6" stroke-width="0.9"/>
+    <!-- 山手通り (縦) — 幹線 -->
+    <path d="M 43,1 L 43,60"       stroke="#c4bba6" stroke-width="0.9"/>
     <!-- 靖国通り (横) -->
-    <path d="M 22,31 L 67,31"/>
+    <path d="M 22,31 L 67,31"      stroke="#cfc7b6" stroke-width="0.7"/>
     <!-- 蔵前橋通り (横) -->
-    <path d="M 43,17 L 80,17"/>
+    <path d="M 43,17 L 80,17"      stroke="#cfc7b6" stroke-width="0.7"/>
+    <!-- 外堀通り (斜め) -->
+    <path d="M 42,32 Q 50,34 54,40" stroke="#cfc7b6" stroke-width="0.65"/>
+  </g>
+
+  <!-- 鉄道路線 -->
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- 山手線 (ループ状・黄緑) -->
+    <path d="M 33,17 Q 43,15 52,18 Q 58,22 60,30 Q 61,38 58,46
+             Q 54,54 44,57 Q 36,59 28,56 Q 22,52 20,44
+             Q 18,36 20,28 Q 22,20 33,17"
+          stroke="#9acd32" stroke-width="1.0" stroke-dasharray="2.5 0.8" opacity="0.9"/>
+    <!-- 中央線 (横・オレンジ) -->
+    <path d="M 1,31 Q 10,30 23,31 Q 35,32 43,31 Q 52,30 60,31"
+          stroke="#f77f00" stroke-width="0.85" stroke-dasharray="2.5 0.8" opacity="0.85"/>
+    <!-- 総武線 (横・黄色) -->
+    <path d="M 43,32 Q 53,32 64,32 Q 72,32 83,32"
+          stroke="#f5c518" stroke-width="0.7" stroke-dasharray="2 0.7" opacity="0.8"/>
+    <!-- 東横線 (縦南西・赤) -->
+    <path d="M 23,31 Q 23,40 22,50 Q 21,60 20,70"
+          stroke="#e60012" stroke-width="0.7" stroke-dasharray="2 0.7" opacity="0.75"/>
+  </g>
+
+  <!-- 主要駅マーカー -->
+  <g font-family="system-ui,sans-serif" font-size="2.0" fill="#444" text-anchor="middle">
+    <circle cx="32" cy="31" r="1.2" fill="white" stroke="#999" stroke-width="0.4"/>
+    <text x="32" y="28.8" fill="#333">新宿</text>
+    <circle cx="50" cy="17" r="1.2" fill="white" stroke="#999" stroke-width="0.4"/>
+    <text x="50" y="14.8" fill="#333">池袋</text>
+    <circle cx="52" cy="44" r="1.2" fill="white" stroke="#999" stroke-width="0.4"/>
+    <text x="52" y="41.8" fill="#333">渋谷</text>
+    <circle cx="57" cy="31" r="1.2" fill="white" stroke="#999" stroke-width="0.4"/>
+    <text x="57" y="28.8" fill="#333">秋葉原</text>
   </g>
 
   <!-- 地区セル -->

@@ -9385,3 +9385,142 @@ def viz_citymap_create(body: _CityMapIn):
 )
 def viz_cities():
     return {"cities": _map_store.list_cities(), "count": _map_store.count()}
+
+
+# ---------------------------------------------------------------------------
+# Sprint 79 — 経営チームエージェント基盤 (keiei-os)
+# ---------------------------------------------------------------------------
+
+from open_mythos.skills.keiei_os import (  # noqa: E402
+    AgentRole as _AgentRole,
+    DecisionType as _DecisionType,
+    AgentTask as _AgentTask,
+    TaskPriority as _TaskPriority,
+    TaskStatus as _TaskStatus,
+    KeieiOrchestrator as _KeieiOrchestrator,
+    KeieiStore as _KeieiStore,
+)
+
+_keiei_store = _KeieiStore()
+_keiei = _KeieiOrchestrator(store=_keiei_store)
+
+
+@app.get(
+    "/v1/keiei/agents",
+    tags=["keiei-os"],
+    summary="経営チーム エージェント一覧 — Sprint 79",
+)
+def keiei_agents():
+    return {"agents": _keiei.list_agents(), "count": len(_keiei.agents)}
+
+
+@app.get(
+    "/v1/keiei/agents/{role}",
+    tags=["keiei-os"],
+    summary="エージェント詳細 — Sprint 79",
+)
+def keiei_agent_detail(role: str):
+    try:
+        role_e = _AgentRole(role)
+    except ValueError:
+        raise HTTPException(400, f"Invalid role: {role}. Choose from: {[r.value for r in _AgentRole]}")
+    agent = _keiei.get_agent(role_e)
+    return agent.to_dict()
+
+
+class _ConsultIn(BaseModel):
+    topic: str
+    context: str = ""
+    roles: Optional[List[str]] = None
+
+
+@app.post(
+    "/v1/keiei/consult",
+    tags=["keiei-os"],
+    summary="経営チームへの諮問 — Sprint 79",
+)
+def keiei_consult(body: _ConsultIn):
+    if body.roles:
+        try:
+            role_list = [_AgentRole(r) for r in body.roles]
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        decisions = _keiei.consult_roles(body.topic, role_list)
+    else:
+        decisions = _keiei.consult(body.topic, body.context)
+    return {
+        "topic": body.topic,
+        "decisions": [d.to_dict() for d in decisions],
+        "count": len(decisions),
+    }
+
+
+class _DecideIn(BaseModel):
+    topic: str
+
+
+@app.post(
+    "/v1/keiei/decide",
+    tags=["keiei-os"],
+    summary="CEO 最終意思決定 — Sprint 79",
+)
+def keiei_decide(body: _DecideIn):
+    decision = _keiei.make_decision(body.topic)
+    return decision.to_dict()
+
+
+class _MeetingIn(BaseModel):
+    title: str
+    agenda: List[str]
+    participants: Optional[List[str]] = None
+
+
+@app.post(
+    "/v1/keiei/meeting",
+    tags=["keiei-os"],
+    summary="経営会議開催 — Sprint 79",
+)
+def keiei_meeting(body: _MeetingIn):
+    participants = None
+    if body.participants:
+        try:
+            participants = [_AgentRole(r) for r in body.participants]
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+    meeting = _keiei.hold_meeting(body.title, body.agenda, participants)
+    return meeting.to_dict()
+
+
+@app.get(
+    "/v1/keiei/report",
+    tags=["keiei-os"],
+    summary="週次経営報告書 — Sprint 79",
+)
+def keiei_report(period: str = "今週"):
+    report = _keiei.weekly_report(period)
+    decisions_count = _keiei_store.decision_count()
+    return {
+        "period": period,
+        "report_markdown": report,
+        "decisions_total": decisions_count,
+    }
+
+
+@app.get(
+    "/v1/keiei/decisions",
+    tags=["keiei-os"],
+    summary="意思決定一覧 — Sprint 79",
+)
+def keiei_decisions(role: Optional[str] = None):
+    if role:
+        try:
+            role_e = _AgentRole(role)
+        except ValueError:
+            raise HTTPException(400, f"Invalid role: {role}")
+        decisions = _keiei_store.get_decisions(role_e)
+    else:
+        decisions = _keiei_store.get_decisions()
+    return {
+        "decisions": [d.to_dict() for d in decisions],
+        "count": len(decisions),
+    }
