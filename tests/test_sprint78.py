@@ -59,35 +59,35 @@ class TestCityMapData:
 class TestDistrictColor:
     def test_traffic_congested(self):
         d = DistrictData("A", x=0, y=0, traffic_level="congested")
-        assert _district_color(d, MapLayer.TRAFFIC) == "#ff9800"
+        assert _district_color(d, MapLayer.TRAFFIC) == "#ea8600"   # Google orange
 
     def test_traffic_clear(self):
         d = DistrictData("A", x=0, y=0, traffic_level="clear")
-        assert _district_color(d, MapLayer.TRAFFIC) == "#4caf50"
+        assert _district_color(d, MapLayer.TRAFFIC) == "#34a853"   # Google green
 
     def test_noise_violation(self):
         d = DistrictData("A", x=0, y=0, noise_status="violation")
-        assert _district_color(d, MapLayer.NOISE) == "#f44336"
+        assert _district_color(d, MapLayer.NOISE) == "#d93025"     # Google red
 
     def test_noise_compliant(self):
         d = DistrictData("A", x=0, y=0, noise_status="compliant")
-        assert _district_color(d, MapLayer.NOISE) == "#4caf50"
+        assert _district_color(d, MapLayer.NOISE) == "#34a853"
 
     def test_crowd_packed(self):
         d = DistrictData("A", x=0, y=0, crowd_level="packed")
-        assert _district_color(d, MapLayer.CROWD) == "#f44336"
+        assert _district_color(d, MapLayer.CROWD) == "#d93025"
 
     def test_crowd_sparse(self):
         d = DistrictData("A", x=0, y=0, crowd_level="sparse")
-        assert _district_color(d, MapLayer.CROWD) == "#e3f2fd"
+        assert _district_color(d, MapLayer.CROWD) == "#e8f0fe"     # Google light blue
 
     def test_energy_critical(self):
         d = DistrictData("A", x=0, y=0, energy_status="critical")
-        assert _district_color(d, MapLayer.ENERGY) == "#f44336"
+        assert _district_color(d, MapLayer.ENERGY) == "#d93025"
 
     def test_disaster_critical(self):
         d = DistrictData("A", x=0, y=0, disaster_level="critical")
-        assert _district_color(d, MapLayer.DISASTER) == "#f44336"
+        assert _district_color(d, MapLayer.DISASTER) == "#d93025"
 
     def test_disaster_none(self):
         d = DistrictData("A", x=0, y=0, disaster_level=None)
@@ -97,7 +97,7 @@ class TestDistrictColor:
     def test_missing_status_fallback(self):
         d = DistrictData("A", x=0, y=0)
         color = _district_color(d, MapLayer.TRAFFIC)
-        assert color == "#e0e0e0"
+        assert color == "#e8e0d0"   # map land neutral color
 
 
 class TestLegendHtml:
