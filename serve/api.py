@@ -8884,3 +8884,219 @@ def infra_city(city: str, hour: int = 8):
         raise HTTPException(status_code=404, detail=f"City not found: {city}")
     db = _infra_dashboard.city_panel(city_enum, hour)
     return db.to_dict()
+
+
+# ---------------------------------------------------------------------------
+# Sprint 76 — 交通量分析 / エネルギーモニタリング / 群衆予測
+# ---------------------------------------------------------------------------
+
+from open_mythos.skills.traffic_analyzer import (
+    TrafficAnalyzer as _TrafficAnalyzer,
+    TrafficStore as _TrafficStore,
+)
+from open_mythos.skills.energy_monitor import (
+    EnergyMonitor as _EnergyMonitor,
+    EnergyStore as _EnergyStore,
+    EnergyType as _EnergyType,
+)
+from open_mythos.skills.crowd_predictor import (
+    CrowdPredictor as _CrowdPredictor,
+    CrowdStore as _CrowdStore,
+    WeatherCondition as _WeatherCondition,
+    EventType as _EventType,
+)
+
+_traffic_store = _TrafficStore()
+_traffic_analyzer = _TrafficAnalyzer(store=_traffic_store)
+
+_energy_store = _EnergyStore()
+_energy_monitor = _EnergyMonitor(store=_energy_store)
+
+_crowd_store = _CrowdStore()
+_crowd_predictor = _CrowdPredictor(store=_crowd_store)
+
+
+# ── 交通量 ────────────────────────────────────────────────────────
+
+class _TrafficSegmentIn(BaseModel):
+    segment_id: str
+    road_name: str
+    city: str
+    volume: int = Field(ge=0)
+    speed_kmh: float = Field(ge=0.0, le=200.0)
+    density: float = Field(ge=0.0)
+    length_km: float = Field(default=1.0, ge=0.0)
+    hour: int = Field(default=8, ge=0, le=23)
+
+
+@app.post("/v1/traffic/segments", tags=["traffic"], summary="交通セグメント登録 — Sprint 76A")
+def traffic_add_segment(body: _TrafficSegmentIn):
+    seg = _traffic_analyzer.add_segment(
+        segment_id=body.segment_id,
+        road_name=body.road_name,
+        city=body.city,
+        volume=body.volume,
+        speed_kmh=body.speed_kmh,
+        density=body.density,
+        length_km=body.length_km,
+        hour=body.hour,
+    )
+    return seg.to_dict()
+
+
+@app.get("/v1/traffic/segments", tags=["traffic"], summary="全セグメント一覧 — Sprint 76A")
+def traffic_list_segments(city: Optional[str] = None):
+    segs = _traffic_store.list_by_city(city) if city else _traffic_store.list_all()
+    return {"segments": [s.to_dict() for s in segs], "count": len(segs)}
+
+
+@app.get("/v1/traffic/hotspots/{city}", tags=["traffic"], summary="渋滞ホットスポット — Sprint 76A")
+def traffic_hotspots(city: str, top_n: int = 5):
+    hotspots = _traffic_analyzer.get_hotspots(city, top_n=top_n)
+    return {"city": city, "hotspots": [h.to_dict() for h in hotspots]}
+
+
+@app.get("/v1/traffic/forecast", tags=["traffic"], summary="24時間交通量予測 — Sprint 76A")
+def traffic_forecast(base_speed_kmh: float = 50.0):
+    forecasts = _traffic_analyzer.predict_by_hour(base_speed_kmh=base_speed_kmh)
+    return {"forecasts": [f.to_dict() for f in forecasts]}
+
+
+@app.get("/v1/traffic/summary/{city}", tags=["traffic"], summary="都市交通サマリー — Sprint 76A")
+def traffic_city_summary(city: str):
+    return _traffic_analyzer.city_summary(city)
+
+
+# ── エネルギーモニタリング ────────────────────────────────────────
+
+class _EnergyReadingIn(BaseModel):
+    reading_id: str
+    facility_id: str
+    city: str
+    energy_type: str
+    value: float = Field(ge=0.0)
+    hour: int = Field(default=12, ge=0, le=23)
+    day: int = Field(default=1, ge=1, le=31)
+
+
+@app.post("/v1/energy/readings", tags=["energy"], summary="エネルギー計測値登録 — Sprint 76B")
+def energy_add_reading(body: _EnergyReadingIn):
+    try:
+        etype = _EnergyType(body.energy_type)
+    except ValueError:
+        raise HTTPException(400, f"Invalid energy_type: {body.energy_type}")
+    reading = _energy_monitor.add_reading(
+        reading_id=body.reading_id,
+        facility_id=body.facility_id,
+        city=body.city,
+        energy_type=etype,
+        value=body.value,
+        hour=body.hour,
+        day=body.day,
+    )
+    return reading.to_dict()
+
+
+@app.get("/v1/energy/summary/{city}", tags=["energy"], summary="都市エネルギーサマリー — Sprint 76B")
+def energy_city_summary(city: str, energy_type: str = "electricity"):
+    try:
+        etype = _EnergyType(energy_type)
+    except ValueError:
+        raise HTTPException(400, f"Invalid energy_type: {energy_type}")
+    summary = _energy_monitor.summarize_city(city, etype)
+    if summary is None:
+        raise HTTPException(404, f"No readings for city={city} type={energy_type}")
+    return summary.to_dict()
+
+
+@app.get("/v1/energy/anomalies/{city}", tags=["energy"], summary="エネルギー異常検出 — Sprint 76B")
+def energy_anomalies(city: str, energy_type: str = "electricity"):
+    try:
+        etype = _EnergyType(energy_type)
+    except ValueError:
+        raise HTTPException(400, f"Invalid energy_type: {energy_type}")
+    anomalies = _energy_monitor.detect_anomalies(city, etype)
+    return {"city": city, "energy_type": energy_type, "anomalies": [a.to_dict() for a in anomalies]}
+
+
+@app.get("/v1/energy/profile/{city}", tags=["energy"], summary="時間帯別消費プロファイル — Sprint 76B")
+def energy_hourly_profile(city: str, energy_type: str = "electricity"):
+    try:
+        etype = _EnergyType(energy_type)
+    except ValueError:
+        raise HTTPException(400, f"Invalid energy_type: {energy_type}")
+    return {"city": city, "energy_type": energy_type, "profile": _energy_monitor.hourly_profile(city, etype)}
+
+
+# ── 群衆予測 ──────────────────────────────────────────────────────
+
+class _CrowdSnapshotIn(BaseModel):
+    snapshot_id: str
+    spot_name: str
+    city: str
+    count: int = Field(ge=0)
+    hour: int = Field(default=12, ge=0, le=23)
+    weather: str = "sunny"
+    event: str = "none"
+
+
+@app.post("/v1/crowd/snapshots", tags=["crowd"], summary="人流スナップショット登録 — Sprint 76C")
+def crowd_add_snapshot(body: _CrowdSnapshotIn):
+    try:
+        weather = _WeatherCondition(body.weather)
+        event = _EventType(body.event)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    snap = _crowd_predictor.add_snapshot(
+        snapshot_id=body.snapshot_id,
+        spot_name=body.spot_name,
+        city=body.city,
+        count=body.count,
+        hour=body.hour,
+        weather=weather,
+        event=event,
+    )
+    return snap.to_dict()
+
+
+@app.get("/v1/crowd/predict", tags=["crowd"], summary="群衆予測 — Sprint 76C")
+def crowd_predict(
+    spot_name: str,
+    city: str,
+    hour: int = 12,
+    weather: str = "sunny",
+    event: str = "none",
+):
+    try:
+        weather_e = _WeatherCondition(weather)
+        event_e = _EventType(event)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    result = _crowd_predictor.predict(
+        spot_name=spot_name, city=city, hour=hour, weather=weather_e, event=event_e
+    )
+    return result.to_dict()
+
+
+@app.get("/v1/crowd/heatmap/{city}", tags=["crowd"], summary="群衆ヒートマップ — Sprint 76C")
+def crowd_heatmap(city: str):
+    cells = _crowd_predictor.heatmap(city)
+    return {"city": city, "heatmap": [c.to_dict() for c in cells]}
+
+
+@app.get("/v1/crowd/forecast", tags=["crowd"], summary="24時間群衆予測 — Sprint 76C")
+def crowd_daily_forecast(
+    spot_name: str,
+    city: str,
+    weather: str = "sunny",
+    event: str = "none",
+):
+    try:
+        weather_e = _WeatherCondition(weather)
+        event_e = _EventType(event)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    forecasts = _crowd_predictor.daily_forecast(
+        spot_name=spot_name, city=city, weather=weather_e, event=event_e
+    )
+    return {"spot_name": spot_name, "city": city, "forecasts": [f.to_dict() for f in forecasts]}
