@@ -142,10 +142,11 @@ class TestGenerateHtml:
         assert "新宿" in html
         assert "渋谷" in html
 
-    def test_contains_svg(self):
+    def test_contains_canvas_or_three(self):
+        # v3 は Three.js 3D (WebGL canvas) のため <svg> ではなく canvas/Three.js を使用
         data = CityMapData("Tokyo", _sample_districts(), MapLayer.TRAFFIC)
         html = generate_html(data)
-        assert "<svg" in html
+        assert "canvas" in html or "three" in html.lower()
 
     def test_layer_traffic_html(self):
         data = CityMapData("Tokyo", _sample_districts(), MapLayer.TRAFFIC)
@@ -232,7 +233,7 @@ class TestCityMapBuilder:
 
 class TestTokyoPreset:
     def test_preset_count(self):
-        assert len(TOKYO_DISTRICTS) == 20
+        assert len(TOKYO_DISTRICTS) == 23   # 東京 23 特別区すべて
 
     def test_preset_has_shinjuku(self):
         names = [d.name for d in TOKYO_DISTRICTS]

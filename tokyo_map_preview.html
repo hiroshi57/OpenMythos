@@ -3,344 +3,424 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>OpenMythos City Map — Tokyo</title>
+<title>OpenMythos 3D City Map — Tokyo</title>
 <style>
-  *{box-sizing:border-box;margin:0;padding:0}
-  html,body{width:100%;height:100%;font-family:'Google Sans',system-ui,'Segoe UI',sans-serif;background:#e8e0d0;overflow:hidden}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;font-family:'Google Sans',system-ui,'Segoe UI',sans-serif;background:#d0c8bc}
+#canvas-wrap{position:absolute;inset:0}
+canvas{display:block}
 
-  /* ── Map container ─────────────────────────── */
-  #map-wrap{position:absolute;inset:0;user-select:none}
-  #map-svg{width:100%;height:100%;display:block;cursor:grab}
-  #map-svg:active{cursor:grabbing}
+/* ── Searchbar ── */
+#sb{position:absolute;top:14px;left:50%;transform:translateX(-50%);background:white;border-radius:28px;
+z-index:30;box-shadow:0 2px 14px rgba(0,0,0,.26),0 0 0 1px rgba(0,0,0,.06);
+padding:11px 22px;display:flex;align-items:center;gap:12px;min-width:360px}
+#sb .mi{font-size:18px} #sb .ti{font-size:15px;font-weight:600;color:#202124}
+#sb .su{font-size:12px;color:#5f6368;margin-left:auto;white-space:nowrap}
 
-  /* ── Searchbar (top center) ──────────────────── */
-  #searchbar{
-    position:absolute;top:14px;left:50%;transform:translateX(-50%);
-    background:white;border-radius:24px;
-    box-shadow:0 2px 10px rgba(0,0,0,0.2),0 0 0 1px rgba(0,0,0,0.06);
-    padding:10px 18px;min-width:320px;
-    display:flex;align-items:center;gap:10px;z-index:20;
-  }
-  #searchbar .map-icon{font-size:18px;opacity:.7}
-  #searchbar .title{font-size:15px;font-weight:600;color:#202124}
-  #searchbar .sub{font-size:12px;color:#5f6368;margin-left:auto;white-space:nowrap}
+/* ── Panel ── */
+#panel{position:absolute;top:14px;right:14px;width:196px;z-index:30;display:flex;flex-direction:column;gap:10px}
+.card{background:white;border-radius:12px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.2),0 0 0 1px rgba(0,0,0,.05)}
+.ch{padding:10px 14px 8px;border-bottom:1px solid #f1f3f4;font-size:11px;font-weight:700;color:#5f6368;text-transform:uppercase;letter-spacing:.07em}
+.lb{display:flex;align-items:center;gap:10px;padding:9px 14px;border:none;background:transparent;
+width:100%;cursor:pointer;font-size:13px;color:#202124;border-bottom:1px solid #f1f3f4;
+transition:background .12s;text-align:left}
+.lb:last-child{border-bottom:none} .lb:hover{background:#f8f9fa}
+.lb.active{background:#e8f0fe;color:#1a73e8;font-weight:600}
+.lb .li{font-size:15px;width:22px;text-align:center;flex-shrink:0}
+.lb .lc{margin-left:auto;color:#1a73e8;font-size:14px;opacity:0} .lb.active .lc{opacity:1}
+.leg-row{display:flex;align-items:center;gap:8px;padding:5px 14px;font-size:12px;color:#3c4043}
+.leg-dot{width:13px;height:13px;border-radius:3px;flex-shrink:0;border:1px solid rgba(0,0,0,.12)}
+.sg{padding:10px 14px;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.si{text-align:center} .sv{font-size:22px;font-weight:700;color:#1a73e8;line-height:1.1}
+.sl{font-size:10px;color:#5f6368;margin-top:2px}
 
-  /* ── Right panel ─────────────────────────────── */
-  #panel{
-    position:absolute;top:14px;right:14px;width:194px;z-index:20;
-    display:flex;flex-direction:column;gap:10px;
-  }
-  .card{
-    background:white;border-radius:12px;
-    box-shadow:0 2px 8px rgba(0,0,0,0.18),0 0 0 1px rgba(0,0,0,0.05);
-    overflow:hidden;
-  }
-  .card-header{
-    padding:10px 14px 8px;border-bottom:1px solid #f1f3f4;
-    font-size:11px;font-weight:600;color:#5f6368;text-transform:uppercase;letter-spacing:.06em;
-  }
+/* ── Map controls ── */
+#mc{position:absolute;bottom:40px;right:14px;z-index:30;display:flex;flex-direction:column;gap:8px;align-items:center}
+.cb{background:white;border:none;cursor:pointer;width:40px;height:40px;border-radius:6px;
+font-size:18px;color:#5f6368;display:flex;align-items:center;justify-content:center;
+box-shadow:0 2px 8px rgba(0,0,0,.2);transition:background .12s} .cb:hover{background:#f8f9fa}
+#zw{display:flex;flex-direction:column;gap:1px;border-radius:6px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+#zw .cb{box-shadow:none;border-radius:0}
 
-  /* Layer buttons */
-  .layer-btn{
-    display:flex;align-items:center;gap:10px;
-    padding:9px 14px;border:none;background:transparent;
-    width:100%;cursor:pointer;font-size:13px;color:#202124;
-    border-bottom:1px solid #f1f3f4;transition:background .15s;
-  }
-  .layer-btn:last-child{border-bottom:none}
-  .layer-btn:hover{background:#f8f9fa}
-  .layer-btn.active{background:#e8f0fe;color:#1a73e8;font-weight:600}
-  .layer-btn .licon{font-size:16px;width:20px;text-align:center}
-  .layer-btn .lcheck{margin-left:auto;color:#1a73e8;font-size:16px;opacity:0}
-  .layer-btn.active .lcheck{opacity:1}
+/* ── Labels ── */
+.dl{position:absolute;pointer-events:none;z-index:20;font-size:11px;font-weight:600;color:#202124;
+text-shadow:0 0 5px white,0 0 5px white,0 0 5px white;transform:translate(-50%,-50%);white-space:nowrap}
 
-  /* Legend */
-  .leg-row{display:flex;align-items:center;gap:8px;padding:5px 14px;font-size:12px;color:#3c4043}
-  .leg-dot{width:13px;height:13px;border-radius:3px;flex-shrink:0;border:1px solid rgba(0,0,0,.1)}
+/* ── Tooltip ── */
+#tt{position:absolute;z-index:50;pointer-events:none;display:none;background:white;border-radius:12px;
+min-width:185px;overflow:hidden;box-shadow:0 6px 24px rgba(0,0,0,.28),0 0 0 1px rgba(0,0,0,.06)}
+#tth{background:#1a73e8;color:white;padding:10px 14px;font-weight:700;font-size:15px}
+#ttb{padding:8px 12px}
+.tr{display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid #f1f3f4;font-size:12px}
+.tr:last-child{border-bottom:none} .tk{color:#5f6368}
+.tbg{padding:2px 9px;border-radius:10px;font-size:11px;font-weight:600;color:white}
 
-  /* Stats */
-  .stat-grid{padding:10px 14px;display:grid;grid-template-columns:1fr 1fr;gap:8px}
-  .stat-item{text-align:center}
-  .stat-val{font-size:20px;font-weight:700;color:#1a73e8;line-height:1}
-  .stat-label{font-size:10px;color:#5f6368;margin-top:2px}
+/* ── Height hint ── */
+#hh{position:absolute;bottom:14px;left:14px;z-index:30;background:rgba(255,255,255,.92);
+border-radius:8px;padding:8px 12px;box-shadow:0 2px 8px rgba(0,0,0,.15);font-size:11px;color:#5f6368}
+#hh strong{color:#202124;display:block;margin-bottom:3px}
 
-  /* ── Zoom controls ───────────────────────────── */
-  #zoom-ctrl{
-    position:absolute;bottom:40px;right:14px;z-index:20;
-    display:flex;flex-direction:column;gap:1px;
-    box-shadow:0 2px 8px rgba(0,0,0,0.2);border-radius:4px;overflow:hidden;
-  }
-  .zoom-btn{
-    background:white;border:none;cursor:pointer;
-    width:40px;height:40px;font-size:20px;color:#5f6368;
-    display:flex;align-items:center;justify-content:center;
-    transition:background .15s;
-  }
-  .zoom-btn:hover{background:#f8f9fa}
+/* ── Attribution ── */
+#at{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);z-index:10;
+font-size:10px;color:#70757a;background:rgba(255,255,255,.75);padding:2px 10px;border-radius:3px}
 
-  /* ── Attribution ─────────────────────────────── */
-  #attr{
-    position:absolute;bottom:6px;left:50%;transform:translateX(-50%);
-    font-size:10px;color:#70757a;background:rgba(255,255,255,.75);
-    padding:2px 8px;border-radius:3px;pointer-events:none;z-index:10;
-  }
-
-  /* ── Tooltip ─────────────────────────────────── */
-  #tooltip{
-    position:absolute;background:white;border-radius:10px;
-    box-shadow:0 4px 20px rgba(0,0,0,0.25),0 0 0 1px rgba(0,0,0,0.06);
-    padding:0;pointer-events:none;display:none;min-width:170px;z-index:50;
-    font-size:13px;overflow:hidden;
-  }
-  #tip-header{background:#1a73e8;color:white;padding:9px 12px;font-weight:600;font-size:14px}
-  #tip-body{padding:8px 12px}
-  .tip-row{display:flex;justify-content:space-between;align-items:center;
-    padding:3px 0;border-bottom:1px solid #f1f3f4;font-size:12px;color:#3c4043}
-  .tip-row:last-child{border-bottom:none}
-  .tip-key{color:#5f6368}
-  .tip-badge{padding:1px 7px;border-radius:10px;font-size:11px;font-weight:600;color:white}
+/* ── Loading ── */
+#ld{position:absolute;inset:0;z-index:100;background:rgba(255,255,255,.95);
+display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px}
+.sp{width:38px;height:38px;border:3px solid #e8f0fe;border-top-color:#1a73e8;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#ld p{color:#5f6368;font-size:14px;font-weight:500}
 </style>
 </head>
 <body>
+<div id="canvas-wrap"></div>
 
-<!-- ── Map SVG ────────────────────────────────── -->
-<div id="map-wrap">
-<svg id="map-svg" viewBox="0 0 100 76" xmlns="http://www.w3.org/2000/svg"
-     preserveAspectRatio="xMidYMid meet">
-  <defs>
-    <!-- 陸地テクスチャ (非常に薄いドット) -->
-    <pattern id="land-pat" x="0" y="0" width="4" height="4" patternUnits="userSpaceOnUse">
-      <rect width="4" height="4" fill="#f5f0e8"/>
-      <circle cx="2" cy="2" r="0.4" fill="#ebe5d8" opacity="0.6"/>
-    </pattern>
-    <!-- 水域グラデーション -->
-    <linearGradient id="water-grad" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#b8d8f0"/>
-      <stop offset="100%" stop-color="#9dc8e8"/>
-    </linearGradient>
-    <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
-      <feDropShadow dx="0" dy="0.3" stdDeviation="0.6" flood-color="rgba(0,0,0,0.15)"/>
-    </filter>
-  </defs>
-
-  <!-- 陸地ベース -->
-  <rect width="100" height="76" fill="url(#land-pat)"/>
-
-  <!-- 東京湾 -->
-  <polygon points="68,56 100,50 100,76 60,76"
-           fill="url(#water-grad)" opacity="0.85"/>
-  <!-- 東京湾ラベル -->
-  <text x="84" y="68" text-anchor="middle" font-size="3.2"
-        fill="#4a90c4" font-style="italic" font-family="system-ui,sans-serif" opacity="0.8">東京湾</text>
-
-  <!-- 隅田川 -->
-  <path d="M 67,16 Q 66,24 65,32 Q 64,42 65,50 Q 66,55 67,57"
-        stroke="#9dc8e8" stroke-width="1.1" fill="none" stroke-linecap="round"/>
-  <!-- 多摩川 -->
-  <path d="M 1,68 Q 8,65 16,63 Q 26,61 36,60 Q 48,59 60,62 Q 64,63 68,65"
-        stroke="#9dc8e8" stroke-width="0.8" fill="none" stroke-linecap="round"/>
-
-  <!-- 公園エリア（代々木・皇居外苑など） -->
-  <ellipse cx="29" cy="37" rx="3.5" ry="2.5" fill="#c8e6c9" opacity="0.6"/>
-  <ellipse cx="42" cy="35" rx="4" ry="3" fill="#c8e6c9" opacity="0.55"/>
-
-  <!-- 幹線道路ネットワーク -->
-  <g stroke="#ffffff" stroke-width="0.55" fill="none" stroke-linecap="round" opacity="0.8">
-    <!-- 環状7号線 (縦) -->
-    <path d="M 24,1 L 24,62"/>
-    <!-- 環状8号線 (縦) -->
-    <path d="M 8,20 L 8,70"/>
-    <!-- 甲州街道 (横) -->
-    <path d="M 1,39 L 65,39"/>
-    <!-- 明治通り (横) -->
-    <path d="M 22,16 L 66,16"/>
-    <!-- 山手通り (縦) -->
-    <path d="M 43,1 L 43,60"/>
-    <!-- 靖国通り (横) -->
-    <path d="M 22,31 L 67,31"/>
-    <!-- 蔵前橋通り (横) -->
-    <path d="M 43,17 L 80,17"/>
-  </g>
-
-  <!-- 地区セル -->
-  <g class="district" data-idx="0" onmouseenter="showTip(event,0)" onmouseleave="hideTip()" onclick="selectDistrict(0)"><rect x="1" y="1" width="21" height="15" fill="#fbbc04" fill-opacity="0.78" stroke="white" stroke-width="0.35" rx="0.8"/><line x1="2" y1="8.5" x2="21.0" y1="8.5" x2="21.0" y2="8.5" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><line x1="11.5" y1="2" x2="11.5" y2="15.0" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><text x="11.5" y="9.3" text-anchor="middle" font-size="2.8" fill="#202124" font-family="system-ui,sans-serif" font-weight="500" paint-order="stroke" stroke="white" stroke-width="0.8" pointer-events="none">練馬</text></g>
-    <g class="district" data-idx="1" onmouseenter="showTip(event,1)" onmouseleave="hideTip()" onclick="selectDistrict(1)"><rect x="23" y="1" width="19" height="14" fill="#fbbc04" fill-opacity="0.78" stroke="white" stroke-width="0.35" rx="0.8"/><line x1="24" y1="8.0" x2="41.0" y1="8.0" x2="41.0" y2="8.0" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><line x1="32.5" y1="2" x2="32.5" y2="14.0" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><text x="32.5" y="8.8" text-anchor="middle" font-size="2.8" fill="#202124" font-family="system-ui,sans-serif" font-weight="500" paint-order="stroke" stroke="white" stroke-width="0.8" pointer-events="none">板橋</text></g>
-    <g class="district" data-idx="2" onmouseenter="showTip(event,2)" onmouseleave="hideTip()" onclick="selectDistrict(2)"><rect x="51" y="1" width="22" height="15" fill="#34a853" fill-opacity="0.78" stroke="white" stroke-width="0.35" rx="0.8"/><line x1="52" y1="8.5" x2="72.0" y1="8.5" x2="72.0" y2="8.5" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><line x1="62.0" y1="2" x2="62.0" y2="15.0" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><text x="62.0" y="9.3" text-anchor="middle" font-size="2.8" fill="#202124" font-family="system-ui,sans-serif" font-weight="500" paint-order="stroke" stroke="white" stroke-width="0.8" pointer-events="none">足立</text></g>
-    <g class="district" data-idx="3" onmouseenter="showTip(event,3)" onmouseleave="hideTip()" onclick="selectDistrict(3)"><rect x="74" y="1" width="24" height="16" fill="#34a853" fill-opacity="0.78" stroke="white" stroke-width="0.35" rx="0.8"/><line x1="75" y1="9.0" x2="97.0" y1="9.0" x2="97.0" y2="9.0" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><line x1="86.0" y1="2" x2="86.0" y2="16.0" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><text x="86.0" y="9.8" text-anchor="middle" font-size="2.8" fill="#202124" font-family="system-ui,sans-serif" font-weight="500" paint-order="stroke" stroke="white" stroke-width="0.8" pointer-events="none">葛飾</text></g>
-    <g class="district" data-idx="4" onmouseenter="showTip(event,4)" onmouseleave="hideTip()" onclick="selectDistrict(4)"><rect x="1" y="17" width="21" height="14" fill="#fbbc04" fill-opacity="0.78" stroke="white" stroke-width="0.35" rx="0.8"/><line x1="2" y1="24.0" x2="21.0" y1="24.0" x2="21.0" y2="24.0" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><line x1="11.5" y1="18" x2="11.5" y2="30.0" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><text x="11.5" y="24.8" text-anchor="middle" font-size="2.8" fill="#202124" font-family="system-ui,sans-serif" font-weight="500" paint-order="stroke" stroke="white" stroke-width="0.8" pointer-events="none">杉並</text></g>
-    <g class="district" data-idx="5" onmouseenter="showTip(event,5)" onmouseleave="hideTip()" onclick="selectDistrict(5)"><rect x="23" y="16" width="19" height="15" fill="#ea8600" fill-opacity="0.78" stroke="white" stroke-width="0.35" rx="0.8"/><line x1="24" y1="23.5" x2="41.0" y1="23.5" x2="41.0" y2="23.5" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><line x1="32.5" y1="17" x2="32.5" y2="30.0" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><text x="32.5" y="24.3" text-anchor="middle" font-size="2.8" fill="#202124" font-family="system-ui,sans-serif" font-weight="500" paint-order="stroke" stroke="white" stroke-width="0.8" pointer-events="none">池袋</text></g>
-    <g class="district" data-idx="6" onmouseenter="showTip(event,6)" onmouseleave="hideTip()" onclick="selectDistrict(6)"><rect x="43" y="16" width="21" height="14" fill="#34a853" fill-opacity="0.78" stroke="white" stroke-width="0.35" rx="0.8"/><line x1="44" y1="23.0" x2="63.0" y1="23.0" x2="63.0" y2="23.0" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><line x1="53.5" y1="17" x2="53.5" y2="29.0" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><text x="53.5" y="23.8" text-anchor="middle" font-size="2.8" fill="#202124" font-family="system-ui,sans-serif" font-weight="500" paint-order="stroke" stroke="white" stroke-width="0.8" pointer-events="none">上野</text></g>
-    <g class="district" data-idx="7" onmouseenter="showTip(event,7)" onmouseleave="hideTip()" onclick="selectDistrict(7)"><rect x="65" y="17" width="18" height="13" fill="#34a853" fill-opacity="0.78" stroke="white" stroke-width="0.35" rx="0.8"/><line x1="66" y1="23.5" x2="82.0" y1="23.5" x2="82.0" y2="23.5" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><line x1="74.0" y1="18" x2="74.0" y2="29.0" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><text x="74.0" y="24.3" text-anchor="middle" font-size="2.8" fill="#202124" font-family="system-ui,sans-serif" font-weight="500" paint-order="stroke" stroke="white" stroke-width="0.8" pointer-events="none">荒川</text></g>
-    <g class="district" data-idx="8" onmouseenter="showTip(event,8)" onmouseleave="hideTip()" onclick="selectDistrict(8)"><rect x="65" y="31" width="18" height="14" fill="#34a853" fill-opacity="0.78" stroke="white" stroke-width="0.35" rx="0.8"/><line x1="66" y1="38.0" x2="82.0" y1="38.0" x2="82.0" y2="38.0" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><line x1="74.0" y1="32" x2="74.0" y2="44.0" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><text x="74.0" y="38.8" text-anchor="middle" font-size="2.8" fill="#202124" font-family="system-ui,sans-serif" font-weight="500" paint-order="stroke" stroke="white" stroke-width="0.8" pointer-events="none">墨田</text></g>
-    <g class="district" data-idx="9" onmouseenter="showTip(event,9)" onmouseleave="hideTip()" onclick="selectDistrict(9)"><rect x="84" y="17" width="15" height="28" fill="#34a853" fill-opacity="0.78" stroke="white" stroke-width="0.35" rx="0.8"/><line x1="85" y1="31.0" x2="98.0" y1="31.0" x2="98.0" y2="31.0" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><line x1="91.5" y1="18" x2="91.5" y2="44.0" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><text x="91.5" y="31.8" text-anchor="middle" font-size="2.8" fill="#202124" font-family="system-ui,sans-serif" font-weight="500" paint-order="stroke" stroke="white" stroke-width="0.8" pointer-events="none">江戸川</text></g>
-    <g class="district" data-idx="10" onmouseenter="showTip(event,10)" onmouseleave="hideTip()" onclick="selectDistrict(10)"><rect x="1" y="32" width="21" height="23" fill="#34a853" fill-opacity="0.78" stroke="white" stroke-width="0.35" rx="0.8"/><line x1="2" y1="43.5" x2="21.0" y1="43.5" x2="21.0" y2="43.5" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><line x1="11.5" y1="33" x2="11.5" y2="54.0" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><text x="11.5" y="44.3" text-anchor="middle" font-size="2.8" fill="#202124" font-family="system-ui,sans-serif" font-weight="500" paint-order="stroke" stroke="white" stroke-width="0.8" pointer-events="none">世田谷</text></g>
-    <g class="district" data-idx="11" onmouseenter="showTip(event,11)" onmouseleave="hideTip()" onclick="selectDistrict(11)"><rect x="23" y="31" width="19" height="15" fill="#ea8600" fill-opacity="0.78" stroke="white" stroke-width="0.35" rx="0.8"/><line x1="24" y1="38.5" x2="41.0" y1="38.5" x2="41.0" y2="38.5" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><line x1="32.5" y1="32" x2="32.5" y2="45.0" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><text x="32.5" y="39.3" text-anchor="middle" font-size="2.8" fill="#202124" font-family="system-ui,sans-serif" font-weight="500" paint-order="stroke" stroke="white" stroke-width="0.8" pointer-events="none">新宿</text></g>
-    <g class="district" data-idx="12" onmouseenter="showTip(event,12)" onmouseleave="hideTip()" onclick="selectDistrict(12)"><rect x="43" y="31" width="10" height="13" fill="#fbbc04" fill-opacity="0.78" stroke="white" stroke-width="0.35" rx="0.8"/><line x1="44" y1="37.5" x2="52.0" y1="37.5" x2="52.0" y2="37.5" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><line x1="48.0" y1="32" x2="48.0" y2="43.0" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><text x="48.0" y="38.3" text-anchor="middle" font-size="2.8" fill="#202124" font-family="system-ui,sans-serif" font-weight="500" paint-order="stroke" stroke="white" stroke-width="0.8" pointer-events="none">秋葉原</text></g>
-    <g class="district" data-idx="13" onmouseenter="showTip(event,13)" onmouseleave="hideTip()" onclick="selectDistrict(13)"><rect x="54" y="31" width="10" height="13" fill="#d93025" fill-opacity="0.78" stroke="white" stroke-width="0.35" rx="0.8"/><line x1="55" y1="37.5" x2="63.0" y1="37.5" x2="63.0" y2="37.5" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><line x1="59.0" y1="32" x2="59.0" y2="43.0" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><text x="59.0" y="38.3" text-anchor="middle" font-size="2.8" fill="#202124" font-family="system-ui,sans-serif" font-weight="500" paint-order="stroke" stroke="white" stroke-width="0.8" pointer-events="none">千代田</text><circle cx="61.5" cy="33.5" r="2.2" fill="#ea8600" stroke="white" stroke-width="0.6" pointer-events="none"/></g>
-    <g class="district" data-idx="14" onmouseenter="showTip(event,14)" onmouseleave="hideTip()" onclick="selectDistrict(14)"><rect x="65" y="46" width="18" height="14" fill="#fbbc04" fill-opacity="0.78" stroke="white" stroke-width="0.35" rx="0.8"/><line x1="66" y1="53.0" x2="82.0" y1="53.0" x2="82.0" y2="53.0" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><line x1="74.0" y1="47" x2="74.0" y2="59.0" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><text x="74.0" y="53.8" text-anchor="middle" font-size="2.8" fill="#202124" font-family="system-ui,sans-serif" font-weight="500" paint-order="stroke" stroke="white" stroke-width="0.8" pointer-events="none">台東</text></g>
-    <g class="district" data-idx="15" onmouseenter="showTip(event,15)" onmouseleave="hideTip()" onclick="selectDistrict(15)"><rect x="84" y="46" width="15" height="22" fill="#fbbc04" fill-opacity="0.78" stroke="white" stroke-width="0.35" rx="0.8"/><line x1="85" y1="57.0" x2="98.0" y1="57.0" x2="98.0" y2="57.0" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><line x1="91.5" y1="47" x2="91.5" y2="67.0" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><text x="91.5" y="57.8" text-anchor="middle" font-size="2.8" fill="#202124" font-family="system-ui,sans-serif" font-weight="500" paint-order="stroke" stroke="white" stroke-width="0.8" pointer-events="none">江東</text><circle cx="96.5" cy="48.5" r="2.2" fill="#fbbc04" stroke="white" stroke-width="0.6" pointer-events="none"/></g>
-    <g class="district" data-idx="16" onmouseenter="showTip(event,16)" onmouseleave="hideTip()" onclick="selectDistrict(16)"><rect x="1" y="56" width="21" height="13" fill="#34a853" fill-opacity="0.78" stroke="white" stroke-width="0.35" rx="0.8"/><line x1="2" y1="62.5" x2="21.0" y1="62.5" x2="21.0" y2="62.5" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><line x1="11.5" y1="57" x2="11.5" y2="68.0" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><text x="11.5" y="63.3" text-anchor="middle" font-size="2.8" fill="#202124" font-family="system-ui,sans-serif" font-weight="500" paint-order="stroke" stroke="white" stroke-width="0.8" pointer-events="none">目黒</text></g>
-    <g class="district" data-idx="17" onmouseenter="showTip(event,17)" onmouseleave="hideTip()" onclick="selectDistrict(17)"><rect x="23" y="47" width="19" height="13" fill="#fbbc04" fill-opacity="0.78" stroke="white" stroke-width="0.35" rx="0.8"/><line x1="24" y1="53.5" x2="41.0" y1="53.5" x2="41.0" y2="53.5" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><line x1="32.5" y1="48" x2="32.5" y2="59.0" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><text x="32.5" y="54.3" text-anchor="middle" font-size="2.8" fill="#202124" font-family="system-ui,sans-serif" font-weight="500" paint-order="stroke" stroke="white" stroke-width="0.8" pointer-events="none">渋谷</text></g>
-    <g class="district" data-idx="18" onmouseenter="showTip(event,18)" onmouseleave="hideTip()" onclick="selectDistrict(18)"><rect x="43" y="45" width="21" height="13" fill="#ea8600" fill-opacity="0.78" stroke="white" stroke-width="0.35" rx="0.8"/><line x1="44" y1="51.5" x2="63.0" y1="51.5" x2="63.0" y2="51.5" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><line x1="53.5" y1="46" x2="53.5" y2="57.0" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><text x="53.5" y="52.3" text-anchor="middle" font-size="2.8" fill="#202124" font-family="system-ui,sans-serif" font-weight="500" paint-order="stroke" stroke="white" stroke-width="0.8" pointer-events="none">中央</text></g>
-    <g class="district" data-idx="19" onmouseenter="showTip(event,19)" onmouseleave="hideTip()" onclick="selectDistrict(19)"><rect x="23" y="61" width="41" height="13" fill="#fbbc04" fill-opacity="0.78" stroke="white" stroke-width="0.35" rx="0.8"/><line x1="24" y1="67.5" x2="63.0" y1="67.5" x2="63.0" y2="67.5" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><line x1="43.5" y1="62" x2="43.5" y2="73.0" stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/><text x="43.5" y="68.3" text-anchor="middle" font-size="2.8" fill="#202124" font-family="system-ui,sans-serif" font-weight="500" paint-order="stroke" stroke="white" stroke-width="0.8" pointer-events="none">品川</text></g>
-</svg>
+<div id="sb">
+  <span class="mi">🗺</span>
+  <span class="ti">Tokyo City Map</span>
+  <span class="su" id="sub">🚗 交通量 &nbsp;|&nbsp; 23 地区</span>
 </div>
 
-<!-- ── Search bar ─────────────────────────────── -->
-<div id="searchbar">
-  <span class="map-icon">🗺</span>
-  <span class="title">Tokyo 都市マップ</span>
-  <span class="sub">🚗 交通量レイヤー &nbsp;｜&nbsp; 20 地区</span>
-</div>
-
-<!-- ── Right panel ────────────────────────────── -->
 <div id="panel">
-  <!-- Layer selector -->
-  <div class="card">
-    <div class="card-header">レイヤー選択</div>
-    <button class="layer-btn active" onclick="switchLayer('traffic')"><span class="licon">🚗</span><span>交通量</span><span class="lcheck">✓</span></button><button class="layer-btn" onclick="switchLayer('noise')"><span class="licon">🔊</span><span>騒音</span><span class="lcheck">✓</span></button><button class="layer-btn" onclick="switchLayer('crowd')"><span class="licon">👥</span><span>群衆密度</span><span class="lcheck">✓</span></button><button class="layer-btn" onclick="switchLayer('energy')"><span class="licon">⚡</span><span>エネルギー</span><span class="lcheck">✓</span></button><button class="layer-btn" onclick="switchLayer('disaster')"><span class="licon">⚠️</span><span>災害アラート</span><span class="lcheck">✓</span></button>
-  </div>
-
-  <!-- Legend -->
-  <div class="card">
-    <div class="card-header">凡例</div>
-    <div class="leg-row"><span class="leg-dot" style="background:#34a853"></span><span>通常走行</span></div><div class="leg-row"><span class="leg-dot" style="background:#fbbc04"></span><span>やや混雑</span></div><div class="leg-row"><span class="leg-dot" style="background:#ea8600"></span><span>渋滞</span></div><div class="leg-row"><span class="leg-dot" style="background:#d93025"></span><span>完全停滞</span></div>
-  </div>
-
-  <!-- Stats -->
-  <div class="card">
-    <div class="card-header">統計</div>
-    <div class="stat-grid">
-      <div class="stat-item">
-        <div class="stat-val">20</div>
-        <div class="stat-label">地区数</div>
-      </div>
-      <div class="stat-item">
-        <div class="stat-val" style="color:#d93025">4</div>
-        <div class="stat-label">混雑地区</div>
-      </div>
+  <div class="card"><div class="ch">レイヤー選択</div><button class="lb  active" onclick="switchLayer('traffic',this)"><span class="li">🚗</span><span>交通量</span><span class="lc">✓</span></button><button class="lb" onclick="switchLayer('noise',this)"><span class="li">🔊</span><span>騒音</span><span class="lc">✓</span></button><button class="lb" onclick="switchLayer('crowd',this)"><span class="li">👥</span><span>群衆密度</span><span class="lc">✓</span></button><button class="lb" onclick="switchLayer('energy',this)"><span class="li">⚡</span><span>エネルギー</span><span class="lc">✓</span></button><button class="lb" onclick="switchLayer('disaster',this)"><span class="li">⚠️</span><span>災害アラート</span><span class="lc">✓</span></button></div>
+  <div class="card"><div class="ch">凡例</div><div id="lgd"><div class="leg-row"><span class="leg-dot" style="background:#34a853"></span><span>通常走行</span></div><div class="leg-row"><span class="leg-dot" style="background:#fbbc04"></span><span>やや混雑</span></div><div class="leg-row"><span class="leg-dot" style="background:#ea8600"></span><span>渋滞</span></div><div class="leg-row"><span class="leg-dot" style="background:#d93025"></span><span>完全停滞</span></div></div></div>
+  <div class="card"><div class="ch">統計</div>
+    <div class="sg">
+      <div class="si"><div class="sv">23</div><div class="sl">地区数</div></div>
+      <div class="si"><div class="sv" id="av" style="color:#d93025">4</div><div class="sl" id="al">混雑地区</div></div>
     </div>
   </div>
 </div>
 
-<!-- ── Zoom controls ───────────────────────────── -->
-<div id="zoom-ctrl">
-  <button class="zoom-btn" onclick="zoom(1.3)" title="拡大">+</button>
-  <button class="zoom-btn" onclick="zoom(1/1.3)" title="縮小">−</button>
+<div id="mc">
+  <div class="cb" onclick="resetCam()" title="カメラリセット" style="font-size:20px">🧭</div>
+  <div id="zw">
+    <button class="cb" onclick="doZoom(0.78)">+</button>
+    <button class="cb" onclick="doZoom(1.28)">−</button>
+  </div>
 </div>
 
-<!-- ── Attribution ────────────────────────────── -->
-<div id="attr">© OpenMythos City Intelligence Platform</div>
+<div id="labels"></div>
+<div id="tt"><div id="tth"></div><div id="ttb"></div></div>
 
-<!-- ── Tooltip ────────────────────────────────── -->
-<div id="tooltip">
-  <div id="tip-header"></div>
-  <div id="tip-body"></div>
-</div>
+<div id="hh"><strong>📊 高さ = データ強度</strong>ブロックが高いほど値が大きい</div>
+<div id="at">© OpenMythos City Intelligence &nbsp;｜&nbsp; ドラッグ: 回転 &nbsp;/&nbsp; スクロール: ズーム &nbsp;/&nbsp; 右ドラッグ: 移動</div>
+<div id="ld"><div class="sp"></div><p>3D マップを読み込み中...</p></div>
 
+<!-- ========== Data ========== -->
 <script>
-const DISTRICTS = [{"name":"練馬","traffic":"moderate","noise":"compliant","crowd":"normal","energy":"normal","disaster":""},{"name":"板橋","traffic":"moderate","noise":"near_limit","crowd":"normal","energy":"normal","disaster":""},{"name":"足立","traffic":"clear","noise":"compliant","crowd":"sparse","energy":"normal","disaster":""},{"name":"葛飾","traffic":"clear","noise":"compliant","crowd":"sparse","energy":"normal","disaster":""},{"name":"杉並","traffic":"moderate","noise":"compliant","crowd":"normal","energy":"normal","disaster":""},{"name":"池袋","traffic":"congested","noise":"near_limit","crowd":"crowded","energy":"normal","disaster":""},{"name":"上野","traffic":"clear","noise":"compliant","crowd":"normal","energy":"normal","disaster":""},{"name":"荒川","traffic":"clear","noise":"compliant","crowd":"sparse","energy":"normal","disaster":""},{"name":"墨田","traffic":"clear","noise":"compliant","crowd":"sparse","energy":"normal","disaster":""},{"name":"江戸川","traffic":"clear","noise":"compliant","crowd":"sparse","energy":"normal","disaster":""},{"name":"世田谷","traffic":"clear","noise":"compliant","crowd":"normal","energy":"normal","disaster":""},{"name":"新宿","traffic":"congested","noise":"violation","crowd":"packed","energy":"high","disaster":""},{"name":"秋葉原","traffic":"moderate","noise":"near_limit","crowd":"crowded","energy":"high","disaster":""},{"name":"千代田","traffic":"gridlock","noise":"violation","crowd":"packed","energy":"critical","disaster":"warning"},{"name":"台東","traffic":"moderate","noise":"compliant","crowd":"normal","energy":"normal","disaster":""},{"name":"江東","traffic":"moderate","noise":"near_limit","crowd":"normal","energy":"high","disaster":"watch"},{"name":"目黒","traffic":"clear","noise":"compliant","crowd":"sparse","energy":"normal","disaster":""},{"name":"渋谷","traffic":"moderate","noise":"near_limit","crowd":"crowded","energy":"normal","disaster":""},{"name":"中央","traffic":"congested","noise":"near_limit","crowd":"crowded","energy":"high","disaster":""},{"name":"品川","traffic":"moderate","noise":"compliant","crowd":"normal","energy":"normal","disaster":""}];
-const LAYER_LABELS = {
-  traffic:"交通量", noise:"騒音", crowd:"群衆密度",
-  energy:"エネルギー", disaster:"災害アラート"
+var DISTRICTS = [{"name": "練馬", "x": 1, "z": 1, "w": 20, "d": 13, "traffic": "moderate", "noise": "compliant", "crowd": "normal", "energy": "normal", "disaster": "", "layers": {"traffic": {"c": 16497668, "h": 8.0}, "noise": {"c": 3450963, "h": 3.0}, "crowd": {"c": 4359668, "h": 8.0}, "energy": {"c": 3450963, "h": 4.0}, "disaster": {"c": 15267305, "h": 3.0}}}, {"name": "板橋", "x": 22, "z": 1, "w": 14, "d": 13, "traffic": "moderate", "noise": "near_limit", "crowd": "normal", "energy": "normal", "disaster": "", "layers": {"traffic": {"c": 16497668, "h": 8.0}, "noise": {"c": 16497668, "h": 10.0}, "crowd": {"c": 4359668, "h": 8.0}, "energy": {"c": 3450963, "h": 4.0}, "disaster": {"c": 15267305, "h": 3.0}}}, {"name": "北区", "x": 37, "z": 1, "w": 13, "d": 13, "traffic": "moderate", "noise": "compliant", "crowd": "normal", "energy": "normal", "disaster": "", "layers": {"traffic": {"c": 16497668, "h": 8.0}, "noise": {"c": 3450963, "h": 3.0}, "crowd": {"c": 4359668, "h": 8.0}, "energy": {"c": 3450963, "h": 4.0}, "disaster": {"c": 15267305, "h": 3.0}}}, {"name": "足立", "x": 51, "z": 1, "w": 27, "d": 14, "traffic": "clear", "noise": "compliant", "crowd": "sparse", "energy": "normal", "disaster": "", "layers": {"traffic": {"c": 3450963, "h": 3.0}, "noise": {"c": 3450963, "h": 3.0}, "crowd": {"c": 15266046, "h": 3.0}, "energy": {"c": 3450963, "h": 4.0}, "disaster": {"c": 15267305, "h": 3.0}}}, {"name": "葛飾", "x": 79, "z": 1, "w": 20, "d": 14, "traffic": "clear", "noise": "compliant", "crowd": "sparse", "energy": "normal", "disaster": "", "layers": {"traffic": {"c": 3450963, "h": 3.0}, "noise": {"c": 3450963, "h": 3.0}, "crowd": {"c": 15266046, "h": 3.0}, "energy": {"c": 3450963, "h": 4.0}, "disaster": {"c": 15267305, "h": 3.0}}}, {"name": "杉並", "x": 1, "z": 15, "w": 20, "d": 13, "traffic": "moderate", "noise": "compliant", "crowd": "normal", "energy": "normal", "disaster": "", "layers": {"traffic": {"c": 16497668, "h": 8.0}, "noise": {"c": 3450963, "h": 3.0}, "crowd": {"c": 4359668, "h": 8.0}, "energy": {"c": 3450963, "h": 4.0}, "disaster": {"c": 15267305, "h": 3.0}}}, {"name": "豊島", "x": 22, "z": 14, "w": 14, "d": 14, "traffic": "congested", "noise": "near_limit", "crowd": "crowded", "energy": "normal", "disaster": "", "layers": {"traffic": {"c": 15369728, "h": 17.0}, "noise": {"c": 16497668, "h": 10.0}, "crowd": {"c": 15369728, "h": 17.0}, "energy": {"c": 3450963, "h": 4.0}, "disaster": {"c": 15267305, "h": 3.0}}}, {"name": "文京", "x": 37, "z": 15, "w": 13, "d": 13, "traffic": "moderate", "noise": "compliant", "crowd": "normal", "energy": "normal", "disaster": "", "layers": {"traffic": {"c": 16497668, "h": 8.0}, "noise": {"c": 3450963, "h": 3.0}, "crowd": {"c": 4359668, "h": 8.0}, "energy": {"c": 3450963, "h": 4.0}, "disaster": {"c": 15267305, "h": 3.0}}}, {"name": "荒川", "x": 51, "z": 15, "w": 13, "d": 13, "traffic": "clear", "noise": "compliant", "crowd": "sparse", "energy": "normal", "disaster": "", "layers": {"traffic": {"c": 3450963, "h": 3.0}, "noise": {"c": 3450963, "h": 3.0}, "crowd": {"c": 15266046, "h": 3.0}, "energy": {"c": 3450963, "h": 4.0}, "disaster": {"c": 15267305, "h": 3.0}}}, {"name": "墨田", "x": 65, "z": 15, "w": 13, "d": 13, "traffic": "clear", "noise": "compliant", "crowd": "sparse", "energy": "normal", "disaster": "", "layers": {"traffic": {"c": 3450963, "h": 3.0}, "noise": {"c": 3450963, "h": 3.0}, "crowd": {"c": 15266046, "h": 3.0}, "energy": {"c": 3450963, "h": 4.0}, "disaster": {"c": 15267305, "h": 3.0}}}, {"name": "江戸川", "x": 79, "z": 15, "w": 20, "d": 27, "traffic": "clear", "noise": "compliant", "crowd": "sparse", "energy": "normal", "disaster": "", "layers": {"traffic": {"c": 3450963, "h": 3.0}, "noise": {"c": 3450963, "h": 3.0}, "crowd": {"c": 15266046, "h": 3.0}, "energy": {"c": 3450963, "h": 4.0}, "disaster": {"c": 15267305, "h": 3.0}}}, {"name": "中野", "x": 1, "z": 29, "w": 20, "d": 13, "traffic": "clear", "noise": "compliant", "crowd": "normal", "energy": "normal", "disaster": "", "layers": {"traffic": {"c": 3450963, "h": 3.0}, "noise": {"c": 3450963, "h": 3.0}, "crowd": {"c": 4359668, "h": 8.0}, "energy": {"c": 3450963, "h": 4.0}, "disaster": {"c": 15267305, "h": 3.0}}}, {"name": "新宿", "x": 22, "z": 28, "w": 14, "d": 14, "traffic": "congested", "noise": "violation", "crowd": "packed", "energy": "high", "disaster": "", "layers": {"traffic": {"c": 15369728, "h": 17.0}, "noise": {"c": 14233637, "h": 22.0}, "crowd": {"c": 14233637, "h": 27.0}, "energy": {"c": 16497668, "h": 14.0}, "disaster": {"c": 15267305, "h": 3.0}}}, {"name": "千代田", "x": 37, "z": 28, "w": 13, "d": 13, "traffic": "gridlock", "noise": "violation", "crowd": "packed", "energy": "critical", "disaster": "warning", "layers": {"traffic": {"c": 14233637, "h": 27.0}, "noise": {"c": 14233637, "h": 22.0}, "crowd": {"c": 14233637, "h": 27.0}, "energy": {"c": 14233637, "h": 25.0}, "disaster": {"c": 15369728, "h": 19.0}}}, {"name": "台東", "x": 51, "z": 28, "w": 13, "d": 13, "traffic": "moderate", "noise": "near_limit", "crowd": "crowded", "energy": "normal", "disaster": "", "layers": {"traffic": {"c": 16497668, "h": 8.0}, "noise": {"c": 16497668, "h": 10.0}, "crowd": {"c": 15369728, "h": 17.0}, "energy": {"c": 3450963, "h": 4.0}, "disaster": {"c": 15267305, "h": 3.0}}}, {"name": "江東", "x": 65, "z": 28, "w": 13, "d": 14, "traffic": "moderate", "noise": "near_limit", "crowd": "normal", "energy": "high", "disaster": "watch", "layers": {"traffic": {"c": 16497668, "h": 8.0}, "noise": {"c": 16497668, "h": 10.0}, "crowd": {"c": 4359668, "h": 8.0}, "energy": {"c": 16497668, "h": 14.0}, "disaster": {"c": 16497668, "h": 13.0}}}, {"name": "世田谷", "x": 1, "z": 43, "w": 20, "d": 22, "traffic": "clear", "noise": "compliant", "crowd": "normal", "energy": "normal", "disaster": "", "layers": {"traffic": {"c": 3450963, "h": 3.0}, "noise": {"c": 3450963, "h": 3.0}, "crowd": {"c": 4359668, "h": 8.0}, "energy": {"c": 3450963, "h": 4.0}, "disaster": {"c": 15267305, "h": 3.0}}}, {"name": "渋谷", "x": 22, "z": 42, "w": 14, "d": 13, "traffic": "moderate", "noise": "near_limit", "crowd": "crowded", "energy": "normal", "disaster": "", "layers": {"traffic": {"c": 16497668, "h": 8.0}, "noise": {"c": 16497668, "h": 10.0}, "crowd": {"c": 15369728, "h": 17.0}, "energy": {"c": 3450963, "h": 4.0}, "disaster": {"c": 15267305, "h": 3.0}}}, {"name": "港", "x": 37, "z": 42, "w": 13, "d": 13, "traffic": "moderate", "noise": "near_limit", "crowd": "crowded", "energy": "high", "disaster": "", "layers": {"traffic": {"c": 16497668, "h": 8.0}, "noise": {"c": 16497668, "h": 10.0}, "crowd": {"c": 15369728, "h": 17.0}, "energy": {"c": 16497668, "h": 14.0}, "disaster": {"c": 15267305, "h": 3.0}}}, {"name": "中央", "x": 51, "z": 42, "w": 13, "d": 13, "traffic": "congested", "noise": "near_limit", "crowd": "crowded", "energy": "high", "disaster": "", "layers": {"traffic": {"c": 15369728, "h": 17.0}, "noise": {"c": 16497668, "h": 10.0}, "crowd": {"c": 15369728, "h": 17.0}, "energy": {"c": 16497668, "h": 14.0}, "disaster": {"c": 15267305, "h": 3.0}}}, {"name": "大田", "x": 65, "z": 42, "w": 34, "d": 22, "traffic": "clear", "noise": "compliant", "crowd": "normal", "energy": "high", "disaster": "", "layers": {"traffic": {"c": 3450963, "h": 3.0}, "noise": {"c": 3450963, "h": 3.0}, "crowd": {"c": 4359668, "h": 8.0}, "energy": {"c": 16497668, "h": 14.0}, "disaster": {"c": 15267305, "h": 3.0}}}, {"name": "目黒", "x": 22, "z": 56, "w": 14, "d": 13, "traffic": "clear", "noise": "compliant", "crowd": "sparse", "energy": "normal", "disaster": "", "layers": {"traffic": {"c": 3450963, "h": 3.0}, "noise": {"c": 3450963, "h": 3.0}, "crowd": {"c": 15266046, "h": 3.0}, "energy": {"c": 3450963, "h": 4.0}, "disaster": {"c": 15267305, "h": 3.0}}}, {"name": "品川", "x": 37, "z": 56, "w": 27, "d": 13, "traffic": "moderate", "noise": "compliant", "crowd": "normal", "energy": "normal", "disaster": "", "layers": {"traffic": {"c": 16497668, "h": 8.0}, "noise": {"c": 3450963, "h": 3.0}, "crowd": {"c": 4359668, "h": 8.0}, "energy": {"c": 3450963, "h": 4.0}, "disaster": {"c": 15267305, "h": 3.0}}}];
+var ACTIVE_LAYER = "traffic";
+var LAYER_META = {
+  traffic: {icon:"🚗",label:"交通量",   stat:"混雑地区",  keys:["congested","gridlock"],field:"traffic"},
+  noise:   {icon:"🔊",label:"騒音",      stat:"規制超過",  keys:["violation"],           field:"noise"},
+  crowd:   {icon:"👥",label:"群衆密度",  stat:"混雑地区",  keys:["crowded","packed"],    field:"crowd"},
+  energy:  {icon:"⚡",label:"エネルギー",stat:"高消費地区",keys:["high","critical"],     field:"energy"},
+  disaster:{icon:"⚠️",label:"災害アラート",stat:"警戒以上",keys:["warning","critical"],  field:"disaster"}
 };
-const STATUS_LABELS = {
-  clear:"通常走行", moderate:"やや混雑", congested:"渋滞", gridlock:"完全停滞",
-  compliant:"規制内", near_limit:"規制近傍", violation:"規制超過",
-  sparse:"閑散", normal:"通常", crowded:"混雑", packed:"超混雑",
-  high:"高使用", critical:"異常",
-  info:"情報", watch:"注意", warning:"警戒",
+var SL={clear:"通常走行",moderate:"やや混雑",congested:"渋滞",gridlock:"完全停滞",
+        compliant:"規制内",near_limit:"規制近傍",violation:"規制超過",
+        sparse:"閑散",normal:"通常",crowded:"混雑",packed:"超混雑",
+        high:"高使用",critical:"異常",info:"情報",watch:"注意",warning:"警戒"};
+var SC={clear:"#34a853",moderate:"#fbbc04",congested:"#ea8600",gridlock:"#d93025",
+        compliant:"#34a853",near_limit:"#fbbc04",violation:"#d93025",
+        sparse:"#4285f4",normal:"#4285f4",crowded:"#ea8600",packed:"#d93025",
+        high:"#fbbc04",critical:"#d93025",info:"#4285f4",watch:"#fbbc04",warning:"#ea8600"};
+var LEGENDS={
+  traffic: [["#34a853","通常走行"],["#fbbc04","やや混雑"],["#ea8600","渋滞"],["#d93025","完全停滞"]],
+  noise:   [["#34a853","規制内"],["#fbbc04","規制値近傍"],["#d93025","規制超過"]],
+  crowd:   [["#e8f0fe","閑散"],["#4285f4","通常"],["#ea8600","混雑"],["#d93025","超混雑"]],
+  energy:  [["#34a853","通常"],["#fbbc04","高使用"],["#d93025","異常"]],
+  disaster:[["#e8f5e9","アラートなし"],["#4285f4","情報"],["#fbbc04","注意"],["#ea8600","警戒"],["#d93025","緊急"]]
 };
-const STATUS_COLORS = {
-  clear:"#34a853", moderate:"#fbbc04", congested:"#ea8600", gridlock:"#d93025",
-  compliant:"#34a853", near_limit:"#fbbc04", violation:"#d93025",
-  sparse:"#4285f4", normal:"#4285f4", crowded:"#ea8600", packed:"#d93025",
-  high:"#fbbc04", critical:"#d93025",
-  info:"#4285f4", watch:"#fbbc04", warning:"#ea8600",
+</script>
+
+<!-- ========== Three.js ========== -->
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.min.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ── Renderer ────────────────────────────────────────────────────
+const wrap = document.getElementById('canvas-wrap');
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(wrap.clientWidth, wrap.clientHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+wrap.appendChild(renderer.domElement);
+
+// ── Scene ───────────────────────────────────────────────────────
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xd8d0c4);
+scene.fog = new THREE.FogExp2(0xd8d0c4, 0.0038);
+
+// ── Camera ──────────────────────────────────────────────────────
+const CAM0 = new THREE.Vector3(50, 56, 120);
+const TGT0 = new THREE.Vector3(50, 0, 38);
+const camera = new THREE.PerspectiveCamera(45, wrap.clientWidth/wrap.clientHeight, 0.1, 600);
+camera.position.copy(CAM0);
+
+// ── Lights ──────────────────────────────────────────────────────
+scene.add(new THREE.AmbientLight(0xffffff, 1.3));
+const sun = new THREE.DirectionalLight(0xfff8e0, 2.2);
+sun.position.set(40, 90, 65); sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, {near:1,far:280,left:-90,right:90,top:90,bottom:-90});
+scene.add(sun);
+scene.add(new THREE.HemisphereLight(0x90c8f4, 0xd8c8a8, 0.8));
+
+// ── Ground ──────────────────────────────────────────────────────
+const gnd = new THREE.Mesh(
+  new THREE.PlaneGeometry(260, 220),
+  new THREE.MeshLambertMaterial({color:0xf0ebe0})
+);
+gnd.rotation.x = -Math.PI/2; gnd.position.set(50,-0.02,38); gnd.receiveShadow=true;
+scene.add(gnd);
+
+// ── Tokyo Bay ───────────────────────────────────────────────────
+const bvs=[68,56, 99,50, 99,76, 60,76];
+const bs=new THREE.Shape(); bs.moveTo(bvs[0],bvs[1]);
+for(let i=2;i<bvs.length;i+=2) bs.lineTo(bvs[i],bvs[i+1]); bs.closePath();
+const bay=new THREE.Mesh(new THREE.ShapeGeometry(bs),
+  new THREE.MeshLambertMaterial({color:0x5ba8d4,transparent:true,opacity:0.72,side:THREE.DoubleSide}));
+bay.rotation.x=-Math.PI/2; bay.position.y=0.03; scene.add(bay);
+
+function makeSprite(txt,color,fs){
+  const c=document.createElement('canvas'); c.width=200; c.height=52;
+  const ctx=c.getContext('2d'); ctx.font=`italic ${fs}px system-ui`;
+  ctx.fillStyle=color; ctx.fillText(txt,6,fs);
+  const s=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),transparent:true}));
+  s.scale.set(18,4.5,1); return s;
+}
+const bsp=makeSprite('東京湾','#2a78a8',30); bsp.position.set(83,1.5,65); scene.add(bsp);
+
+// ── Animated Rivers ─────────────────────────────────────────────
+const riverUniforms={time:{value:0}};
+const riverMat=new THREE.ShaderMaterial({
+  uniforms:riverUniforms,
+  vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+  fragmentShader:`uniform float time;varying vec2 vUv;void main(){float w=sin(vUv.x*5.0-time*2.0)*0.12+sin(vUv.y*3.0-time*1.5)*0.08;vec3 c=mix(vec3(0.38,0.67,0.84),vec3(0.22,0.51,0.72),w+0.5);gl_FragColor=vec4(c,0.75);}`,
+  transparent:true,side:THREE.DoubleSide,depthWrite:false
+});
+// 隅田川 (N-S, x≈64.5)
+const rv1=new THREE.Mesh(new THREE.PlaneGeometry(2,30),riverMat); rv1.rotation.x=-Math.PI/2; rv1.position.set(64.5,0.05,30); scene.add(rv1);
+// 多摩川 (E-W, z≈63)
+const rv2=new THREE.Mesh(new THREE.PlaneGeometry(52,2.2),riverMat); rv2.rotation.x=-Math.PI/2; rv2.position.set(26,0.05,63); scene.add(rv2);
+// 荒川 (N-S, x≈50.5)
+const rv3=new THREE.Mesh(new THREE.PlaneGeometry(1.5,27),riverMat); rv3.rotation.x=-Math.PI/2; rv3.position.set(50.5,0.05,14); scene.add(rv3);
+
+// ── Parks & Trees ────────────────────────────────────────────────
+function seededR(seed){let s=seed;return ()=>{s=(s*1664525+1013904223)>>>0;return s/4294967296;};}
+const pkm=new THREE.MeshLambertMaterial({color:0x8dc87a,transparent:true,opacity:0.55});
+const treeM=new THREE.MeshLambertMaterial({color:0x4a8840});
+const trng=seededR(77);
+[[29,39,4.5],[54,36,3.5],[6,42,3.0],[44,35,2.5],[58,22,2.0]].forEach(([px,pz,r])=>{
+  const pk=new THREE.Mesh(new THREE.CylinderGeometry(r,r,0.12,20),pkm); pk.position.set(px,0.05,pz); scene.add(pk);
+  for(let i=0;i<5;i++){
+    const tx=px+(trng()-0.5)*r*1.6,tz=pz+(trng()-0.5)*r*1.6,th=1.0+trng()*1.0;
+    const tree=new THREE.Mesh(new THREE.ConeGeometry(0.55,th,6),treeM); tree.position.set(tx,th/2,tz); scene.add(tree);
+  }
+});
+
+// ── 富士山・背景の丘 ──────────────────────────────────────────────
+const fuji=new THREE.Mesh(new THREE.ConeGeometry(22,32,8),new THREE.MeshLambertMaterial({color:0x8899a6}));
+fuji.position.set(-32,16,-26); scene.add(fuji);
+const fujiSnow=new THREE.Mesh(new THREE.ConeGeometry(6,10,8),new THREE.MeshLambertMaterial({color:0xeef2f6}));
+fujiSnow.position.set(-32,30,-26); scene.add(fujiSnow);
+[[-14,5,-22,0x799e78],[6,4,-24,0x6a8e70],[28,3.5,-20,0x7a9e80],[-3,3,-14,0x8aae90],[55,3.5,-22,0x799e78]].forEach(([hx,hh,hz,hc])=>{
+  const hill=new THREE.Mesh(new THREE.SphereGeometry(hh*3,7,5,0,Math.PI*2,0,Math.PI/2),new THREE.MeshLambertMaterial({color:hc}));
+  hill.position.set(hx,0,hz); scene.add(hill);
+});
+
+// ── 背景ビル (InstancedMesh) ──────────────────────────────────────
+const brng=seededR(42);
+const NBLD=320;
+const ibld=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),new THREE.MeshLambertMaterial({color:0xbab4a8}),NBLD);
+const dummy=new THREE.Object3D(); let bi=0;
+for(let at=0;at<2500&&bi<NBLD;at++){
+  const bx=brng()*97+1,bz=brng()*71+1,bw=brng()*1.6+0.5,bd=brng()*1.6+0.5,bh=brng()*5+0.5;
+  let ok=true;
+  for(const dd of DISTRICTS){if(bx>dd.x-0.5&&bx<dd.x+dd.w+0.5&&bz>dd.z-0.5&&bz<dd.z+dd.d+0.5){ok=false;break;}}
+  if(Math.abs(bx-64.5)<2.5||Math.abs(bx-50.5)<2.5||(bz>61&&bz<65)) ok=false;
+  if(bx>63&&bz>53) ok=false;
+  if(!ok) continue;
+  dummy.position.set(bx,bh/2,bz); dummy.scale.set(bw,bh,bd); dummy.updateMatrix();
+  ibld.setMatrixAt(bi++,dummy.matrix);
+}
+ibld.count=bi; ibld.castShadow=true; ibld.instanceMatrix.needsUpdate=true; scene.add(ibld);
+
+// ── ランドマーク ──────────────────────────────────────────────────
+const _lm=(geo,col,x,y,z)=>{const m=new THREE.Mesh(geo,new THREE.MeshLambertMaterial({color:col}));m.position.set(x,y,z);m.castShadow=true;scene.add(m);};
+_lm(new THREE.BoxGeometry(2,22,2),     0x7888a0, 29,11,35);   // 東京都庁
+_lm(new THREE.ConeGeometry(0.55,18,4), 0xe05020, 43,9, 48);   // 東京タワー
+_lm(new THREE.ConeGeometry(0.45,26,4), 0x5878b8, 71,13,22);   // 東京スカイツリー
+_lm(new THREE.BoxGeometry(16,0.04,1.2),0xb0a898, 80,0.04,51); // 羽田滑走路1
+_lm(new THREE.BoxGeometry(16,0.04,1.2),0xb0a898, 80,0.04,54); // 羽田滑走路2
+
+// ── 電車路線 & 電車アニメーション ─────────────────────────────────
+const trainClock=new THREE.Clock();
+const trainObjs=[];
+function makeRail(pts,col,closed,rr=0.28){
+  const curve=new THREE.CatmullRomCurve3(pts.map(p=>new THREE.Vector3(p[0],0.3,p[1])),closed);
+  scene.add(new THREE.Mesh(new THREE.TubeGeometry(curve,pts.length*6,rr,5,closed),new THREE.MeshLambertMaterial({color:col})));
+  return curve;
+}
+// 山手線 (緑ループ)
+const yC=makeRail([[29,14],[29,28],[29,35],[29,42],[30,52],[36,58],[44,60],[52,56],[50,48],[50,35],[50,28],[44,14],[36,11]],0x80bb44,true);
+// 中央線 (オレンジ E-W)
+const cC=makeRail([[3,30],[10,30],[22,30],[29,30],[37,30],[44,30],[52,30],[62,30]],0xf07020,false,0.22);
+// 東海道線 (赤 N-S)
+const tC=makeRail([[44,29],[44,36],[44,43],[44,50],[44,57]],0xd02030,false,0.22);
+[[yC,0x3d9e3d,0.0,true],[cC,0xf07020,0.3,false],[tC,0xc02828,0.7,false]].forEach(([curve,col,phase,cl])=>{
+  const m=new THREE.Mesh(new THREE.BoxGeometry(2.2,0.7,0.9),new THREE.MeshLambertMaterial({color:col}));
+  m.castShadow=true; scene.add(m); trainObjs.push({m,curve,t:phase,cl});
+});
+
+// ── Districts ────────────────────────────────────────────────────
+let currentLayer = ACTIVE_LAYER;
+const meshes = [];
+
+DISTRICTS.forEach((d,i)=>{
+  const ld=d.layers[currentLayer];
+  const geo=new THREE.BoxGeometry(d.w-0.5, ld.h, d.d-0.5);
+  const mat=new THREE.MeshLambertMaterial({color:ld.c, transparent:true, opacity:0.88});
+  const mesh=new THREE.Mesh(geo,mat);
+  mesh.position.set(d.x+d.w/2, ld.h/2, d.z+d.d/2);
+  mesh.castShadow=true; mesh.receiveShadow=true;
+  mesh.userData={idx:i};
+  scene.add(mesh); meshes.push(mesh);
+});
+
+// ── HTML Labels (3D→2D projection) ──────────────────────────────
+const labDiv=document.getElementById('labels');
+const lEls=DISTRICTS.map((d,i)=>{
+  const el=document.createElement('div'); el.className='dl';
+  el.textContent=d.name; labDiv.appendChild(el); return el;
+});
+const _v3=new THREE.Vector3();
+function updateLabels(){
+  const rect=renderer.domElement.getBoundingClientRect();
+  DISTRICTS.forEach((d,i)=>{
+    const m=meshes[i];
+    _v3.set(m.position.x, m.position.y*2+2.5, m.position.z).project(camera);
+    if(_v3.z>1){lEls[i].style.display='none';return;}
+    const sx=(_v3.x*0.5+0.5)*rect.width+rect.left;
+    const sy=(-_v3.y*0.5+0.5)*rect.height+rect.top;
+    lEls[i].style.display='block';
+    lEls[i].style.left=sx+'px'; lEls[i].style.top=sy+'px';
+    const dist=camera.position.distanceTo(m.position);
+    lEls[i].style.fontSize=Math.max(8,Math.min(14,700/dist))+'px';
+    lEls[i].style.opacity=Math.max(0,Math.min(1,(160-dist)/80));
+  });
+}
+
+// ── OrbitControls ────────────────────────────────────────────────
+const controls=new OrbitControls(camera,renderer.domElement);
+controls.enableDamping=true; controls.dampingFactor=0.07;
+controls.minPolarAngle=0.1; controls.maxPolarAngle=Math.PI/2.05;
+controls.minDistance=18; controls.maxDistance=270;
+controls.target.copy(TGT0); controls.update();
+
+window.resetCam=()=>{ camera.position.copy(CAM0); controls.target.copy(TGT0); controls.update(); };
+window.doZoom=(f)=>{ const d=camera.position.clone().sub(controls.target); camera.position.copy(controls.target).addScaledVector(d,f); controls.update(); };
+
+// ── Raycasting (hover) ───────────────────────────────────────────
+const raycaster=new THREE.Raycaster(), mouse=new THREE.Vector2();
+const tt=document.getElementById('tt'), tth=document.getElementById('tth'), ttb=document.getElementById('ttb');
+let hovIdx=-1;
+
+renderer.domElement.addEventListener('mousemove',e=>{
+  const rect=renderer.domElement.getBoundingClientRect();
+  mouse.set(((e.clientX-rect.left)/rect.width)*2-1, -((e.clientY-rect.top)/rect.height)*2+1);
+  raycaster.setFromCamera(mouse,camera);
+  const hits=raycaster.intersectObjects(meshes);
+  if(hits.length){
+    const idx=hits[0].object.userData.idx;
+    if(idx!==hovIdx){
+      if(hovIdx>=0) meshes[hovIdx].material.emissive.setHex(0x000000);
+      hovIdx=idx;
+      meshes[idx].material.emissive.setHex(0x333333);
+      meshes[idx].material.emissiveIntensity=0.28;
+    }
+    const d=DISTRICTS[idx];
+    tth.textContent=d.name;
+    const rows=[['🚗交通',d.traffic],['🔊騒音',d.noise],['👥群衆',d.crowd],['⚡電力',d.energy],['⚠️災害',d.disaster]].filter(r=>r[1]);
+    ttb.innerHTML=rows.map(([k,v])=>`<div class="tr"><span class="tk">${k}</span><span class="tbg" style="background:${SC[v]||'#5f6368'}">${SL[v]||v}</span></div>`).join('')
+      ||'<div style="padding:5px 0;color:#5f6368;font-size:12px">データなし</div>';
+    tt.style.cssText=`left:${Math.min(e.clientX+16,window.innerWidth-200)}px;top:${Math.min(e.clientY-10,window.innerHeight-170)}px;display:block`;
+    renderer.domElement.style.cursor='pointer';
+  } else {
+    if(hovIdx>=0){meshes[hovIdx].material.emissive.setHex(0x000000);hovIdx=-1;}
+    tt.style.display='none'; renderer.domElement.style.cursor='grab';
+  }
+});
+renderer.domElement.addEventListener('mouseleave',()=>tt.style.display='none');
+
+// ── Layer switching (色と高さを同時に更新) ────────────────────────
+window.switchLayer=function(lv, btn){
+  currentLayer=lv;
+
+  // ★ 3D メッシュの色と高さを全地区更新
+  DISTRICTS.forEach((d,i)=>{
+    const ld=d.layers[lv];
+    meshes[i].material.color.setHex(ld.c);           // 色を変更
+    meshes[i].geometry.dispose();
+    meshes[i].geometry=new THREE.BoxGeometry(d.w-0.5, ld.h, d.d-0.5);  // 高さを変更
+    meshes[i].position.y=ld.h/2;                     // y座標をブロック中心に合わせる
+  });
+
+  // ボタン状態
+  document.querySelectorAll('.lb').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+
+  // ヘッダー
+  const m=LAYER_META[lv];
+  document.getElementById('sub').textContent=m.icon+' '+m.label+' | '+DISTRICTS.length+' 地区';
+
+  // 凡例
+  document.getElementById('lgd').innerHTML=(LEGENDS[lv]||[]).map(([c,lb])=>
+    `<div class="leg-row"><span class="leg-dot" style="background:${c}"></span><span>${lb}</span></div>`
+  ).join('');
+
+  // 統計
+  const n=DISTRICTS.filter(d=>m.keys.includes(d[m.field])).length;
+  const av=document.getElementById('av'); av.textContent=n;
+  av.style.color=n>0?'#d93025':'#34a853';
+  document.getElementById('al').textContent=m.stat;
 };
 
-// ── Zoom / Pan ───────────────────────────────────────────────
-let scale = 1, tx = 0, ty = 0;
-let dragging = false, dragStart = {x:0,y:0}, dragOrigin = {x:0,y:0};
-const svg = document.getElementById('map-svg');
-
-function applyTransform(){
-  svg.style.transform = `translate(${tx}px,${ty}px) scale(${scale})`;
-  svg.style.transformOrigin = 'center center';
-}
-function zoom(factor){
-  scale = Math.max(0.6, Math.min(6, scale*factor));
-  applyTransform();
-}
-svg.addEventListener('wheel', e=>{
-  e.preventDefault();
-  zoom(e.deltaY<0?1.12:1/1.12);
-}, {passive:false});
-svg.addEventListener('mousedown', e=>{
-  if(e.button!==0) return;
-  dragging=true;
-  dragStart={x:e.clientX,y:e.clientY};
-  dragOrigin={x:tx,y:ty};
+// ── Resize ───────────────────────────────────────────────────────
+window.addEventListener('resize',()=>{
+  const W=wrap.clientWidth,H=wrap.clientHeight;
+  camera.aspect=W/H; camera.updateProjectionMatrix(); renderer.setSize(W,H);
 });
-window.addEventListener('mousemove', e=>{
-  if(!dragging) return;
-  tx = dragOrigin.x + (e.clientX-dragStart.x);
-  ty = dragOrigin.y + (e.clientY-dragStart.y);
-  applyTransform();
-});
-window.addEventListener('mouseup', ()=>dragging=false);
 
-// ── Tooltip ──────────────────────────────────────────────────
-const tt = document.getElementById('tooltip');
-const ttH = document.getElementById('tip-header');
-const ttB = document.getElementById('tip-body');
-let hideTimer;
+// ── Render loop ──────────────────────────────────────────────────
+(function animate(){
+  requestAnimationFrame(animate);
+  const dt=Math.min(trainClock.getDelta(),0.05);
+  controls.update();
+  // 川アニメーション
+  riverUniforms.time.value+=dt;
+  // 電車移動
+  trainObjs.forEach(o=>{
+    o.t+=0.025*dt;
+    const tp=o.cl?o.t%1:Math.abs((o.t%2)-1);
+    const p=o.curve.getPointAt(tp);
+    const tn=o.curve.getTangentAt(tp);
+    o.m.position.copy(p);
+    o.m.lookAt(p.clone().add(tn));
+  });
+  renderer.render(scene,camera);
+  updateLabels();
+})();
 
-function showTip(e, idx){
-  clearTimeout(hideTimer);
-  const d = DISTRICTS[idx];
-  ttH.textContent = d.name;
-  const rows = [
-    ['🚗 交通', d.traffic], ['🔊 騒音', d.noise],
-    ['👥 群衆', d.crowd],   ['⚡ 電力', d.energy], ['⚠️ 災害', d.disaster]
-  ].filter(r=>r[1]);
-  ttB.innerHTML = rows.map(([k,v])=>{
-    const lbl = STATUS_LABELS[v]||v;
-    const col = STATUS_COLORS[v]||'#5f6368';
-    return `<div class="tip-row"><span class="tip-key">${k}</span>`+
-           `<span class="tip-badge" style="background:${col}">${lbl}</span></div>`;
-  }).join('') || '<div style="padding:4px 0;color:#5f6368;font-size:12px">データなし</div>';
-  tt.style.display='block';
-  positionTip(e);
-}
-function positionTip(e){
-  const x = Math.min(e.clientX+14, window.innerWidth-190);
-  const y = Math.min(e.clientY-10, window.innerHeight-160);
-  tt.style.left = x+'px';
-  tt.style.top  = y+'px';
-}
-document.getElementById('map-wrap').addEventListener('mousemove', e=>{
-  if(tt.style.display==='block') positionTip(e);
-});
-function hideTip(){
-  hideTimer = setTimeout(()=>tt.style.display='none', 120);
-}
-function selectDistrict(idx){
-  showTip({clientX:window.innerWidth/2, clientY:window.innerHeight/2}, idx);
-}
-
-// ── Layer switch ─────────────────────────────────────────────
-function switchLayer(lv){
-  const url = new URL(window.location.href);
-  // API 呼び出しまたはページ再読み込み (サーバー接続時)
-  // スタンドアロン HTML では UI のみ更新
-  document.querySelectorAll('.layer-btn').forEach(b=>b.classList.remove('active'));
-  event.currentTarget.classList.add('active');
-  // 凡例・ヘッダー更新ヒント
-  document.querySelector('#searchbar .sub').textContent =
-    ({traffic:'🚗',noise:'🔊',crowd:'👥',energy:'⚡',disaster:'⚠️'}[lv]||'') +
-    ' ' + (LAYER_LABELS[lv]||lv) + ' レイヤー | 20 地区';
-}
+document.getElementById('ld').style.display='none';
 </script>
 </body>
 </html>

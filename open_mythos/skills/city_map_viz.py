@@ -1,11 +1,12 @@
 """
-Sprint 78A — 都市マップビジュアライゼーション
+Sprint 78A — 都市マップビジュアライゼーション  (v3: Three.js 3D)
 
-Google Maps 風ライトテーマ + SVG インタラクティブ都市マップ。
-交通量・騒音・群衆・エネルギー・災害アラートをレイヤー切替で表示する。
+Google Maps 風 3D ライトテーマ。Three.js によるブロック都市マップ。
+レイヤー切替時に 3D ブロックの色と高さがリアルタイムで変化する。
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional
@@ -22,43 +23,46 @@ class MapLayer(str, Enum):
     DISASTER = "disaster"
 
 
-# ─── カラーパレット（Google Maps ライトテーマに合わせた彩度低め）────────
-
+# ─── カラーパレット（Google スタイル）─────────────────────────────
 
 _TRAFFIC_COLORS = {
-    "clear":     "#34a853",   # Google green
-    "moderate":  "#fbbc04",   # Google yellow
-    "congested": "#ea8600",   # orange
-    "gridlock":  "#d93025",   # Google red
+    "clear":     "#34a853",
+    "moderate":  "#fbbc04",
+    "congested": "#ea8600",
+    "gridlock":  "#d93025",
 }
-
 _NOISE_COLORS = {
     "compliant":  "#34a853",
     "near_limit": "#fbbc04",
     "violation":  "#d93025",
 }
-
 _CROWD_COLORS = {
-    "sparse":  "#e8f0fe",    # very light blue
-    "normal":  "#4285f4",    # Google blue
+    "sparse":  "#e8f0fe",
+    "normal":  "#4285f4",
     "crowded": "#ea8600",
     "packed":  "#d93025",
 }
-
 _DISASTER_COLORS = {
     "info":     "#4285f4",
     "watch":    "#fbbc04",
     "warning":  "#ea8600",
     "critical": "#d93025",
 }
-
 _ENERGY_COLORS = {
     "normal":   "#34a853",
     "high":     "#fbbc04",
     "critical": "#d93025",
 }
+_NO_DATA_COLOR = "#e8e0d0"
 
-_NO_DATA_COLOR = "#e8e0d0"   # map land color — district blends into base
+# ─── 3D ブロック高さ（値が高いほど深刻 → 高いブロック）──────────
+
+_H_TRAFFIC  = {"clear": 3, "moderate": 8, "congested": 17, "gridlock": 27}
+_H_NOISE    = {"compliant": 3, "near_limit": 10, "violation": 22}
+_H_CROWD    = {"sparse": 3, "normal": 8, "crowded": 17, "packed": 27}
+_H_ENERGY   = {"normal": 4, "high": 14, "critical": 25}
+_H_DISASTER = {"info": 7, "watch": 13, "warning": 19, "critical": 30}
+
 
 # ─── Data Classes ─────────────────────────────────────────────────
 
@@ -109,7 +113,7 @@ class CityMapData:
 
 
 def _district_color(district: DistrictData, layer: MapLayer) -> str:
-    """レイヤーに応じた地区の塗りつぶし色。None → _NO_DATA_COLOR。"""
+    """レイヤーに応じた地区の塗り色。None → _NO_DATA_COLOR。"""
     if layer == MapLayer.TRAFFIC:
         return _TRAFFIC_COLORS.get(district.traffic_level, _NO_DATA_COLOR)
     elif layer == MapLayer.NOISE:
@@ -125,470 +129,562 @@ def _district_color(district: DistrictData, layer: MapLayer) -> str:
     return _NO_DATA_COLOR
 
 
+def _district_3d_height(district: DistrictData, layer: MapLayer) -> float:
+    """レイヤー×ステータスに応じた 3D ブロック高さ。"""
+    if layer == MapLayer.TRAFFIC:
+        return float(_H_TRAFFIC.get(district.traffic_level, 3))
+    elif layer == MapLayer.NOISE:
+        return float(_H_NOISE.get(district.noise_status, 3))
+    elif layer == MapLayer.CROWD:
+        return float(_H_CROWD.get(district.crowd_level, 3))
+    elif layer == MapLayer.ENERGY:
+        return float(_H_ENERGY.get(district.energy_status, 4))
+    elif layer == MapLayer.DISASTER:
+        return float(_H_DISASTER.get(district.disaster_level, 3))
+    return 4.0
+
+
 def _legend_html(layer: MapLayer) -> str:
     if layer == MapLayer.TRAFFIC:
-        items = [("#34a853", "通常走行"), ("#fbbc04", "やや混雑"),
-                 ("#ea8600", "渋滞"), ("#d93025", "完全停滞")]
+        items = [("#34a853","通常走行"),("#fbbc04","やや混雑"),("#ea8600","渋滞"),("#d93025","完全停滞")]
     elif layer == MapLayer.NOISE:
-        items = [("#34a853", "規制内"), ("#fbbc04", "規制値近傍"), ("#d93025", "規制超過")]
+        items = [("#34a853","規制内"),("#fbbc04","規制値近傍"),("#d93025","規制超過")]
     elif layer == MapLayer.CROWD:
-        items = [("#e8f0fe", "閑散"), ("#4285f4", "通常"),
-                 ("#ea8600", "混雑"), ("#d93025", "超混雑")]
+        items = [("#e8f0fe","閑散"),("#4285f4","通常"),("#ea8600","混雑"),("#d93025","超混雑")]
     elif layer == MapLayer.ENERGY:
-        items = [("#34a853", "通常"), ("#fbbc04", "高使用"), ("#d93025", "異常")]
+        items = [("#34a853","通常"),("#fbbc04","高使用"),("#d93025","異常")]
     elif layer == MapLayer.DISASTER:
-        items = [("#e8f5e9", "アラートなし"), ("#4285f4", "情報"),
-                 ("#fbbc04", "注意"), ("#ea8600", "警戒"), ("#d93025", "緊急")]
+        items = [("#e8f5e9","アラートなし"),("#4285f4","情報"),("#fbbc04","注意"),("#ea8600","警戒"),("#d93025","緊急")]
     else:
         items = []
-    rows = "".join(
-        f'<div class="leg-row">'
-        f'<span class="leg-dot" style="background:{c}"></span>'
-        f'<span>{label}</span></div>'
-        for c, label in items
+    return "".join(
+        f'<div class="leg-row"><span class="leg-dot" style="background:{c}"></span><span>{lb}</span></div>'
+        for c, lb in items
     )
-    return rows
 
 
-def generate_html(map_data: CityMapData, width: int = 1000, height: int = 700) -> str:
-    """Google Maps 風プロフェッショナル HTML 都市マップを生成する。"""
-    layer = map_data.active_layer
-    vw, vh = 100, 76   # SVG 座標系
+# ─── HTML テンプレート（Three.js 3D）─────────────────────────────
+# __PLACEHOLDER__ マーカーを generate_html() で .replace() 置換する
 
-    layer_label = {
-        MapLayer.TRAFFIC:  "交通量",
-        MapLayer.NOISE:    "騒音",
-        MapLayer.CROWD:    "群衆密度",
-        MapLayer.ENERGY:   "エネルギー",
-        MapLayer.DISASTER: "災害アラート",
-    }.get(layer, layer.value)
-
-    layer_icon = {
-        MapLayer.TRAFFIC:  "🚗",
-        MapLayer.NOISE:    "🔊",
-        MapLayer.CROWD:    "👥",
-        MapLayer.ENERGY:   "⚡",
-        MapLayer.DISASTER: "⚠️",
-    }.get(layer, "📍")
-
-    # ── 地区 SVG ──────────────────────────────────────────────────
-    district_rects = []
-    district_data_json_parts = []
-
-    for i, d in enumerate(map_data.districts):
-        color = _district_color(d, layer)
-        # ダミー street lines（地区内に2本の薄い白線）
-        cx, cy = d.x + d.width / 2, d.y + d.height / 2
-        street_h = (f'<line x1="{d.x+1}" y1="{cy:.1f}" x2="{d.x+d.width-1:.1f}" '
-                    f'y1="{cy:.1f}" x2="{d.x+d.width-1:.1f}" y2="{cy:.1f}" '
-                    f'stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/>')
-        street_v = (f'<line x1="{cx:.1f}" y1="{d.y+1}" x2="{cx:.1f}" y2="{d.y+d.height-1:.1f}" '
-                    f'stroke="rgba(255,255,255,0.35)" stroke-width="0.3" pointer-events="none"/>')
-
-        # 災害バッジ
-        badge = ""
-        if d.disaster_level and layer != MapLayer.DISASTER:
-            bc = _DISASTER_COLORS.get(d.disaster_level, "#999")
-            bx, by = d.x + d.width - 2.5, d.y + 2.5
-            badge = (f'<circle cx="{bx}" cy="{by}" r="2.2" fill="{bc}" '
-                     f'stroke="white" stroke-width="0.6" pointer-events="none"/>')
-
-        tip_lines = [d.name]
-        if d.traffic_level:  tip_lines.append(f"交通: {d.traffic_level}")
-        if d.noise_status:   tip_lines.append(f"騒音: {d.noise_status}")
-        if d.crowd_level:    tip_lines.append(f"群衆: {d.crowd_level}")
-        if d.energy_status:  tip_lines.append(f"電力: {d.energy_status}")
-        if d.disaster_level: tip_lines.append(f"災害: {d.disaster_level}")
-
-        district_rects.append(
-            f'<g class="district" data-idx="{i}" '
-            f'onmouseenter="showTip(event,{i})" onmouseleave="hideTip()" onclick="selectDistrict({i})">'
-            f'<rect x="{d.x}" y="{d.y}" width="{d.width}" height="{d.height}" '
-            f'fill="{color}" fill-opacity="0.78" stroke="white" stroke-width="0.35" rx="0.8"/>'
-            + street_h + street_v +
-            f'<text x="{cx:.1f}" y="{cy+0.8:.1f}" text-anchor="middle" '
-            f'font-size="2.8" fill="#202124" font-family="system-ui,sans-serif" '
-            f'font-weight="500" paint-order="stroke" stroke="white" stroke-width="0.8" '
-            f'pointer-events="none">{d.name}</text>'
-            + badge +
-            f'</g>'
-        )
-
-        district_data_json_parts.append(
-            "{" +
-            f'"name":"{d.name}",'
-            f'"traffic":"{d.traffic_level or ""}",'
-            f'"noise":"{d.noise_status or ""}",'
-            f'"crowd":"{d.crowd_level or ""}",'
-            f'"energy":"{d.energy_status or ""}",'
-            f'"disaster":"{d.disaster_level or ""}"'
-            + "}"
-        )
-
-    svg_content = "\n    ".join(district_rects)
-    district_data_json = "[" + ",".join(district_data_json_parts) + "]"
-    legend = _legend_html(layer)
-
-    # ── 統計 ──────────────────────────────────────────────────────
-    total = len(map_data.districts)
-    if layer == MapLayer.TRAFFIC:
-        alert_n = sum(1 for d in map_data.districts if d.traffic_level in ("congested", "gridlock"))
-        stat_label, stat_val = "混雑地区", f"{alert_n} / {total}"
-    elif layer == MapLayer.NOISE:
-        alert_n = sum(1 for d in map_data.districts if d.noise_status == "violation")
-        stat_label, stat_val = "規制超過", f"{alert_n} / {total}"
-    elif layer == MapLayer.CROWD:
-        alert_n = sum(1 for d in map_data.districts if d.crowd_level in ("crowded", "packed"))
-        stat_label, stat_val = "混雑地区", f"{alert_n} / {total}"
-    elif layer == MapLayer.ENERGY:
-        alert_n = sum(1 for d in map_data.districts if d.energy_status in ("high", "critical"))
-        stat_label, stat_val = "高消費地区", f"{alert_n} / {total}"
-    elif layer == MapLayer.DISASTER:
-        alert_n = sum(1 for d in map_data.districts if d.disaster_level in ("warning", "critical"))
-        stat_label, stat_val = "警戒以上", f"{alert_n} / {total}"
-    else:
-        stat_label, stat_val = "地区数", str(total)
-
-    # ── HTML ──────────────────────────────────────────────────────
-    html = f"""<!DOCTYPE html>
+_PAGE_TEMPLATE = """<!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>OpenMythos City Map — {map_data.city}</title>
+<title>OpenMythos 3D City Map — __CITY_NAME__</title>
 <style>
-  *{{box-sizing:border-box;margin:0;padding:0}}
-  html,body{{width:100%;height:100%;font-family:'Google Sans',system-ui,'Segoe UI',sans-serif;background:#e8e0d0;overflow:hidden}}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;font-family:'Google Sans',system-ui,'Segoe UI',sans-serif;background:#d0c8bc}
+#canvas-wrap{position:absolute;inset:0}
+canvas{display:block}
 
-  /* ── Map container ─────────────────────────── */
-  #map-wrap{{position:absolute;inset:0;user-select:none}}
-  #map-svg{{width:100%;height:100%;display:block;cursor:grab}}
-  #map-svg:active{{cursor:grabbing}}
+/* ── Searchbar ── */
+#sb{position:absolute;top:14px;left:50%;transform:translateX(-50%);background:white;border-radius:28px;
+z-index:30;box-shadow:0 2px 14px rgba(0,0,0,.26),0 0 0 1px rgba(0,0,0,.06);
+padding:11px 22px;display:flex;align-items:center;gap:12px;min-width:360px}
+#sb .mi{font-size:18px} #sb .ti{font-size:15px;font-weight:600;color:#202124}
+#sb .su{font-size:12px;color:#5f6368;margin-left:auto;white-space:nowrap}
 
-  /* ── Searchbar (top center) ──────────────────── */
-  #searchbar{{
-    position:absolute;top:14px;left:50%;transform:translateX(-50%);
-    background:white;border-radius:24px;
-    box-shadow:0 2px 10px rgba(0,0,0,0.2),0 0 0 1px rgba(0,0,0,0.06);
-    padding:10px 18px;min-width:320px;
-    display:flex;align-items:center;gap:10px;z-index:20;
-  }}
-  #searchbar .map-icon{{font-size:18px;opacity:.7}}
-  #searchbar .title{{font-size:15px;font-weight:600;color:#202124}}
-  #searchbar .sub{{font-size:12px;color:#5f6368;margin-left:auto;white-space:nowrap}}
+/* ── Panel ── */
+#panel{position:absolute;top:14px;right:14px;width:196px;z-index:30;display:flex;flex-direction:column;gap:10px}
+.card{background:white;border-radius:12px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.2),0 0 0 1px rgba(0,0,0,.05)}
+.ch{padding:10px 14px 8px;border-bottom:1px solid #f1f3f4;font-size:11px;font-weight:700;color:#5f6368;text-transform:uppercase;letter-spacing:.07em}
+.lb{display:flex;align-items:center;gap:10px;padding:9px 14px;border:none;background:transparent;
+width:100%;cursor:pointer;font-size:13px;color:#202124;border-bottom:1px solid #f1f3f4;
+transition:background .12s;text-align:left}
+.lb:last-child{border-bottom:none} .lb:hover{background:#f8f9fa}
+.lb.active{background:#e8f0fe;color:#1a73e8;font-weight:600}
+.lb .li{font-size:15px;width:22px;text-align:center;flex-shrink:0}
+.lb .lc{margin-left:auto;color:#1a73e8;font-size:14px;opacity:0} .lb.active .lc{opacity:1}
+.leg-row{display:flex;align-items:center;gap:8px;padding:5px 14px;font-size:12px;color:#3c4043}
+.leg-dot{width:13px;height:13px;border-radius:3px;flex-shrink:0;border:1px solid rgba(0,0,0,.12)}
+.sg{padding:10px 14px;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.si{text-align:center} .sv{font-size:22px;font-weight:700;color:#1a73e8;line-height:1.1}
+.sl{font-size:10px;color:#5f6368;margin-top:2px}
 
-  /* ── Right panel ─────────────────────────────── */
-  #panel{{
-    position:absolute;top:14px;right:14px;width:194px;z-index:20;
-    display:flex;flex-direction:column;gap:10px;
-  }}
-  .card{{
-    background:white;border-radius:12px;
-    box-shadow:0 2px 8px rgba(0,0,0,0.18),0 0 0 1px rgba(0,0,0,0.05);
-    overflow:hidden;
-  }}
-  .card-header{{
-    padding:10px 14px 8px;border-bottom:1px solid #f1f3f4;
-    font-size:11px;font-weight:600;color:#5f6368;text-transform:uppercase;letter-spacing:.06em;
-  }}
+/* ── Map controls ── */
+#mc{position:absolute;bottom:40px;right:14px;z-index:30;display:flex;flex-direction:column;gap:8px;align-items:center}
+.cb{background:white;border:none;cursor:pointer;width:40px;height:40px;border-radius:6px;
+font-size:18px;color:#5f6368;display:flex;align-items:center;justify-content:center;
+box-shadow:0 2px 8px rgba(0,0,0,.2);transition:background .12s} .cb:hover{background:#f8f9fa}
+#zw{display:flex;flex-direction:column;gap:1px;border-radius:6px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+#zw .cb{box-shadow:none;border-radius:0}
 
-  /* Layer buttons */
-  .layer-btn{{
-    display:flex;align-items:center;gap:10px;
-    padding:9px 14px;border:none;background:transparent;
-    width:100%;cursor:pointer;font-size:13px;color:#202124;
-    border-bottom:1px solid #f1f3f4;transition:background .15s;
-  }}
-  .layer-btn:last-child{{border-bottom:none}}
-  .layer-btn:hover{{background:#f8f9fa}}
-  .layer-btn.active{{background:#e8f0fe;color:#1a73e8;font-weight:600}}
-  .layer-btn .licon{{font-size:16px;width:20px;text-align:center}}
-  .layer-btn .lcheck{{margin-left:auto;color:#1a73e8;font-size:16px;opacity:0}}
-  .layer-btn.active .lcheck{{opacity:1}}
+/* ── Labels ── */
+.dl{position:absolute;pointer-events:none;z-index:20;font-size:11px;font-weight:600;color:#202124;
+text-shadow:0 0 5px white,0 0 5px white,0 0 5px white;transform:translate(-50%,-50%);white-space:nowrap}
 
-  /* Legend */
-  .leg-row{{display:flex;align-items:center;gap:8px;padding:5px 14px;font-size:12px;color:#3c4043}}
-  .leg-dot{{width:13px;height:13px;border-radius:3px;flex-shrink:0;border:1px solid rgba(0,0,0,.1)}}
+/* ── Tooltip ── */
+#tt{position:absolute;z-index:50;pointer-events:none;display:none;background:white;border-radius:12px;
+min-width:185px;overflow:hidden;box-shadow:0 6px 24px rgba(0,0,0,.28),0 0 0 1px rgba(0,0,0,.06)}
+#tth{background:#1a73e8;color:white;padding:10px 14px;font-weight:700;font-size:15px}
+#ttb{padding:8px 12px}
+.tr{display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid #f1f3f4;font-size:12px}
+.tr:last-child{border-bottom:none} .tk{color:#5f6368}
+.tbg{padding:2px 9px;border-radius:10px;font-size:11px;font-weight:600;color:white}
 
-  /* Stats */
-  .stat-grid{{padding:10px 14px;display:grid;grid-template-columns:1fr 1fr;gap:8px}}
-  .stat-item{{text-align:center}}
-  .stat-val{{font-size:20px;font-weight:700;color:#1a73e8;line-height:1}}
-  .stat-label{{font-size:10px;color:#5f6368;margin-top:2px}}
+/* ── Height hint ── */
+#hh{position:absolute;bottom:14px;left:14px;z-index:30;background:rgba(255,255,255,.92);
+border-radius:8px;padding:8px 12px;box-shadow:0 2px 8px rgba(0,0,0,.15);font-size:11px;color:#5f6368}
+#hh strong{color:#202124;display:block;margin-bottom:3px}
 
-  /* ── Zoom controls ───────────────────────────── */
-  #zoom-ctrl{{
-    position:absolute;bottom:40px;right:14px;z-index:20;
-    display:flex;flex-direction:column;gap:1px;
-    box-shadow:0 2px 8px rgba(0,0,0,0.2);border-radius:4px;overflow:hidden;
-  }}
-  .zoom-btn{{
-    background:white;border:none;cursor:pointer;
-    width:40px;height:40px;font-size:20px;color:#5f6368;
-    display:flex;align-items:center;justify-content:center;
-    transition:background .15s;
-  }}
-  .zoom-btn:hover{{background:#f8f9fa}}
+/* ── Attribution ── */
+#at{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);z-index:10;
+font-size:10px;color:#70757a;background:rgba(255,255,255,.75);padding:2px 10px;border-radius:3px}
 
-  /* ── Attribution ─────────────────────────────── */
-  #attr{{
-    position:absolute;bottom:6px;left:50%;transform:translateX(-50%);
-    font-size:10px;color:#70757a;background:rgba(255,255,255,.75);
-    padding:2px 8px;border-radius:3px;pointer-events:none;z-index:10;
-  }}
-
-  /* ── Tooltip ─────────────────────────────────── */
-  #tooltip{{
-    position:absolute;background:white;border-radius:10px;
-    box-shadow:0 4px 20px rgba(0,0,0,0.25),0 0 0 1px rgba(0,0,0,0.06);
-    padding:0;pointer-events:none;display:none;min-width:170px;z-index:50;
-    font-size:13px;overflow:hidden;
-  }}
-  #tip-header{{background:#1a73e8;color:white;padding:9px 12px;font-weight:600;font-size:14px}}
-  #tip-body{{padding:8px 12px}}
-  .tip-row{{display:flex;justify-content:space-between;align-items:center;
-    padding:3px 0;border-bottom:1px solid #f1f3f4;font-size:12px;color:#3c4043}}
-  .tip-row:last-child{{border-bottom:none}}
-  .tip-key{{color:#5f6368}}
-  .tip-badge{{padding:1px 7px;border-radius:10px;font-size:11px;font-weight:600;color:white}}
+/* ── Loading ── */
+#ld{position:absolute;inset:0;z-index:100;background:rgba(255,255,255,.95);
+display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px}
+.sp{width:38px;height:38px;border:3px solid #e8f0fe;border-top-color:#1a73e8;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#ld p{color:#5f6368;font-size:14px;font-weight:500}
 </style>
 </head>
 <body>
+<div id="canvas-wrap"></div>
 
-<!-- ── Map SVG ────────────────────────────────── -->
-<div id="map-wrap">
-<svg id="map-svg" viewBox="0 0 {vw} {vh}" xmlns="http://www.w3.org/2000/svg"
-     preserveAspectRatio="xMidYMid meet">
-  <defs>
-    <!-- 陸地テクスチャ (非常に薄いドット) -->
-    <pattern id="land-pat" x="0" y="0" width="4" height="4" patternUnits="userSpaceOnUse">
-      <rect width="4" height="4" fill="#f5f0e8"/>
-      <circle cx="2" cy="2" r="0.4" fill="#ebe5d8" opacity="0.6"/>
-    </pattern>
-    <!-- 水域グラデーション -->
-    <linearGradient id="water-grad" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#b8d8f0"/>
-      <stop offset="100%" stop-color="#9dc8e8"/>
-    </linearGradient>
-    <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
-      <feDropShadow dx="0" dy="0.3" stdDeviation="0.6" flood-color="rgba(0,0,0,0.15)"/>
-    </filter>
-  </defs>
-
-  <!-- 陸地ベース -->
-  <rect width="{vw}" height="{vh}" fill="url(#land-pat)"/>
-
-  <!-- 東京湾 -->
-  <polygon points="68,56 {vw},50 {vw},{vh} 60,{vh}"
-           fill="url(#water-grad)" opacity="0.85"/>
-  <!-- 東京湾ラベル -->
-  <text x="84" y="68" text-anchor="middle" font-size="3.2"
-        fill="#4a90c4" font-style="italic" font-family="system-ui,sans-serif" opacity="0.8">東京湾</text>
-
-  <!-- 隅田川 -->
-  <path d="M 67,16 Q 66,24 65,32 Q 64,42 65,50 Q 66,55 67,57"
-        stroke="#9dc8e8" stroke-width="1.1" fill="none" stroke-linecap="round"/>
-  <!-- 多摩川 -->
-  <path d="M 1,68 Q 8,65 16,63 Q 26,61 36,60 Q 48,59 60,62 Q 64,63 68,65"
-        stroke="#9dc8e8" stroke-width="0.8" fill="none" stroke-linecap="round"/>
-
-  <!-- 公園エリア（代々木・皇居外苑など） -->
-  <ellipse cx="29" cy="37" rx="3.5" ry="2.5" fill="#c8e6c9" opacity="0.6"/>
-  <ellipse cx="42" cy="35" rx="4" ry="3" fill="#c8e6c9" opacity="0.55"/>
-
-  <!-- 幹線道路ネットワーク -->
-  <g stroke="#ffffff" stroke-width="0.55" fill="none" stroke-linecap="round" opacity="0.8">
-    <!-- 環状7号線 (縦) -->
-    <path d="M 24,1 L 24,62"/>
-    <!-- 環状8号線 (縦) -->
-    <path d="M 8,20 L 8,70"/>
-    <!-- 甲州街道 (横) -->
-    <path d="M 1,39 L 65,39"/>
-    <!-- 明治通り (横) -->
-    <path d="M 22,16 L 66,16"/>
-    <!-- 山手通り (縦) -->
-    <path d="M 43,1 L 43,60"/>
-    <!-- 靖国通り (横) -->
-    <path d="M 22,31 L 67,31"/>
-    <!-- 蔵前橋通り (横) -->
-    <path d="M 43,17 L 80,17"/>
-  </g>
-
-  <!-- 地区セル -->
-  {svg_content}
-</svg>
+<div id="sb">
+  <span class="mi">🗺</span>
+  <span class="ti">__CITY_NAME__ City Map</span>
+  <span class="su" id="sub">__LAYER_ICON__ __LAYER_LABEL__ &nbsp;|&nbsp; __DISTRICT_COUNT__ 地区</span>
 </div>
 
-<!-- ── Search bar ─────────────────────────────── -->
-<div id="searchbar">
-  <span class="map-icon">🗺</span>
-  <span class="title">{map_data.city} 都市マップ</span>
-  <span class="sub">{layer_icon} {layer_label}レイヤー &nbsp;｜&nbsp; {total} 地区</span>
-</div>
-
-<!-- ── Right panel ────────────────────────────── -->
 <div id="panel">
-  <!-- Layer selector -->
-  <div class="card">
-    <div class="card-header">レイヤー選択</div>
-    {''.join(
-        f'<button class="layer-btn{" active" if MapLayer(lv)==layer else ""}" onclick="switchLayer(\'{lv}\')">'
-        f'<span class="licon">{ic}</span><span>{lb}</span>'
-        f'<span class="lcheck">✓</span></button>'
-        for lv, ic, lb in [
-            ("traffic","🚗","交通量"),
-            ("noise","🔊","騒音"),
-            ("crowd","👥","群衆密度"),
-            ("energy","⚡","エネルギー"),
-            ("disaster","⚠️","災害アラート"),
-        ]
-    )}
-  </div>
-
-  <!-- Legend -->
-  <div class="card">
-    <div class="card-header">凡例</div>
-    {legend}
-  </div>
-
-  <!-- Stats -->
-  <div class="card">
-    <div class="card-header">統計</div>
-    <div class="stat-grid">
-      <div class="stat-item">
-        <div class="stat-val">{total}</div>
-        <div class="stat-label">地区数</div>
-      </div>
-      <div class="stat-item">
-        <div class="stat-val" style="color:{'#d93025' if alert_n > 0 else '#34a853'}">{alert_n}</div>
-        <div class="stat-label">{stat_label}</div>
-      </div>
+  <div class="card"><div class="ch">レイヤー選択</div>__LAYER_BTNS__</div>
+  <div class="card"><div class="ch">凡例</div><div id="lgd">__LEGEND_HTML__</div></div>
+  <div class="card"><div class="ch">統計</div>
+    <div class="sg">
+      <div class="si"><div class="sv">__DISTRICT_COUNT__</div><div class="sl">地区数</div></div>
+      <div class="si"><div class="sv" id="av" style="color:__ALERT_COLOR__">__ALERT_COUNT__</div><div class="sl" id="al">__ALERT_LABEL__</div></div>
     </div>
   </div>
 </div>
 
-<!-- ── Zoom controls ───────────────────────────── -->
-<div id="zoom-ctrl">
-  <button class="zoom-btn" onclick="zoom(1.3)" title="拡大">+</button>
-  <button class="zoom-btn" onclick="zoom(1/1.3)" title="縮小">−</button>
+<div id="mc">
+  <div class="cb" onclick="resetCam()" title="カメラリセット" style="font-size:20px">🧭</div>
+  <div id="zw">
+    <button class="cb" onclick="doZoom(0.78)">+</button>
+    <button class="cb" onclick="doZoom(1.28)">−</button>
+  </div>
 </div>
 
-<!-- ── Attribution ────────────────────────────── -->
-<div id="attr">© OpenMythos City Intelligence Platform</div>
+<div id="labels"></div>
+<div id="tt"><div id="tth"></div><div id="ttb"></div></div>
 
-<!-- ── Tooltip ────────────────────────────────── -->
-<div id="tooltip">
-  <div id="tip-header"></div>
-  <div id="tip-body"></div>
-</div>
+<div id="hh"><strong>📊 高さ = データ強度</strong>ブロックが高いほど値が大きい</div>
+<div id="at">© OpenMythos City Intelligence &nbsp;｜&nbsp; ドラッグ: 回転 &nbsp;/&nbsp; スクロール: ズーム &nbsp;/&nbsp; 右ドラッグ: 移動</div>
+<div id="ld"><div class="sp"></div><p>3D マップを読み込み中...</p></div>
 
+<!-- ========== Data ========== -->
 <script>
-const DISTRICTS = {district_data_json};
-const LAYER_LABELS = {{
-  traffic:"交通量", noise:"騒音", crowd:"群衆密度",
-  energy:"エネルギー", disaster:"災害アラート"
-}};
-const STATUS_LABELS = {{
-  clear:"通常走行", moderate:"やや混雑", congested:"渋滞", gridlock:"完全停滞",
-  compliant:"規制内", near_limit:"規制近傍", violation:"規制超過",
-  sparse:"閑散", normal:"通常", crowded:"混雑", packed:"超混雑",
-  high:"高使用", critical:"異常",
-  info:"情報", watch:"注意", warning:"警戒",
-}};
-const STATUS_COLORS = {{
-  clear:"#34a853", moderate:"#fbbc04", congested:"#ea8600", gridlock:"#d93025",
-  compliant:"#34a853", near_limit:"#fbbc04", violation:"#d93025",
-  sparse:"#4285f4", normal:"#4285f4", crowded:"#ea8600", packed:"#d93025",
-  high:"#fbbc04", critical:"#d93025",
-  info:"#4285f4", watch:"#fbbc04", warning:"#ea8600",
-}};
+var DISTRICTS = __DISTRICTS_JSON__;
+var ACTIVE_LAYER = "__ACTIVE_LAYER__";
+var LAYER_META = {
+  traffic: {icon:"🚗",label:"交通量",   stat:"混雑地区",  keys:["congested","gridlock"],field:"traffic"},
+  noise:   {icon:"🔊",label:"騒音",      stat:"規制超過",  keys:["violation"],           field:"noise"},
+  crowd:   {icon:"👥",label:"群衆密度",  stat:"混雑地区",  keys:["crowded","packed"],    field:"crowd"},
+  energy:  {icon:"⚡",label:"エネルギー",stat:"高消費地区",keys:["high","critical"],     field:"energy"},
+  disaster:{icon:"⚠️",label:"災害アラート",stat:"警戒以上",keys:["warning","critical"],  field:"disaster"}
+};
+var SL={clear:"通常走行",moderate:"やや混雑",congested:"渋滞",gridlock:"完全停滞",
+        compliant:"規制内",near_limit:"規制近傍",violation:"規制超過",
+        sparse:"閑散",normal:"通常",crowded:"混雑",packed:"超混雑",
+        high:"高使用",critical:"異常",info:"情報",watch:"注意",warning:"警戒"};
+var SC={clear:"#34a853",moderate:"#fbbc04",congested:"#ea8600",gridlock:"#d93025",
+        compliant:"#34a853",near_limit:"#fbbc04",violation:"#d93025",
+        sparse:"#4285f4",normal:"#4285f4",crowded:"#ea8600",packed:"#d93025",
+        high:"#fbbc04",critical:"#d93025",info:"#4285f4",watch:"#fbbc04",warning:"#ea8600"};
+var LEGENDS={
+  traffic: [["#34a853","通常走行"],["#fbbc04","やや混雑"],["#ea8600","渋滞"],["#d93025","完全停滞"]],
+  noise:   [["#34a853","規制内"],["#fbbc04","規制値近傍"],["#d93025","規制超過"]],
+  crowd:   [["#e8f0fe","閑散"],["#4285f4","通常"],["#ea8600","混雑"],["#d93025","超混雑"]],
+  energy:  [["#34a853","通常"],["#fbbc04","高使用"],["#d93025","異常"]],
+  disaster:[["#e8f5e9","アラートなし"],["#4285f4","情報"],["#fbbc04","注意"],["#ea8600","警戒"],["#d93025","緊急"]]
+};
+</script>
 
-// ── Zoom / Pan ───────────────────────────────────────────────
-let scale = 1, tx = 0, ty = 0;
-let dragging = false, dragStart = {{x:0,y:0}}, dragOrigin = {{x:0,y:0}};
-const svg = document.getElementById('map-svg');
+<!-- ========== Three.js ========== -->
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.min.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-function applyTransform(){{
-  svg.style.transform = `translate(${{tx}}px,${{ty}}px) scale(${{scale}})`;
-  svg.style.transformOrigin = 'center center';
-}}
-function zoom(factor){{
-  scale = Math.max(0.6, Math.min(6, scale*factor));
-  applyTransform();
-}}
-svg.addEventListener('wheel', e=>{{
-  e.preventDefault();
-  zoom(e.deltaY<0?1.12:1/1.12);
-}}, {{passive:false}});
-svg.addEventListener('mousedown', e=>{{
-  if(e.button!==0) return;
-  dragging=true;
-  dragStart={{x:e.clientX,y:e.clientY}};
-  dragOrigin={{x:tx,y:ty}};
-}});
-window.addEventListener('mousemove', e=>{{
-  if(!dragging) return;
-  tx = dragOrigin.x + (e.clientX-dragStart.x);
-  ty = dragOrigin.y + (e.clientY-dragStart.y);
-  applyTransform();
-}});
-window.addEventListener('mouseup', ()=>dragging=false);
+// ── Renderer ────────────────────────────────────────────────────
+const wrap = document.getElementById('canvas-wrap');
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(wrap.clientWidth, wrap.clientHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+wrap.appendChild(renderer.domElement);
 
-// ── Tooltip ──────────────────────────────────────────────────
-const tt = document.getElementById('tooltip');
-const ttH = document.getElementById('tip-header');
-const ttB = document.getElementById('tip-body');
-let hideTimer;
+// ── Scene ───────────────────────────────────────────────────────
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xd8d0c4);
+scene.fog = new THREE.FogExp2(0xd8d0c4, 0.0038);
 
-function showTip(e, idx){{
-  clearTimeout(hideTimer);
-  const d = DISTRICTS[idx];
-  ttH.textContent = d.name;
-  const rows = [
-    ['🚗 交通', d.traffic], ['🔊 騒音', d.noise],
-    ['👥 群衆', d.crowd],   ['⚡ 電力', d.energy], ['⚠️ 災害', d.disaster]
-  ].filter(r=>r[1]);
-  ttB.innerHTML = rows.map(([k,v])=>{{
-    const lbl = STATUS_LABELS[v]||v;
-    const col = STATUS_COLORS[v]||'#5f6368';
-    return `<div class="tip-row"><span class="tip-key">${{k}}</span>`+
-           `<span class="tip-badge" style="background:${{col}}">${{lbl}}</span></div>`;
-  }}).join('') || '<div style="padding:4px 0;color:#5f6368;font-size:12px">データなし</div>';
-  tt.style.display='block';
-  positionTip(e);
-}}
-function positionTip(e){{
-  const x = Math.min(e.clientX+14, window.innerWidth-190);
-  const y = Math.min(e.clientY-10, window.innerHeight-160);
-  tt.style.left = x+'px';
-  tt.style.top  = y+'px';
-}}
-document.getElementById('map-wrap').addEventListener('mousemove', e=>{{
-  if(tt.style.display==='block') positionTip(e);
-}});
-function hideTip(){{
-  hideTimer = setTimeout(()=>tt.style.display='none', 120);
-}}
-function selectDistrict(idx){{
-  showTip({{clientX:window.innerWidth/2, clientY:window.innerHeight/2}}, idx);
-}}
+// ── Camera ──────────────────────────────────────────────────────
+const CAM0 = new THREE.Vector3(50, 56, 120);
+const TGT0 = new THREE.Vector3(50, 0, 38);
+const camera = new THREE.PerspectiveCamera(45, wrap.clientWidth/wrap.clientHeight, 0.1, 600);
+camera.position.copy(CAM0);
 
-// ── Layer switch ─────────────────────────────────────────────
-function switchLayer(lv){{
-  const url = new URL(window.location.href);
-  // API 呼び出しまたはページ再読み込み (サーバー接続時)
-  // スタンドアロン HTML では UI のみ更新
-  document.querySelectorAll('.layer-btn').forEach(b=>b.classList.remove('active'));
-  event.currentTarget.classList.add('active');
-  // 凡例・ヘッダー更新ヒント
-  document.querySelector('#searchbar .sub').textContent =
-    ({{traffic:'🚗',noise:'🔊',crowd:'👥',energy:'⚡',disaster:'⚠️'}}[lv]||'') +
-    ' ' + (LAYER_LABELS[lv]||lv) + ' レイヤー | {total} 地区';
-}}
+// ── Lights ──────────────────────────────────────────────────────
+scene.add(new THREE.AmbientLight(0xffffff, 1.3));
+const sun = new THREE.DirectionalLight(0xfff8e0, 2.2);
+sun.position.set(40, 90, 65); sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, {near:1,far:280,left:-90,right:90,top:90,bottom:-90});
+scene.add(sun);
+scene.add(new THREE.HemisphereLight(0x90c8f4, 0xd8c8a8, 0.8));
+
+// ── Ground ──────────────────────────────────────────────────────
+const gnd = new THREE.Mesh(
+  new THREE.PlaneGeometry(260, 220),
+  new THREE.MeshLambertMaterial({color:0xf0ebe0})
+);
+gnd.rotation.x = -Math.PI/2; gnd.position.set(50,-0.02,38); gnd.receiveShadow=true;
+scene.add(gnd);
+
+// ── Tokyo Bay ───────────────────────────────────────────────────
+const bvs=[68,56, 99,50, 99,76, 60,76];
+const bs=new THREE.Shape(); bs.moveTo(bvs[0],bvs[1]);
+for(let i=2;i<bvs.length;i+=2) bs.lineTo(bvs[i],bvs[i+1]); bs.closePath();
+const bay=new THREE.Mesh(new THREE.ShapeGeometry(bs),
+  new THREE.MeshLambertMaterial({color:0x5ba8d4,transparent:true,opacity:0.72,side:THREE.DoubleSide}));
+bay.rotation.x=-Math.PI/2; bay.position.y=0.03; scene.add(bay);
+
+function makeSprite(txt,color,fs){
+  const c=document.createElement('canvas'); c.width=200; c.height=52;
+  const ctx=c.getContext('2d'); ctx.font=`italic ${fs}px system-ui`;
+  ctx.fillStyle=color; ctx.fillText(txt,6,fs);
+  const s=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),transparent:true}));
+  s.scale.set(18,4.5,1); return s;
+}
+const bsp=makeSprite('東京湾','#2a78a8',30); bsp.position.set(83,1.5,65); scene.add(bsp);
+
+// ── Animated Rivers ─────────────────────────────────────────────
+const riverUniforms={time:{value:0}};
+const riverMat=new THREE.ShaderMaterial({
+  uniforms:riverUniforms,
+  vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+  fragmentShader:`uniform float time;varying vec2 vUv;void main(){float w=sin(vUv.x*5.0-time*2.0)*0.12+sin(vUv.y*3.0-time*1.5)*0.08;vec3 c=mix(vec3(0.38,0.67,0.84),vec3(0.22,0.51,0.72),w+0.5);gl_FragColor=vec4(c,0.75);}`,
+  transparent:true,side:THREE.DoubleSide,depthWrite:false
+});
+// 隅田川 (N-S, x≈64.5)
+const rv1=new THREE.Mesh(new THREE.PlaneGeometry(2,30),riverMat); rv1.rotation.x=-Math.PI/2; rv1.position.set(64.5,0.05,30); scene.add(rv1);
+// 多摩川 (E-W, z≈63)
+const rv2=new THREE.Mesh(new THREE.PlaneGeometry(52,2.2),riverMat); rv2.rotation.x=-Math.PI/2; rv2.position.set(26,0.05,63); scene.add(rv2);
+// 荒川 (N-S, x≈50.5)
+const rv3=new THREE.Mesh(new THREE.PlaneGeometry(1.5,27),riverMat); rv3.rotation.x=-Math.PI/2; rv3.position.set(50.5,0.05,14); scene.add(rv3);
+
+// ── Parks & Trees ────────────────────────────────────────────────
+function seededR(seed){let s=seed;return ()=>{s=(s*1664525+1013904223)>>>0;return s/4294967296;};}
+const pkm=new THREE.MeshLambertMaterial({color:0x8dc87a,transparent:true,opacity:0.55});
+const treeM=new THREE.MeshLambertMaterial({color:0x4a8840});
+const trng=seededR(77);
+[[29,39,4.5],[54,36,3.5],[6,42,3.0],[44,35,2.5],[58,22,2.0]].forEach(([px,pz,r])=>{
+  const pk=new THREE.Mesh(new THREE.CylinderGeometry(r,r,0.12,20),pkm); pk.position.set(px,0.05,pz); scene.add(pk);
+  for(let i=0;i<5;i++){
+    const tx=px+(trng()-0.5)*r*1.6,tz=pz+(trng()-0.5)*r*1.6,th=1.0+trng()*1.0;
+    const tree=new THREE.Mesh(new THREE.ConeGeometry(0.55,th,6),treeM); tree.position.set(tx,th/2,tz); scene.add(tree);
+  }
+});
+
+// ── 富士山・背景の丘 ──────────────────────────────────────────────
+const fuji=new THREE.Mesh(new THREE.ConeGeometry(22,32,8),new THREE.MeshLambertMaterial({color:0x8899a6}));
+fuji.position.set(-32,16,-26); scene.add(fuji);
+const fujiSnow=new THREE.Mesh(new THREE.ConeGeometry(6,10,8),new THREE.MeshLambertMaterial({color:0xeef2f6}));
+fujiSnow.position.set(-32,30,-26); scene.add(fujiSnow);
+[[-14,5,-22,0x799e78],[6,4,-24,0x6a8e70],[28,3.5,-20,0x7a9e80],[-3,3,-14,0x8aae90],[55,3.5,-22,0x799e78]].forEach(([hx,hh,hz,hc])=>{
+  const hill=new THREE.Mesh(new THREE.SphereGeometry(hh*3,7,5,0,Math.PI*2,0,Math.PI/2),new THREE.MeshLambertMaterial({color:hc}));
+  hill.position.set(hx,0,hz); scene.add(hill);
+});
+
+// ── 背景ビル (InstancedMesh) ──────────────────────────────────────
+const brng=seededR(42);
+const NBLD=320;
+const ibld=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),new THREE.MeshLambertMaterial({color:0xbab4a8}),NBLD);
+const dummy=new THREE.Object3D(); let bi=0;
+for(let at=0;at<2500&&bi<NBLD;at++){
+  const bx=brng()*97+1,bz=brng()*71+1,bw=brng()*1.6+0.5,bd=brng()*1.6+0.5,bh=brng()*5+0.5;
+  let ok=true;
+  for(const dd of DISTRICTS){if(bx>dd.x-0.5&&bx<dd.x+dd.w+0.5&&bz>dd.z-0.5&&bz<dd.z+dd.d+0.5){ok=false;break;}}
+  if(Math.abs(bx-64.5)<2.5||Math.abs(bx-50.5)<2.5||(bz>61&&bz<65)) ok=false;
+  if(bx>63&&bz>53) ok=false;
+  if(!ok) continue;
+  dummy.position.set(bx,bh/2,bz); dummy.scale.set(bw,bh,bd); dummy.updateMatrix();
+  ibld.setMatrixAt(bi++,dummy.matrix);
+}
+ibld.count=bi; ibld.castShadow=true; ibld.instanceMatrix.needsUpdate=true; scene.add(ibld);
+
+// ── ランドマーク ──────────────────────────────────────────────────
+const _lm=(geo,col,x,y,z)=>{const m=new THREE.Mesh(geo,new THREE.MeshLambertMaterial({color:col}));m.position.set(x,y,z);m.castShadow=true;scene.add(m);};
+_lm(new THREE.BoxGeometry(2,22,2),     0x7888a0, 29,11,35);   // 東京都庁
+_lm(new THREE.ConeGeometry(0.55,18,4), 0xe05020, 43,9, 48);   // 東京タワー
+_lm(new THREE.ConeGeometry(0.45,26,4), 0x5878b8, 71,13,22);   // 東京スカイツリー
+_lm(new THREE.BoxGeometry(16,0.04,1.2),0xb0a898, 80,0.04,51); // 羽田滑走路1
+_lm(new THREE.BoxGeometry(16,0.04,1.2),0xb0a898, 80,0.04,54); // 羽田滑走路2
+
+// ── 電車路線 & 電車アニメーション ─────────────────────────────────
+const trainClock=new THREE.Clock();
+const trainObjs=[];
+function makeRail(pts,col,closed,rr=0.28){
+  const curve=new THREE.CatmullRomCurve3(pts.map(p=>new THREE.Vector3(p[0],0.3,p[1])),closed);
+  scene.add(new THREE.Mesh(new THREE.TubeGeometry(curve,pts.length*6,rr,5,closed),new THREE.MeshLambertMaterial({color:col})));
+  return curve;
+}
+// 山手線 (緑ループ)
+const yC=makeRail([[29,14],[29,28],[29,35],[29,42],[30,52],[36,58],[44,60],[52,56],[50,48],[50,35],[50,28],[44,14],[36,11]],0x80bb44,true);
+// 中央線 (オレンジ E-W)
+const cC=makeRail([[3,30],[10,30],[22,30],[29,30],[37,30],[44,30],[52,30],[62,30]],0xf07020,false,0.22);
+// 東海道線 (赤 N-S)
+const tC=makeRail([[44,29],[44,36],[44,43],[44,50],[44,57]],0xd02030,false,0.22);
+[[yC,0x3d9e3d,0.0,true],[cC,0xf07020,0.3,false],[tC,0xc02828,0.7,false]].forEach(([curve,col,phase,cl])=>{
+  const m=new THREE.Mesh(new THREE.BoxGeometry(2.2,0.7,0.9),new THREE.MeshLambertMaterial({color:col}));
+  m.castShadow=true; scene.add(m); trainObjs.push({m,curve,t:phase,cl});
+});
+
+// ── Districts ────────────────────────────────────────────────────
+let currentLayer = ACTIVE_LAYER;
+const meshes = [];
+
+DISTRICTS.forEach((d,i)=>{
+  const ld=d.layers[currentLayer];
+  const geo=new THREE.BoxGeometry(d.w-0.5, ld.h, d.d-0.5);
+  const mat=new THREE.MeshLambertMaterial({color:ld.c, transparent:true, opacity:0.88});
+  const mesh=new THREE.Mesh(geo,mat);
+  mesh.position.set(d.x+d.w/2, ld.h/2, d.z+d.d/2);
+  mesh.castShadow=true; mesh.receiveShadow=true;
+  mesh.userData={idx:i};
+  scene.add(mesh); meshes.push(mesh);
+});
+
+// ── HTML Labels (3D→2D projection) ──────────────────────────────
+const labDiv=document.getElementById('labels');
+const lEls=DISTRICTS.map((d,i)=>{
+  const el=document.createElement('div'); el.className='dl';
+  el.textContent=d.name; labDiv.appendChild(el); return el;
+});
+const _v3=new THREE.Vector3();
+function updateLabels(){
+  const rect=renderer.domElement.getBoundingClientRect();
+  DISTRICTS.forEach((d,i)=>{
+    const m=meshes[i];
+    _v3.set(m.position.x, m.position.y*2+2.5, m.position.z).project(camera);
+    if(_v3.z>1){lEls[i].style.display='none';return;}
+    const sx=(_v3.x*0.5+0.5)*rect.width+rect.left;
+    const sy=(-_v3.y*0.5+0.5)*rect.height+rect.top;
+    lEls[i].style.display='block';
+    lEls[i].style.left=sx+'px'; lEls[i].style.top=sy+'px';
+    const dist=camera.position.distanceTo(m.position);
+    lEls[i].style.fontSize=Math.max(8,Math.min(14,700/dist))+'px';
+    lEls[i].style.opacity=Math.max(0,Math.min(1,(160-dist)/80));
+  });
+}
+
+// ── OrbitControls ────────────────────────────────────────────────
+const controls=new OrbitControls(camera,renderer.domElement);
+controls.enableDamping=true; controls.dampingFactor=0.07;
+controls.minPolarAngle=0.1; controls.maxPolarAngle=Math.PI/2.05;
+controls.minDistance=18; controls.maxDistance=270;
+controls.target.copy(TGT0); controls.update();
+
+window.resetCam=()=>{ camera.position.copy(CAM0); controls.target.copy(TGT0); controls.update(); };
+window.doZoom=(f)=>{ const d=camera.position.clone().sub(controls.target); camera.position.copy(controls.target).addScaledVector(d,f); controls.update(); };
+
+// ── Raycasting (hover) ───────────────────────────────────────────
+const raycaster=new THREE.Raycaster(), mouse=new THREE.Vector2();
+const tt=document.getElementById('tt'), tth=document.getElementById('tth'), ttb=document.getElementById('ttb');
+let hovIdx=-1;
+
+renderer.domElement.addEventListener('mousemove',e=>{
+  const rect=renderer.domElement.getBoundingClientRect();
+  mouse.set(((e.clientX-rect.left)/rect.width)*2-1, -((e.clientY-rect.top)/rect.height)*2+1);
+  raycaster.setFromCamera(mouse,camera);
+  const hits=raycaster.intersectObjects(meshes);
+  if(hits.length){
+    const idx=hits[0].object.userData.idx;
+    if(idx!==hovIdx){
+      if(hovIdx>=0) meshes[hovIdx].material.emissive.setHex(0x000000);
+      hovIdx=idx;
+      meshes[idx].material.emissive.setHex(0x333333);
+      meshes[idx].material.emissiveIntensity=0.28;
+    }
+    const d=DISTRICTS[idx];
+    tth.textContent=d.name;
+    const rows=[['🚗交通',d.traffic],['🔊騒音',d.noise],['👥群衆',d.crowd],['⚡電力',d.energy],['⚠️災害',d.disaster]].filter(r=>r[1]);
+    ttb.innerHTML=rows.map(([k,v])=>`<div class="tr"><span class="tk">${k}</span><span class="tbg" style="background:${SC[v]||'#5f6368'}">${SL[v]||v}</span></div>`).join('')
+      ||'<div style="padding:5px 0;color:#5f6368;font-size:12px">データなし</div>';
+    tt.style.cssText=`left:${Math.min(e.clientX+16,window.innerWidth-200)}px;top:${Math.min(e.clientY-10,window.innerHeight-170)}px;display:block`;
+    renderer.domElement.style.cursor='pointer';
+  } else {
+    if(hovIdx>=0){meshes[hovIdx].material.emissive.setHex(0x000000);hovIdx=-1;}
+    tt.style.display='none'; renderer.domElement.style.cursor='grab';
+  }
+});
+renderer.domElement.addEventListener('mouseleave',()=>tt.style.display='none');
+
+// ── Layer switching (色と高さを同時に更新) ────────────────────────
+window.switchLayer=function(lv, btn){
+  currentLayer=lv;
+
+  // ★ 3D メッシュの色と高さを全地区更新
+  DISTRICTS.forEach((d,i)=>{
+    const ld=d.layers[lv];
+    meshes[i].material.color.setHex(ld.c);           // 色を変更
+    meshes[i].geometry.dispose();
+    meshes[i].geometry=new THREE.BoxGeometry(d.w-0.5, ld.h, d.d-0.5);  // 高さを変更
+    meshes[i].position.y=ld.h/2;                     // y座標をブロック中心に合わせる
+  });
+
+  // ボタン状態
+  document.querySelectorAll('.lb').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+
+  // ヘッダー
+  const m=LAYER_META[lv];
+  document.getElementById('sub').textContent=m.icon+' '+m.label+' | '+DISTRICTS.length+' 地区';
+
+  // 凡例
+  document.getElementById('lgd').innerHTML=(LEGENDS[lv]||[]).map(([c,lb])=>
+    `<div class="leg-row"><span class="leg-dot" style="background:${c}"></span><span>${lb}</span></div>`
+  ).join('');
+
+  // 統計
+  const n=DISTRICTS.filter(d=>m.keys.includes(d[m.field])).length;
+  const av=document.getElementById('av'); av.textContent=n;
+  av.style.color=n>0?'#d93025':'#34a853';
+  document.getElementById('al').textContent=m.stat;
+};
+
+// ── Resize ───────────────────────────────────────────────────────
+window.addEventListener('resize',()=>{
+  const W=wrap.clientWidth,H=wrap.clientHeight;
+  camera.aspect=W/H; camera.updateProjectionMatrix(); renderer.setSize(W,H);
+});
+
+// ── Render loop ──────────────────────────────────────────────────
+(function animate(){
+  requestAnimationFrame(animate);
+  const dt=Math.min(trainClock.getDelta(),0.05);
+  controls.update();
+  // 川アニメーション
+  riverUniforms.time.value+=dt;
+  // 電車移動
+  trainObjs.forEach(o=>{
+    o.t+=0.025*dt;
+    const tp=o.cl?o.t%1:Math.abs((o.t%2)-1);
+    const p=o.curve.getPointAt(tp);
+    const tn=o.curve.getTangentAt(tp);
+    o.m.position.copy(p);
+    o.m.lookAt(p.clone().add(tn));
+  });
+  renderer.render(scene,camera);
+  updateLabels();
+})();
+
+document.getElementById('ld').style.display='none';
 </script>
 </body>
 </html>"""
-    return html
+
+
+# ─── generate_html ────────────────────────────────────────────────
+
+
+def generate_html(map_data: CityMapData, width: int = 1000, height: int = 700) -> str:
+    """Three.js 3D 都市マップ HTML を生成する。レイヤー切替で色・高さが変化。"""
+    layer = map_data.active_layer
+
+    layer_label = {
+        MapLayer.TRAFFIC:"交通量", MapLayer.NOISE:"騒音",
+        MapLayer.CROWD:"群衆密度", MapLayer.ENERGY:"エネルギー",
+        MapLayer.DISASTER:"災害アラート",
+    }.get(layer, layer.value)
+
+    layer_icon = {
+        MapLayer.TRAFFIC:"🚗", MapLayer.NOISE:"🔊",
+        MapLayer.CROWD:"👥", MapLayer.ENERGY:"⚡", MapLayer.DISASTER:"⚠️",
+    }.get(layer, "📍")
+
+    total = len(map_data.districts)
+
+    # 統計
+    if layer == MapLayer.TRAFFIC:
+        alert_n = sum(1 for d in map_data.districts if d.traffic_level in ("congested","gridlock"))
+        stat_label = "混雑地区"
+    elif layer == MapLayer.NOISE:
+        alert_n = sum(1 for d in map_data.districts if d.noise_status == "violation")
+        stat_label = "規制超過"
+    elif layer == MapLayer.CROWD:
+        alert_n = sum(1 for d in map_data.districts if d.crowd_level in ("crowded","packed"))
+        stat_label = "混雑地区"
+    elif layer == MapLayer.ENERGY:
+        alert_n = sum(1 for d in map_data.districts if d.energy_status in ("high","critical"))
+        stat_label = "高消費地区"
+    elif layer == MapLayer.DISASTER:
+        alert_n = sum(1 for d in map_data.districts if d.disaster_level in ("warning","critical"))
+        stat_label = "警戒以上"
+    else:
+        alert_n = 0; stat_label = "地区数"
+
+    alert_color = "#d93025" if alert_n > 0 else "#34a853"
+
+    # レイヤーボタン HTML (onclick に button 自身を渡す → switchLayer で active 管理)
+    layer_btns = "".join(
+        f'<button class="lb{"  active" if MapLayer(lv) == layer else ""}" '
+        f'onclick="switchLayer(\'{lv}\',this)">'
+        f'<span class="li">{ic}</span><span>{lb}</span>'
+        f'<span class="lc">✓</span></button>'
+        for lv, ic, lb in [
+            ("traffic","🚗","交通量"), ("noise","🔊","騒音"),
+            ("crowd","👥","群衆密度"), ("energy","⚡","エネルギー"),
+            ("disaster","⚠️","災害アラート"),
+        ]
+    )
+
+    legend = _legend_html(layer)
+
+    # ── 全レイヤーの色・高さを地区ごとに事前計算して JS に埋め込む ──
+    dist_data = []
+    for d in map_data.districts:
+        layers_js: Dict[str, dict] = {}
+        for lyr in MapLayer:
+            c = _district_color(d, lyr)
+            h = _district_3d_height(d, lyr)
+            layers_js[lyr.value] = {"c": int(c.lstrip("#"), 16), "h": h}
+        dist_data.append({
+            "name": d.name,
+            "x": d.x, "z": d.y, "w": d.width, "d": d.height,
+            "traffic":  d.traffic_level  or "",
+            "noise":    d.noise_status   or "",
+            "crowd":    d.crowd_level    or "",
+            "energy":   d.energy_status  or "",
+            "disaster": d.disaster_level or "",
+            "layers":   layers_js,
+        })
+
+    dist_json = json.dumps(dist_data, ensure_ascii=False)
+
+    return (
+        _PAGE_TEMPLATE
+        .replace("__CITY_NAME__",      map_data.city)
+        .replace("__LAYER_LABEL__",    layer_label)
+        .replace("__LAYER_ICON__",     layer_icon)
+        .replace("__DISTRICT_COUNT__", str(total))
+        .replace("__ALERT_COUNT__",    str(alert_n))
+        .replace("__ALERT_COLOR__",    alert_color)
+        .replace("__ALERT_LABEL__",    stat_label)
+        .replace("__DISTRICTS_JSON__", dist_json)
+        .replace("__ACTIVE_LAYER__",   layer.value)
+        .replace("__LEGEND_HTML__",    legend)
+        .replace("__LAYER_BTNS__",     layer_btns)
+    )
 
 
 # ─── Store / Builder ──────────────────────────────────────────────
@@ -634,58 +730,75 @@ class CityMapBuilder:
         return generate_html(data)
 
 
-# ─── プリセット: 東京主要地区（地理的配置）───────────────────────────
+# ─── プリセット: 東京 23 区（全特別区・地理的配置）────────────────
 #
-#  viewBox 0 0 100 76  (東西:南北 ≈ 4:3)
-#  北部 y=1, 北中部 y=17, 中部 y=31, 南部 y=47, 湾岸 y=62
-#  東京湾: 右下 (x>68, y>56)  隅田川: x≈65 縦断
+#  ※ 東京特別区は 23 区（24 区ではない）
+#  viewBox 0 0 100 76  /  Three.js 世界座標: x=0-99, z=0-75
+#
+#  レイアウト（行 × 列）:
+#   row1(y=1) : 練馬 板橋 北区 足立[wide] 葛飾
+#   row2(y=15): 杉並 豊島 文京 荒川 墨田 江戸川[tall]
+#   row3(y=29): 中野 新宿 千代田 台東 江東
+#   row4(y=43): 世田谷[tall] 渋谷 港 中央 大田[wide+tall]
+#   row5(y=56): 目黒 品川[wide]
+#
+#  東京湾: 右下 (x>65, z>55)  /  隅田川: x≈64.5 縦断  /  多摩川: z≈63 横断
 
 TOKYO_DISTRICTS: List[DistrictData] = [
-    # ── 北部 (row 1: y=1) ─────────────────────────────────────────
-    DistrictData("練馬",   x=1,  y=1,  width=21, height=15,
+
+    # ── 北部 row 1 (y=1) ──────────────────────────────────────────
+    DistrictData("練馬",   x=1,  y=1,  width=20, height=13,
                  traffic_level="moderate",  noise_status="compliant",  crowd_level="normal",  energy_status="normal",   disaster_level=None),
-    DistrictData("板橋",   x=23, y=1,  width=19, height=14,
+    DistrictData("板橋",   x=22, y=1,  width=14, height=13,
                  traffic_level="moderate",  noise_status="near_limit", crowd_level="normal",  energy_status="normal",   disaster_level=None),
-    DistrictData("足立",   x=51, y=1,  width=22, height=15,
+    DistrictData("北区",   x=37, y=1,  width=13, height=13,
+                 traffic_level="moderate",  noise_status="compliant",  crowd_level="normal",  energy_status="normal",   disaster_level=None),
+    DistrictData("足立",   x=51, y=1,  width=27, height=14,   # 大きい区
                  traffic_level="clear",     noise_status="compliant",  crowd_level="sparse",  energy_status="normal",   disaster_level=None),
-    DistrictData("葛飾",   x=74, y=1,  width=24, height=16,
+    DistrictData("葛飾",   x=79, y=1,  width=20, height=14,
                  traffic_level="clear",     noise_status="compliant",  crowd_level="sparse",  energy_status="normal",   disaster_level=None),
 
-    # ── 北中部 (row 2: y=16) ──────────────────────────────────────
-    DistrictData("杉並",   x=1,  y=17, width=21, height=14,
+    # ── 北中部 row 2 (y=15) ───────────────────────────────────────
+    DistrictData("杉並",   x=1,  y=15, width=20, height=13,
                  traffic_level="moderate",  noise_status="compliant",  crowd_level="normal",  energy_status="normal",   disaster_level=None),
-    DistrictData("池袋",   x=23, y=16, width=19, height=15,
+    DistrictData("豊島",   x=22, y=14, width=14, height=14,   # 池袋エリア
                  traffic_level="congested", noise_status="near_limit", crowd_level="crowded", energy_status="normal",   disaster_level=None),
-    DistrictData("上野",   x=43, y=16, width=21, height=14,
-                 traffic_level="clear",     noise_status="compliant",  crowd_level="normal",  energy_status="normal",   disaster_level=None),
-    DistrictData("荒川",   x=65, y=17, width=18, height=13,
+    DistrictData("文京",   x=37, y=15, width=13, height=13,   # 東大・東京ドーム
+                 traffic_level="moderate",  noise_status="compliant",  crowd_level="normal",  energy_status="normal",   disaster_level=None),
+    DistrictData("荒川",   x=51, y=15, width=13, height=13,
                  traffic_level="clear",     noise_status="compliant",  crowd_level="sparse",  energy_status="normal",   disaster_level=None),
-    DistrictData("墨田",   x=65, y=31, width=18, height=14,
+    DistrictData("墨田",   x=65, y=15, width=13, height=13,
                  traffic_level="clear",     noise_status="compliant",  crowd_level="sparse",  energy_status="normal",   disaster_level=None),
-    DistrictData("江戸川", x=84, y=17, width=15, height=28,
+    DistrictData("江戸川", x=79, y=15, width=20, height=27,   # 東端・広大
                  traffic_level="clear",     noise_status="compliant",  crowd_level="sparse",  energy_status="normal",   disaster_level=None),
 
-    # ── 中部 (row 3: y=31) ────────────────────────────────────────
-    DistrictData("世田谷", x=1,  y=32, width=21, height=23,
+    # ── 中部 row 3 (y=29) ─────────────────────────────────────────
+    DistrictData("中野",   x=1,  y=29, width=20, height=13,   # 杉並の東
                  traffic_level="clear",     noise_status="compliant",  crowd_level="normal",  energy_status="normal",   disaster_level=None),
-    DistrictData("新宿",   x=23, y=31, width=19, height=15,
+    DistrictData("新宿",   x=22, y=28, width=14, height=14,   # 西新宿・歌舞伎町
                  traffic_level="congested", noise_status="violation",  crowd_level="packed",  energy_status="high",     disaster_level=None),
-    DistrictData("秋葉原", x=43, y=31, width=10, height=13,
-                 traffic_level="moderate",  noise_status="near_limit", crowd_level="crowded", energy_status="high",     disaster_level=None),
-    DistrictData("千代田", x=54, y=31, width=10, height=13,
+    DistrictData("千代田", x=37, y=28, width=13, height=13,   # 皇居・丸の内
                  traffic_level="gridlock",  noise_status="violation",  crowd_level="packed",  energy_status="critical", disaster_level="warning"),
-    DistrictData("台東",   x=65, y=46, width=18, height=14,
-                 traffic_level="moderate",  noise_status="compliant",  crowd_level="normal",  energy_status="normal",   disaster_level=None),
-    DistrictData("江東",   x=84, y=46, width=15, height=22,
+    DistrictData("台東",   x=51, y=28, width=13, height=13,   # 浅草・上野
+                 traffic_level="moderate",  noise_status="near_limit", crowd_level="crowded", energy_status="normal",   disaster_level=None),
+    DistrictData("江東",   x=65, y=28, width=13, height=14,   # 湾岸・お台場隣接
                  traffic_level="moderate",  noise_status="near_limit", crowd_level="normal",  energy_status="high",     disaster_level="watch"),
 
-    # ── 南部 (row 4: y=47) ────────────────────────────────────────
-    DistrictData("目黒",   x=1,  y=56, width=21, height=13,
-                 traffic_level="clear",     noise_status="compliant",  crowd_level="sparse",  energy_status="normal",   disaster_level=None),
-    DistrictData("渋谷",   x=23, y=47, width=19, height=13,
+    # ── 南中部 row 4 (y=42-43) ────────────────────────────────────
+    DistrictData("世田谷", x=1,  y=43, width=20, height=22,   # 最大区・住宅地
+                 traffic_level="clear",     noise_status="compliant",  crowd_level="normal",  energy_status="normal",   disaster_level=None),
+    DistrictData("渋谷",   x=22, y=42, width=14, height=13,   # 若者の街
                  traffic_level="moderate",  noise_status="near_limit", crowd_level="crowded", energy_status="normal",   disaster_level=None),
-    DistrictData("中央",   x=43, y=45, width=21, height=13,
+    DistrictData("港",     x=37, y=42, width=13, height=13,   # 六本木・芝公園
+                 traffic_level="moderate",  noise_status="near_limit", crowd_level="crowded", energy_status="high",     disaster_level=None),
+    DistrictData("中央",   x=51, y=42, width=13, height=13,   # 銀座・築地
                  traffic_level="congested", noise_status="near_limit", crowd_level="crowded", energy_status="high",     disaster_level=None),
-    DistrictData("品川",   x=23, y=61, width=41, height=13,
+    DistrictData("大田",   x=65, y=42, width=34, height=22,   # 羽田空港・最大面積
+                 traffic_level="clear",     noise_status="compliant",  crowd_level="normal",  energy_status="high",     disaster_level=None),
+
+    # ── 南部 row 5 (y=56) ─────────────────────────────────────────
+    DistrictData("目黒",   x=22, y=56, width=14, height=13,   # 目黒川
+                 traffic_level="clear",     noise_status="compliant",  crowd_level="sparse",  energy_status="normal",   disaster_level=None),
+    DistrictData("品川",   x=37, y=56, width=27, height=13,   # 品川駅・リニア予定地
                  traffic_level="moderate",  noise_status="compliant",  crowd_level="normal",  energy_status="normal",   disaster_level=None),
 ]
