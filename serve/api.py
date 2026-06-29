@@ -9283,3 +9283,105 @@ def noise_map(city: str):
 @app.get("/v1/noise/report/{city}", tags=["noise"], summary="都市騒音レポート — Sprint 77C")
 def noise_city_report(city: str):
     return _noise_mapper.city_report(city).to_dict()
+
+
+# ---------------------------------------------------------------------------
+# Sprint 78 — 都市マップビジュアライゼーション
+# ---------------------------------------------------------------------------
+
+from fastapi.responses import HTMLResponse
+from open_mythos.skills.city_map_viz import (
+    CityMapBuilder as _MapBuilder,
+    CityMapStore as _MapStore,
+    CityMapData as _CityMapData,
+    DistrictData as _DistrictData,
+    MapLayer as _MapLayer,
+    TOKYO_DISTRICTS as _TOKYO_DISTRICTS,
+    generate_html as _generate_html,
+)
+
+_map_store = _MapStore()
+_map_builder = _MapBuilder(store=_map_store)
+
+# 東京プリセットを初期ロード
+_map_builder.build("Tokyo", _TOKYO_DISTRICTS, active_layer=_MapLayer.TRAFFIC)
+
+
+@app.get(
+    "/v1/viz/citymap/{city}",
+    tags=["visualization"],
+    summary="都市マップ HTML — Sprint 78",
+    response_class=HTMLResponse,
+)
+def viz_citymap(city: str, layer: str = "traffic"):
+    try:
+        layer_e = _MapLayer(layer)
+    except ValueError:
+        raise HTTPException(400, f"Invalid layer: {layer}. Choose from: {[l.value for l in _MapLayer]}")
+    html = _map_builder.get_html(city, layer_e)
+    if html is None:
+        raise HTTPException(404, f"City map not found: {city}")
+    return HTMLResponse(content=html)
+
+
+@app.get(
+    "/v1/viz/citymap/{city}/data",
+    tags=["visualization"],
+    summary="都市マップ JSON データ — Sprint 78",
+)
+def viz_citymap_data(city: str):
+    data = _map_store.get(city)
+    if data is None:
+        raise HTTPException(404, f"City map not found: {city}")
+    return data.to_dict()
+
+
+class _DistrictIn(BaseModel):
+    name: str
+    x: float = Field(ge=0.0, le=100.0)
+    y: float = Field(ge=0.0, le=100.0)
+    width: float = Field(default=18.0, ge=1.0)
+    height: float = Field(default=14.0, ge=1.0)
+    traffic_level: Optional[str] = None
+    noise_status: Optional[str] = None
+    crowd_level: Optional[str] = None
+    energy_status: Optional[str] = None
+    disaster_level: Optional[str] = None
+
+
+class _CityMapIn(BaseModel):
+    city: str
+    districts: List[_DistrictIn]
+    active_layer: str = "traffic"
+
+
+@app.post(
+    "/v1/viz/citymap",
+    tags=["visualization"],
+    summary="都市マップ登録 — Sprint 78",
+)
+def viz_citymap_create(body: _CityMapIn):
+    try:
+        layer_e = _MapLayer(body.active_layer)
+    except ValueError:
+        raise HTTPException(400, f"Invalid active_layer: {body.active_layer}")
+    districts = [
+        _DistrictData(
+            name=d.name, x=d.x, y=d.y, width=d.width, height=d.height,
+            traffic_level=d.traffic_level, noise_status=d.noise_status,
+            crowd_level=d.crowd_level, energy_status=d.energy_status,
+            disaster_level=d.disaster_level,
+        )
+        for d in body.districts
+    ]
+    data = _map_builder.build(body.city, districts, active_layer=layer_e)
+    return {"ok": True, "city": data.city, "district_count": len(data.districts)}
+
+
+@app.get(
+    "/v1/viz/cities",
+    tags=["visualization"],
+    summary="登録済み都市一覧 — Sprint 78",
+)
+def viz_cities():
+    return {"cities": _map_store.list_cities(), "count": _map_store.count()}
