@@ -54,8 +54,9 @@
 | 75 | **環境センサー/乗り換え最適化/インフラダッシュボード** | `skills/env_sensor.py` `skills/transfer_optimizer.py` `skills/infra_dashboard.py` | 4319 | v0.78 |
 | 76 | **交通量分析/エネルギーモニタリング/群衆予測** | `skills/traffic_analyzer.py` `skills/energy_monitor.py` `skills/crowd_predictor.py` | 4381 | v0.79 |
 | 77 | **災害アラート/水質モニタリング/騒音マッピング** | `skills/disaster_alert.py` `skills/water_quality.py` `skills/noise_mapper.py` | 4446 | v0.80 |
+| 78 | **3D 都市マップビジュアライゼーション** | `skills/city_map_viz.py` `tokyo_map_preview.html` | 4487 | v0.81 |
 
-> **累計テスト数**: 4446 PASS (Sprint 77: +65) — **Sprint 78 候補検討中**
+> **累計テスト数**: 4487 PASS (Sprint 78: +41) — **Sprint 79 候補検討中**
 
 ---
 
@@ -419,6 +420,57 @@
 | **A** | **駅環境センサー統合** | `skills/env_sensor.py` | 気温・湿度・CO2・騒音レベルの駅内環境モニタリング |
 | **B** | **乗り換え最適化** | `skills/transfer_optimizer.py` | 混雑・アクセシビリティ・所要時間を統合した最適乗換提案 |
 | **C** | **都市インフラダッシュボード** | `skills/infra_dashboard.py` | 混雑・アクセシビリティ・地下水位を統合した都市インフラ可視化 |
+
+---
+
+## Sprint 78 詳細 (完了)
+
+### Sprint 78: 3D 都市マップビジュアライゼーション — v0.81.0
+> SVGベースからThree.js WebGLへの昇華。東京都内20地区をリアルタイム3Dで描画。
+
+#### 78A: SVG 2D 都市マップ基盤 (`skills/city_map_viz.py`)
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 78A.1 | `MapLayer` (5種: 交通量/騒音/群衆密度/エネルギー/災害) × `DistrictData` | cc:完了 |
+| 78A.2 | `CityMapData` / `generate_html` — SVGダークテーマ+ツールチップ+凡例+統計サイドバー | cc:完了 |
+| 78A.3 | `TOKYO_DISTRICTS` プリセット — 20地区 (新宿〜荒川) | cc:完了 |
+| 78A.4 | カラーパレット: 交通量/騒音/群衆密度/エネルギー/災害アラート 5系統 | cc:完了 |
+
+#### 78B: Three.js 3D アニメーション拡張 (`skills/city_map_viz.py` + `tokyo_map_preview.html`)
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 78B.1 | Google Maps ライトテーマへカラーパレット刷新 | cc:完了 |
+| 78B.2 | 川アニメーション: 隅田川・多摩川・荒川 ShaderMaterial UV スクロール波紋 | cc:完了 |
+| 78B.3 | 地形: 富士山(雪冠付き) + 背景丘陵5本 (south-west) | cc:完了 |
+| 78B.4 | 背景ビル 320棟: `seededRandom` InstancedMesh (地区/川/東京湾と重複回避) | cc:完了 |
+| 78B.5 | ランドマーク: 東京都庁・東京タワー・東京スカイツリー・羽田空港滑走路×2 | cc:完了 |
+| 78B.6 | 電車アニメーション: 山手線(緑ループ)・中央線(橙)・東海道線(赤) | cc:完了 |
+| 78B.7 | 公園ツリー: `ConeGeometry` × 5本/公園, `seededRandom` 配置 | cc:完了 |
+| 78B.8 | レンダーループに `dt` クロック駆動を統合 | cc:完了 |
+
+#### 78C: API 公開 (`serve/api.py`)
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 78C.1 | `/v1/viz/citymap/{city}` — HTMLResponse (Three.js 3D マップ) | cc:完了 |
+| 78C.2 | `/v1/viz/citymap/{city}/data` — JSON データ取得 | cc:完了 |
+| 78C.3 | `/v1/viz/citymap` POST — カスタムデータ可視化 | cc:完了 |
+| 78C.4 | `/v1/viz/cities` — 対応都市一覧 | cc:完了 |
+
+| 78.T | `tests/test_sprint78.py` — 41 PASS (累計 4487) | cc:完了 |
+
+---
+
+## Sprint 79 候補テーマ
+
+> **方針**: 地図ビジュアライゼーション系を深化させるか、広告マーケ系に戻るか選択。
+
+| Option | テーマ | コアモジュール | 理由 |
+|--------|--------|--------------|------|
+| **A** | **地図 WebSocket リアルタイム更新** | `skills/city_map_realtime.py` | 電車/混雑をWebSocket Push で動的更新。Three.js 3D との相性◎ |
+| **B** | **AR/VR 地図エクスポート** | `skills/city_map_xr.py` | glTF/USD 形式で3DモデルをExport。Unity/Unreal/Apple Vision Pro連携 |
+| **C** | **地図AI ナレッジグラフ** | `skills/city_knowledge_graph.py` | 駅・地区・施設をGraphで表現。NLQ「新宿から徒歩10分のカフェ」クエリ対応 |
+| **D** | **広告×地理情報 ジオターゲティング** | `skills/geo_targeting.py` | 地区データ×広告キャンペーンを統合。位置属性ベースのCTR予測 |
+| **E** | **都市シミュレーション エージェント** | `skills/city_agent.py` | 「電車遅延→混雑→広告効果低下」を自律エージェントでシミュレーション |
 
 ---
 
