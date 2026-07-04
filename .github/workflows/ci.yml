@@ -34,13 +34,14 @@ jobs:
           pip install -e .
           pip install pytest pytest-cov
 
-      - name: Run core model tests (no network)
+      - name: Run full test suite (no network)
         run: |
-          pytest tests/test_main.py tests/test_moda.py \
+          pytest tests/ \
             --tb=short \
             --cov=open_mythos \
+            --cov=serve \
             --cov-report=term-missing \
-            -v
+            -q
 
       - name: Upload coverage report
         if: matrix.python-version == '3.11'
@@ -82,4 +83,4 @@ jobs:
           pip install ruff
 
       - name: ruff check
-        run: ruff check open_mythos/ tests/
+        run: ruff check .

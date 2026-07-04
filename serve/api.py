@@ -39,6 +39,7 @@ from pydantic import BaseModel, Field
 from starlette.middleware.base import BaseHTTPMiddleware
 from transformers import AutoTokenizer
 
+from open_mythos import __version__ as _OM_VERSION
 from open_mythos.main import MythosConfig, OpenMythos
 from open_mythos.agents import MythosAgent, OpenMythosLLM
 from serve.auth import RateLimitMiddleware, verify_api_key
@@ -169,7 +170,7 @@ app = FastAPI(
         "**認証**: `Authorization: Bearer <api-key>` ヘッダ必須 (環境変数 `API_KEY` 設定時)。\n\n"
         "**レート制限**: デフォルト 60 rpm (環境変数 `RATE_LIMIT_RPM` で変更可)。"
     ),
-    version="0.38.0",
+    version=_OM_VERSION,
     lifespan=lifespan,
     dependencies=[Depends(verify_api_key)],
     openapi_tags=[

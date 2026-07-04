@@ -5,7 +5,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "open-mythos"
-version = "0.57.0"
+version = "0.80.0"
 description = "OpenMythos — open-source theoretical reconstruction of the Claude Mythos Recurrent-Depth Transformer architecture"
 license = "MIT"
 authors = ["Kye Gomez <kye@swarms.world>"]
@@ -74,6 +74,13 @@ pytest = ">=8.1.1,<10.0.0"
 black = "*"
 ruff = "*"
 pytest = "*"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: 実行時間の長いテスト (モデル学習・大規模生成など)",
+    "gpu: GPU が必要なテスト",
+]
 
 [tool.ruff]
 line-length = 88

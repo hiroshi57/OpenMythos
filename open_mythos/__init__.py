@@ -1,3 +1,6 @@
+# バージョンの単一ソース。pyproject.toml の version と一致させること。
+__version__ = "0.80.0"
+
 from open_mythos.main import (
     ACTHalting,
     Expert,
