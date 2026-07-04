@@ -32,7 +32,7 @@ import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 # リポジトリルートを追加
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -113,12 +113,11 @@ def bench_p1_debate(verbose: bool = False) -> PatternBenchResult:
     agreement_score を pattern_score とし、
     コンセンサステキストの llmo_total を final_score として KPI 改善を測定する。
     """
-    from open_mythos.debate import DebateConfig, DebateOrchestrator, ConsensusEngine
+    from open_mythos.debate import ConsensusEngine
 
     baseline = _llmo(_BENCH_TEXT)
     t0 = time.perf_counter()
     try:
-        cfg = DebateConfig(n_agents=3, n_rounds=2, consensus_threshold=0.75)
         # モデル不要: ConsensusEngine 直接使用でコンセンサステキストを生成
         engine = ConsensusEngine()
         proposals = [
@@ -305,7 +304,7 @@ def bench_p5_guard(verbose: bool = False) -> PatternBenchResult:
     KPI 改善: 危険テキストを事前ブロックすることで「通過率の健全度」を測る。
     """
     from open_mythos.error_memory import (
-        ErrorMemoryStore, MistakeGuard, PreventionRule, RuleExtractor
+        ErrorMemoryStore, MistakeGuard, RuleExtractor
     )
 
     baseline = _llmo(_BENCH_TEXT)

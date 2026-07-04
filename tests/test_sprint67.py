@@ -17,12 +17,11 @@ import time
 import pytest
 
 from open_mythos.skills.anomaly_detector import (
-    Alert, AlertSeverity, AnomalyType, AlertStore, AnomalyDetector,
+    Alert, AlertSeverity, AnomalyType, AlertStore,
 )
 from open_mythos.skills.campaign_analytics import CampaignAnalyticsStore
 from open_mythos.skills.campaign_orchestrator import (
-    CampaignOrchestrator, OrchestrationConfig,
-    FreezeDecision, FrozenBudgetPlan,
+    CampaignOrchestrator, FreezeDecision, FrozenBudgetPlan,
 )
 from open_mythos.skills.fusion import FusionConfig, CandidateSpec, FusionEngineFactory
 from open_mythos.skills.fusion_cache import (
@@ -358,7 +357,7 @@ class TestCachedFusionEngine:
         assert r1.final_answer == r2.final_answer
 
     def test_stream_bypasses_cache(self):
-        events = list(self.cached.run_stream("Q"))
+        list(self.cached.run_stream("Q"))
         # ストリームはキャッシュ非対象 → ヒット数は変わらない
         assert self.cache.stats()["hits"] == 0
 
