@@ -25,9 +25,7 @@ GrowingAIBenchmark が生成した BenchmarkReport を Markdown / HTML / イン�
 from __future__ import annotations
 
 import argparse
-import json
 import sys
-from dataclasses import asdict
 from pathlib import Path
 from typing import List, Optional
 

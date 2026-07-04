@@ -3,7 +3,7 @@ quick_train.py — OpenMythos 広告コピー用クイック学習スクリプ�
 実行方法: python scripts/quick_train.py
 所要時間: CPU で約 5〜15 分（dim=256 の小型モデル）
 """
-import os, sys, time, json
+import os, sys, time
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import torch
@@ -173,10 +173,10 @@ def main():
     print("=" * 55)
     print("次のステップ:")
     print("=" * 55)
-    print(f"1. .env に以下を追加してください:")
+    print("1. .env に以下を追加してください:")
     print(f"   MODEL_CHECKPOINT={abs_path}")
-    print(f"   MODEL_DIM=256")
-    print(f"   MODEL_ATTN=gqa")
+    print("   MODEL_DIM=256")
+    print("   MODEL_ATTN=gqa")
     print()
     print("2. サーバーを再起動してください:")
     print("   Ctrl+C でサーバーを止めて、再度:")

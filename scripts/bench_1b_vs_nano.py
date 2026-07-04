@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Sprint 36.1 — 1B vs nano LLMO スコアベンチマーク"""
-import json, math, random, sys
+import json, random, sys
 from pathlib import Path
 
 random.seed(42)
@@ -8,7 +8,7 @@ random.seed(42)
 from open_mythos.lora_trainer import LoraTrainer, LoraTrainerConfig
 from open_mythos.self_distill import DistillSample
 from open_mythos.llmo import LLMOScorer
-from open_mythos.variants import mythos_1b, mythos_nano
+from open_mythos.variants import mythos_1b
 from open_mythos.main import OpenMythos
 
 samples = []

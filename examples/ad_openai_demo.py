@@ -135,11 +135,11 @@ def main():
     rounds = [(5, "1回目"), (3, "2回目")]
 
     for n_cases, round_label in rounds:
-        print(f"\nこの案をさらにブラッシュアップしますか？（y/n）")
+        print("\nこの案をさらにブラッシュアップしますか？（y/n）")
         if input("> ").strip().lower() != "y":
             break
 
-        print(f"どう変えたいですか？（例：もっと若者向けに、短く）")
+        print("どう変えたいですか？（例：もっと若者向けに、短く）")
         direction = input("> ").strip()
 
         refined_messages = messages + [

@@ -17,14 +17,14 @@ from __future__ import annotations
 import pytest
 
 from open_mythos.skills.security import (
-    DiagnosisCategory, ThreatCategoryMapper, CategoryMatch, CATEGORY_META,
+    DiagnosisCategory, ThreatCategoryMapper, CATEGORY_META,
 )
 from open_mythos.skills.security_intel import (
     ThreatSeverity, ThreatSource, ThreatCategory,
     ResponsePlaybook, ThreatEnrichment, SecurityThreat,
     SecurityIntelStore, ThreatEnricher, ThreatCollector,
     SecurityIntelDashboard, IntelReportEngine,
-    _rule_based_playbook, _rule_based_enrichment,
+    _rule_based_playbook,
 )
 
 
