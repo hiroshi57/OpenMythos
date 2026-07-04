@@ -1,6 +1,6 @@
 # OpenMythos — 課題集約・ロードマップ
-> 最終更新: 2026-06-24 | 現在バージョン: **v0.37.0** (1753 collected / 1400+ PASS) | ruff エラー: **0**
-> ブランチ: feature/sprint71-city-map | Sprint 35 進行中（35.1✅ / 35.2⏳ / 35.3⏳ — GCP実行待ち）
+> 最終更新: 2026-06-05 | 現在バージョン: **v0.37.0** (1753 collected / 1400+ PASS) | ruff エラー: **0**
+> ブランチ: master | 最新コミット: `f06fad4`
 
 ## Sprint 進捗サマリー（〜Sprint 34）
 
@@ -62,25 +62,11 @@
 
 | task-id | 内容 | 優先度 | DoD |
 | ------- | ---- | ------ | --- |
-| 35.1 ✅ | **社内 SEO データ変換** — 実CSV未入手のため `scripts/generate_seo_train.py --n 200` で content_quality 形式の合成データ生成。実CSV入手後は `--input <csv> --auto-map` で差替え | 🔴 必須 | `data/seo_train.jsonl` 生成（200件・UTF-8）✅ |
-| 35.2 ⏳ | **LoRA FT 実行** — GCP T4 GPU で `scripts/run_seo_ft.py` を実行。ラッパー `scripts/run_seo_ft_gcp.sh` 作成済み（要 GCP 実行）。ローカルは venv が Application Control でブロック＋torch 未導入のため実行不可 | 🔴 必須 | GCP で perplexity < 20 確認（未実行） |
-| 35.3 ⏳ | **Opus 4.8 API との精度比較** — `scripts/run_benchmark_comparison.py` を実 API 対応に強化（`ANTHROPIC_API_KEY` で `claude-opus-4-8` を LLMO 採点に使用、未設定時はシミュレーションへフォールバック）。torch 未導入でもローカル動作するよう import 堅牢化。`--no-api` でローカル検証済み。実 API 実行と FT モデル採点接続が残 | 🔴 必須 | 比較レポートを `benchmark/results/` に保存（枠組み完成・実API実行は残） |
+| 35.1 | **社内 SEO データ変換** — `scripts/csv_to_jsonl.py --inspect` で列名確認 → `content_quality` タスク形式に変換 | 🔴 必須 | `data/seo_train.jsonl` 生成 |
+| 35.2 | **LoRA FT 実行** — GCP T4 GPU で LoraTrainer を社内データで実行。`scripts/pretrain_gcp.sh` ベース | 🔴 必須 | perplexity < 20 確認 |
+| 35.3 | **Opus 4.8 API との精度比較** — 同一入力で LLMO スコア・人間評価を比較。「OpenMythos が自社タスクで上回る」を数値証明 | 🔴 必須 | 比較レポートを `benchmark/results/` に保存 |
 | 35.4 | **A/B ルーター本番接続** — `serve/api.py` の A/B ルーターで OpenMythos と Claude API を 20% vs 80% 並走 | 🟡 重要 | 実トラフィックでの比較開始 |
 | 35.5 | **ROAS シミュレーター強化** — `calculate_roi()` 拡張。モンテカルロ推定で信頼区間付き ROAS 予測 | 🟡 重要 | `roas_simulate(ad_spend, ctr, cvr, aov, n=1000)` |
-
-### 🔜 次にやるタスク（35.2/35.3 を実行可能にするための具体ステップ）
-
-> **現状**: gcloud CLI 導入済み（`C:\Users\takiz\AppData\Local\Google\Cloud SDK\...\gcloud.cmd`、v574.0.0）。認証・プロジェクト未設定。ローカルに GPU なし・torch 未導入のため実 FT は GCP 必須。
-
-| step | 内容 | 担当 | 状態 |
-| ---- | ---- | ---- | ---- |
-| N-1 | **GCP 認証** — `gcloud auth login`（ブラウザ）+ `gcloud config set project <ID>` | 👤 ユーザー（ブラウザ操作必須） | ⏳ |
-| N-2 | **Compute API 有効化 & GPU クォータ確認** — `gcloud services enable compute.googleapis.com`。T4 クォータ 0 なら割り当て申請 | 🤖→👤 | ⏳ |
-| N-3 | **T4 VM 作成** — `run_seo_ft_gcp.sh` ヘッダのコマンド（n1-standard-8 + nvidia-tesla-t4 + pytorch-latest-gpu） | 🤖（認証後） | ⏳ |
-| N-4 | **VM で 35.2 実行** — `git clone` → `pip install -e .` → `bash scripts/run_seo_ft_gcp.sh` → `seo_ft_result.json` の `perplexity < 20` 確認 | 🤖 | ⏳ |
-| N-5 | **35.3 実 API 比較** — VM or ローカルで `ANTHROPIC_API_KEY` 設定 → `run_benchmark_comparison.py --n 20` → `benchmark/results/` に保存 | 🤖 | ⏳ |
-| N-6 | **35.3 を FT モデル採点に接続** — `run_benchmark_comparison.py` の OpenMythos 側をルールベース `LLMOScorer` から FT 済みチェックポイント推論へ差替え（「FT で上回る」をより厳密に証明） | 🤖 | ⏳ |
-| N-7 | **VM 後始末** — 課金停止のため `gcloud compute instances delete openmythos-seo-ft` | 🤖 | ⏳ |
 
 ---
 

@@ -2,559 +2,679 @@
 Sprint 71 — 主要都市地図ビジュアライザ テスト
 
 対象:
-  - open_mythos/skills/city_map.py
-      GeoPoint, Station, GeologyLayer, Line, City, CrossSection,
-      SampleCityDataSource, GTFSCityDataSource, GeologyModel,
-      CrossSectionBuilder, CityMapStore, CityMapFactory, haversine_m
-  - open_mythos/skills/map_renderer.py
-      SvgStyle, CrossSectionSvgRenderer, FrontViewSvgRenderer, MapRenderer
-  - serve/map_router.py
-      GET  /v1/map/cities
-      GET  /v1/map/{city}/lines
-      GET  /v1/map/{city}/{line}/cross-section
-      GET  /v1/map/{city}/{line}/front-view
-      POST /v1/map/cross-section
-
-テスト構成:
-  Section A: データクラス (to_dict / from_dict / 整合性)
-  Section B: SampleCityDataSource (13都市)
-  Section C: GTFSCityDataSource (取り込み + フォールバック)
-  Section D: GeologyModel (層順序・深度)
-  Section E: CrossSectionBuilder (統合・例外)
-  Section F: SVGレンダラー
-  Section G: MapRenderer / PNG フォールバック
-  Section H: CityMapStore / Factory
-  Section I: API エンドポイント (/v1/map/*)
+  71A: open_mythos/skills/city_map.py
+  71B: open_mythos/skills/map_renderer.py
+  71C: serve/api.py (/v1/map/*)
 """
-
 from __future__ import annotations
-
-import csv
-import io
-import sys
-import zipfile
-from unittest.mock import MagicMock
-
 import pytest
-
-
-# ---------------------------------------------------------------------------
-# transformers モック (autouse)
-# ---------------------------------------------------------------------------
-
-@pytest.fixture(autouse=True, scope="module")
-def mock_transformers():
-    mock = MagicMock()
-    mock.AutoTokenizer.from_pretrained.return_value = MagicMock()
-    sys.modules["transformers"] = mock
-    yield mock
-    sys.modules.pop("transformers", None)
-
-
-# ---------------------------------------------------------------------------
-# 共通インポート
-# ---------------------------------------------------------------------------
+from fastapi.testclient import TestClient
 
 from open_mythos.skills.city_map import (
-    GeoPoint,
-    Station,
-    GeologyLayer,
-    Line,
-    City,
-    CrossSection,
-    SampleCityDataSource,
-    GTFSCityDataSource,
-    GeologyModel,
-    CrossSectionBuilder,
-    CityMapStore,
-    CityMapFactory,
-    haversine_m,
+    CityName, LineType, GeologyLayerType,
+    GeoCoord, Station, MetroLine, GeologyLayer, CityMapData,
+    StationStore, MetroLineStore, GeologyStore, CityMapStore,
+    CityMapDataset,
 )
 from open_mythos.skills.map_renderer import (
-    SvgStyle,
-    CrossSectionSvgRenderer,
-    FrontViewSvgRenderer,
-    MapRenderer,
+    CrossSectionConfig,
+    CrossSectionResult,
+    SVGCrossSectionRenderer,
+    CrossSectionEngine,
 )
 
 
-# ---------------------------------------------------------------------------
-# ヘルパ: 最小 GTFS zip を生成
-# ---------------------------------------------------------------------------
-
-def _make_gtfs_zip(
-    *,
-    with_required: bool = True,
-    n_stops: int = 4,
-) -> bytes:
-    """テスト用の最小 GTFS zip バイト列を生成する。"""
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w") as zf:
-        if with_required:
-            # routes.txt
-            rout = io.StringIO()
-            w = csv.writer(rout)
-            w.writerow(["route_id", "route_short_name", "route_color"])
-            w.writerow(["R1", "テスト線", "FF0000"])
-            zf.writestr("routes.txt", rout.getvalue())
-            # stops.txt
-            stp = io.StringIO()
-            w = csv.writer(stp)
-            w.writerow(["stop_id", "stop_name", "stop_lat", "stop_lon"])
-            for i in range(n_stops):
-                w.writerow(["S%d" % i, "駅%d" % i, 35.0 + i * 0.01, 139.0 + i * 0.01])
-            zf.writestr("stops.txt", stp.getvalue())
-        else:
-            zf.writestr("other.txt", "no required files")
-    return buf.getvalue()
-
-
-# ===========================================================================
-# Section A: データクラス
-# ===========================================================================
-
-class TestDataModels:
-    def test_geopoint_roundtrip(self):
-        p = GeoPoint(35.6812, 139.7671)
-        d = p.to_dict()
-        assert d["lat"] == 35.6812 and d["lon"] == 139.7671
-        assert GeoPoint.from_dict(d).lat == p.lat
-
-    def test_station_to_from_dict(self):
-        st = Station("S1", "東京", GeoPoint(35.68, 139.76), "L1", 0, depth_m=18.0, name_kana="トウキョウ")
-        d = st.to_dict()
-        assert d["station_id"] == "S1"
-        assert d["depth_m"] == 18.0
-        back = Station.from_dict(d)
-        assert back.name == "東京" and back.order == 0 and back.depth_m == 18.0
-
-    def test_station_depth_none(self):
-        st = Station("S1", "X", GeoPoint(0, 0), "L1", 0)
-        assert st.depth_m is None
-        assert st.to_dict()["depth_m"] is None
-
-    def test_geology_layer_thickness(self):
-        g = GeologyLayer("L0", "沖積層", 0.0, 12.0, "#D7C49E", "clay")
-        assert g.thickness_m == 12.0
-        assert g.top_m < g.bottom_m
-        assert g.to_dict()["thickness_m"] == 12.0
-
-    def test_line_roundtrip(self):
-        ln = Line("L1", "丸ノ内線", "tokyo", "#F62E36", stations=[
-            Station("S0", "A", GeoPoint(0, 0), "L1", 0),
-        ], operator="東京メトロ")
-        d = ln.to_dict()
-        assert d["station_count"] == 1
-        assert Line.from_dict(d).operator == "東京メトロ"
-
-    def test_city_get_line(self):
-        ln = Line("L1", "X", "c1", "#000")
-        city = City("c1", "都市", "City", GeoPoint(0, 0), lines=[ln])
-        assert city.get_line("L1") is ln
-        assert city.get_line("none") is None
-        assert city.line_count == 1
-
-    def test_cross_section_to_dict(self):
-        cs = CrossSection("tokyo", "L1", "丸ノ内線", [], [], 0.0, 30.0, "sample")
-        d = cs.to_dict()
-        assert d["generated_by"] == "sample"
-        assert d["max_depth_m"] == 30.0
-        assert d["station_count"] == 0
-
-    def test_haversine_positive(self):
-        a = GeoPoint(35.0, 139.0)
-        b = GeoPoint(35.1, 139.0)
-        assert haversine_m(a, b) > 0
-        assert haversine_m(a, a) == 0
-
-
-# ===========================================================================
-# Section B: SampleCityDataSource (13都市)
-# ===========================================================================
-
-class TestSampleSource:
-    @pytest.fixture(scope="class")
-    def src(self):
-        return SampleCityDataSource()
-
-    def test_13_cities(self, src):
-        cities = src.load_cities()
-        assert len(cities) == 13
-
-    def test_required_cities_present(self, src):
-        ids = {c.city_id for c in src.load_cities()}
-        for cid in ("tokyo", "yokohama", "osaka", "nagoya", "sapporo",
-                    "fukuoka", "kobe", "kawasaki", "kyoto", "saitama",
-                    "hiroshima", "sendai", "chiba"):
-            assert cid in ids
-
-    def test_each_city_has_line(self, src):
-        for c in src.load_cities():
-            assert c.line_count >= 1, c.city_id
-
-    def test_station_order_sequential(self, src):
-        lines = src.load_lines("tokyo")
-        for ln in lines:
-            orders = [s.order for s in ln.stations]
-            assert orders == list(range(len(orders)))
-
-    def test_unknown_city_empty(self, src):
-        assert src.load_lines("atlantis") == []
-
-    def test_load_city(self, src):
-        assert src.load_city("tokyo").name == "東京"
-        assert src.load_city("nope") is None
-
-    def test_source_kind(self, src):
-        assert src.source_kind == "sample"
-
-
-# ===========================================================================
-# Section C: GTFSCityDataSource (取り込み + フォールバック)
-# ===========================================================================
-
-class TestGTFSSource:
-    def test_valid_zip_parsed(self):
-        zb = _make_gtfs_zip(n_stops=5)
-        src = GTFSCityDataSource("tokyo", _zip_bytes=zb)
-        lines = src.load_lines("tokyo")
-        assert src.source_kind == "gtfs"
-        assert len(lines) >= 1
-        assert lines[0].station_count == 5
-
-    def test_invalid_zip_falls_back(self):
-        zb = _make_gtfs_zip(with_required=False)
-        src = GTFSCityDataSource("tokyo", _zip_bytes=zb)
-        lines = src.load_lines("tokyo")
-        assert src.source_kind == "sample(fallback)"
-        # サンプルの丸ノ内線(6駅)が返る
-        assert any(ln.line_id == "marunouchi" for ln in lines)
-
-    def test_no_url_no_bytes_falls_back(self):
-        src = GTFSCityDataSource("osaka")  # url も bytes も無し
-        lines = src.load_lines("osaka")
-        assert src.source_kind == "sample(fallback)"
-        assert len(lines) >= 1
-
-    def test_fetch_failure_falls_back(self, monkeypatch):
-        def _boom(*a, **k):
-            raise OSError("network down")
-        monkeypatch.setattr("urllib.request.urlopen", _boom)
-        src = GTFSCityDataSource("tokyo", gtfs_url="http://example.invalid/gtfs.zip")
-        lines = src.load_lines("tokyo")
-        assert src.source_kind == "sample(fallback)"
-        assert len(lines) >= 1
-
-    def test_other_city_uses_sample(self):
-        zb = _make_gtfs_zip()
-        src = GTFSCityDataSource("tokyo", _zip_bytes=zb)
-        # 対象外の都市は常にサンプル
-        osaka = src.load_lines("osaka")
-        assert any(ln.line_id == "midosuji" for ln in osaka)
-
-    def test_load_cities_swaps_target(self):
-        zb = _make_gtfs_zip(n_stops=3)
-        src = GTFSCityDataSource("tokyo", _zip_bytes=zb)
-        cities = src.load_cities()
-        tokyo = next(c for c in cities if c.city_id == "tokyo")
-        assert tokyo.lines[0].station_count == 3
-
-
-# ===========================================================================
-# Section D: GeologyModel
-# ===========================================================================
-
-class TestGeologyModel:
-    @pytest.fixture(scope="class")
-    def gm(self):
-        return GeologyModel()
-
-    def test_layers_ordered(self, gm):
-        layers = gm.estimate_layers("tokyo")
-        assert len(layers) >= 3
-        for a, b in zip(layers, layers[1:]):
-            assert a.bottom_m <= b.top_m + 1e-9  # 連続・順序
-
-    def test_layers_start_at_zero(self, gm):
-        layers = gm.estimate_layers("tokyo")
-        assert layers[0].top_m == 0.0
-
-    def test_tokyo_has_alluvial(self, gm):
-        names = [g.name for g in gm.estimate_layers("tokyo")]
-        assert "沖積層" in names
-
-    def test_default_profile_for_unknown(self, gm):
-        layers = gm.estimate_layers("unknown_city")
-        assert len(layers) >= 3
-
-    def test_underground_depth_positive(self, gm):
-        ln = Line("marunouchi", "丸ノ内線", "tokyo", "#F62E36", stations=[
-            Station("S0", "A", GeoPoint(0, 0), "marunouchi", 0),
-            Station("S1", "B", GeoPoint(0, 0), "marunouchi", 1),
-        ])
-        d = gm.estimate_depth(ln.stations[1], ln)
-        assert d > 0
-
-    def test_monorail_above_ground(self, gm):
-        ln = Line("monorail", "千葉都市モノレール1号線", "chiba", "#E60012", stations=[
-            Station("C0", "千葉", GeoPoint(0, 0), "monorail", 0),
-        ])
-        d = gm.estimate_depth(ln.stations[0], ln)
-        assert d < 0  # 高架 = 負
-
-
-# ===========================================================================
-# Section E: CrossSectionBuilder
-# ===========================================================================
-
-class TestCrossSectionBuilder:
-    @pytest.fixture(scope="class")
-    def src(self):
-        return SampleCityDataSource()
-
-    def test_build_tokyo(self, src):
-        cs = CrossSectionBuilder().build("tokyo", "marunouchi", src)
-        assert cs.city_id == "tokyo"
-        assert cs.line_name == "丸ノ内線"
-        assert len(cs.stations) == 6
-        assert len(cs.layers) >= 3
-
-    def test_all_stations_have_depth(self, src):
-        cs = CrossSectionBuilder().build("tokyo", "marunouchi", src)
-        assert all(s.depth_m is not None for s in cs.stations)
-
-    def test_total_distance_positive(self, src):
-        cs = CrossSectionBuilder().build("osaka", "midosuji", src)
-        assert cs.total_distance_m > 0
-
-    def test_max_depth_consistent(self, src):
-        cs = CrossSectionBuilder().build("tokyo", "marunouchi", src)
-        assert cs.max_depth_m >= max(s.depth_m for s in cs.stations)
-
-    def test_generated_by_sample(self, src):
-        cs = CrossSectionBuilder().build("tokyo", "ginza", src)
-        assert cs.generated_by == "sample"
-
-    def test_unknown_line_raises(self, src):
-        with pytest.raises(ValueError):
-            CrossSectionBuilder().build("tokyo", "nonexistent", src)
-
-    def test_unknown_city_raises(self, src):
-        with pytest.raises(ValueError):
-            CrossSectionBuilder().build("atlantis", "x", src)
-
-
-# ===========================================================================
-# Section F: SVGレンダラー
-# ===========================================================================
-
-class TestSvgRenderer:
-    @pytest.fixture(scope="class")
-    def cs(self):
-        return CrossSectionBuilder().build("tokyo", "marunouchi", SampleCityDataSource())
-
-    def test_cross_section_is_svg(self, cs):
-        svg = CrossSectionSvgRenderer().render(cs)
-        assert svg.startswith("<svg")
-        assert svg.endswith("</svg>")
-
-    def test_contains_layers_rects(self, cs):
-        svg = CrossSectionSvgRenderer().render(cs)
-        assert "<rect" in svg
-
-    def test_contains_station_circles(self, cs):
-        svg = CrossSectionSvgRenderer().render(cs)
-        assert "<circle" in svg
-
-    def test_contains_line_polyline(self, cs):
-        svg = CrossSectionSvgRenderer().render(cs)
-        assert "<polyline" in svg
-
-    def test_contains_legend(self, cs):
-        svg = CrossSectionSvgRenderer().render(cs)
-        for layer in cs.layers:
-            assert layer.name in svg
-
-    def test_empty_cross_section_ok(self):
-        empty = CrossSection("x", "y", "空路線", [], [], 0.0, 0.0, "sample")
-        svg = CrossSectionSvgRenderer().render(empty)
-        assert svg.startswith("<svg")
-
-    def test_custom_style(self, cs):
-        style = SvgStyle(width=1200, height=600)
-        svg = CrossSectionSvgRenderer(style).render(cs)
-        assert 'width="1200"' in svg
-
-    def test_front_view_svg(self):
-        line = SampleCityDataSource().load_lines("tokyo")[0]
-        svg = FrontViewSvgRenderer().render(line)
-        assert svg.startswith("<svg")
-        assert "<circle" in svg
-
-    def test_escaping(self):
-        cs = CrossSection("x", "y", "A<b>&\"", [], [], 0.0, 0.0, "sample")
-        svg = CrossSectionSvgRenderer().render(cs)
-        assert "<b>" not in svg  # エスケープされている
-        assert "&lt;b&gt;" in svg
-
-
-# ===========================================================================
-# Section G: MapRenderer / PNG フォールバック
-# ===========================================================================
-
-class TestMapRenderer:
-    @pytest.fixture(scope="class")
-    def cs(self):
-        return CrossSectionBuilder().build("tokyo", "marunouchi", SampleCityDataSource())
-
-    def test_cross_section_svg(self, cs):
-        svg = MapRenderer().cross_section_svg(cs)
-        assert svg.startswith("<svg")
-
-    def test_front_view_svg(self):
-        line = SampleCityDataSource().load_lines("osaka")[0]
-        svg = MapRenderer().front_view_svg(line)
-        assert svg.startswith("<svg")
-
-    def test_to_png_returns_bytes_or_none(self, cs):
-        svg = MapRenderer().cross_section_svg(cs)
-        png = MapRenderer().to_png(svg)
-        # cairosvg 不在環境では None。在れば bytes。どちらも許容
-        assert png is None or isinstance(png, bytes)
-
-    def test_to_png_invalid_svg_none(self):
-        # 不正な SVG でも例外を投げず None
-        png = MapRenderer().to_png("not-svg")
-        assert png is None or isinstance(png, bytes)
-
-
-# ===========================================================================
-# Section H: CityMapStore / CityMapFactory
-# ===========================================================================
-
-class TestStoreFactory:
-    def test_store_save_get(self):
-        store = CityMapStore()
-        cs = CrossSectionBuilder().build("tokyo", "marunouchi", SampleCityDataSource())
-        store.save(cs)
-        assert store.get("tokyo", "marunouchi") is cs
-        assert store.get("tokyo", "none") is None
-        assert store.count() == 1
-
-    def test_store_list_by_city(self):
-        store = CityMapStore()
-        src = SampleCityDataSource()
-        store.save(CrossSectionBuilder().build("tokyo", "marunouchi", src))
-        store.save(CrossSectionBuilder().build("tokyo", "ginza", src))
-        store.save(CrossSectionBuilder().build("osaka", "midosuji", src))
-        assert len(store.list_by_city("tokyo")) == 2
-        assert len(store.list_by_city("osaka")) == 1
-
-    def test_store_clear(self):
-        store = CityMapStore()
-        store.save(CrossSectionBuilder().build("tokyo", "ginza", SampleCityDataSource()))
-        store.clear()
-        assert store.count() == 0
-
-    def test_factory_from_sample(self):
-        assert isinstance(CityMapFactory.from_sample(), SampleCityDataSource)
-
-    def test_factory_from_gtfs(self):
-        src = CityMapFactory.from_gtfs("tokyo", "http://x/gtfs.zip")
-        assert isinstance(src, GTFSCityDataSource)
-
-    def test_factory_available_cities(self):
-        cities = CityMapFactory.available_cities()
-        assert len(cities) == 13
-        assert all("city_id" in c and "line_count" in c for c in cities)
-
-
-# ===========================================================================
-# Section I: API エンドポイント
-# ===========================================================================
-
-@pytest.fixture(scope="module")
-def client():
-    import serve.api as api_module
-    api_module.state.model = MagicMock()
-    api_module.state.tokenizer = MagicMock()
-    from fastapi.testclient import TestClient
-    return TestClient(api_module.app, raise_server_exceptions=False)
-
-
-class TestMapAPI:
-    def test_cities(self, client):
-        r = client.get("/v1/map/cities")
-        assert r.status_code == 200
-        body = r.json()
-        assert body["count"] == 13
-        assert len(body["cities"]) == 13
-
-    def test_lines(self, client):
-        r = client.get("/v1/map/tokyo/lines")
-        assert r.status_code == 200
-        assert r.json()["count"] >= 1
-
-    def test_lines_unknown_city_404(self, client):
-        r = client.get("/v1/map/atlantis/lines")
-        assert r.status_code == 404
-
-    def test_cross_section_svg(self, client):
-        r = client.get("/v1/map/tokyo/marunouchi/cross-section")
-        assert r.status_code == 200
-        body = r.json()
-        assert body["svg"] and body["svg"].startswith("<svg")
-        assert body["cross_section"]["line_name"] == "丸ノ内線"
-
-    def test_cross_section_json(self, client):
-        r = client.get("/v1/map/tokyo/marunouchi/cross-section?format=json")
-        assert r.status_code == 200
-        body = r.json()
-        assert body["svg"] is None
-        assert body["cross_section"]["max_depth_m"] > 0
-
-    def test_cross_section_png_fallback(self, client):
-        # cairosvg 不在環境では SVG にフォールバック (image/svg+xml)、在れば image/png
-        r = client.get("/v1/map/tokyo/marunouchi/cross-section?format=png")
-        assert r.status_code == 200
-        assert r.headers["content-type"] in ("image/png", "image/svg+xml")
-
-    def test_cross_section_unknown_line_404(self, client):
-        r = client.get("/v1/map/tokyo/nonexistent/cross-section")
-        assert r.status_code == 404
-
-    def test_front_view(self, client):
-        r = client.get("/v1/map/tokyo/marunouchi/front-view")
-        assert r.status_code == 200
-        assert r.headers["content-type"].startswith("image/svg+xml")
-        assert r.text.startswith("<svg")
-
-    def test_front_view_404(self, client):
-        r = client.get("/v1/map/tokyo/nope/front-view")
-        assert r.status_code == 404
-
-    def test_post_cross_section_sample(self, client):
-        r = client.post("/v1/map/cross-section", json={"city": "osaka", "line": "midosuji"})
-        assert r.status_code == 200
-        assert r.json()["cross_section"]["generated_by"] == "sample"
-
-    def test_post_cross_section_gtfs_no_url_falls_back(self, client):
-        r = client.post("/v1/map/cross-section",
-                        json={"city": "tokyo", "line": "marunouchi", "source": "gtfs"})
-        assert r.status_code == 200
-        assert r.json()["cross_section"]["generated_by"] == "sample(fallback)"
-
-    def test_post_cross_section_unknown_404(self, client):
-        r = client.post("/v1/map/cross-section", json={"city": "atlantis", "line": "x"})
-        assert r.status_code == 404
-
-    def test_post_cross_section_json_format(self, client):
-        r = client.post("/v1/map/cross-section",
-                        json={"city": "tokyo", "line": "ginza", "format": "json"})
-        assert r.status_code == 200
-        assert r.json()["svg"] is None
-
-    def test_map_ui(self, client):
-        r = client.get("/map")
-        assert r.status_code == 200
-        assert "地下断面" in r.text
+# ─── Fixtures ─────────────────────────────────────────────────────
+
+@pytest.fixture
+def dataset_store():
+    return CityMapDataset.build()
+
+
+@pytest.fixture
+def client(dataset_store):
+    from serve.api import app
+    return TestClient(app)
+
+
+def _make_station(sid="s1", city=CityName.TOKYO, line_id="l1", depth=15.0):
+    return Station(
+        id=sid, name=f"駅{sid}", name_en=f"Station {sid}",
+        line_id=line_id, city=city,
+        coord=GeoCoord(35.68, 139.76),
+        depth_m=depth, platform_count=2, opened_year=2000,
+    )
+
+
+def _make_line(lid="l1", city=CityName.TOKYO):
+    return MetroLine(
+        id=lid, name="テスト線", name_en="Test Line",
+        city=city, line_type=LineType.SUBWAY,
+        color="#FF0000", station_ids=["s1", "s2"],
+        total_length_km=10.0, opened_year=2000,
+    )
+
+
+def _make_geology(gid="g1", city=CityName.TOKYO, depth_from=0.0, depth_to=10.0):
+    return GeologyLayer(
+        id=gid, city=city,
+        layer_type=GeologyLayerType.ALLUVIUM,
+        name="沖積層", depth_from_m=depth_from, depth_to_m=depth_to,
+        color="#90EE90", n_value=5.0,
+    )
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 71A: city_map.py
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# ─── Enums ────────────────────────────────────────────────────────
+
+def test_city_name_values():
+    assert CityName.TOKYO.value == "tokyo"
+    assert CityName.OSAKA.value == "osaka"
+    assert CityName.NAGOYA.value == "nagoya"
+    assert CityName.YOKOHAMA.value == "yokohama"
+    assert CityName.FUKUOKA.value == "fukuoka"
+
+
+def test_line_type_values():
+    assert LineType.SUBWAY.value == "subway"
+    assert LineType.JR.value == "jr"
+    assert LineType.PRIVATE.value == "private"
+
+
+def test_geology_layer_type_values():
+    types = [t.value for t in GeologyLayerType]
+    assert "fill" in types
+    assert "alluvium" in types
+    assert "bedrock" in types
+
+
+# ─── GeoCoord ─────────────────────────────────────────────────────
+
+def test_geocoord_to_dict():
+    c = GeoCoord(35.68, 139.76)
+    d = c.to_dict()
+    assert d["lat"] == 35.68
+    assert d["lon"] == 139.76
+
+
+# ─── Station ──────────────────────────────────────────────────────
+
+def test_station_to_dict():
+    st = _make_station()
+    d = st.to_dict()
+    assert d["id"] == "s1"
+    assert d["city"] == "tokyo"
+    assert d["depth_m"] == 15.0
+    assert "coord" in d
+
+
+def test_station_coord_in_dict():
+    st = _make_station()
+    d = st.to_dict()
+    assert "lat" in d["coord"]
+    assert "lon" in d["coord"]
+
+
+# ─── MetroLine ────────────────────────────────────────────────────
+
+def test_metro_line_to_dict():
+    ln = _make_line()
+    d = ln.to_dict()
+    assert d["id"] == "l1"
+    assert d["line_type"] == "subway"
+    assert d["color"] == "#FF0000"
+    assert d["station_ids"] == ["s1", "s2"]
+
+
+def test_metro_line_city():
+    ln = _make_line(city=CityName.OSAKA)
+    assert ln.city == CityName.OSAKA
+    assert ln.to_dict()["city"] == "osaka"
+
+
+# ─── GeologyLayer ─────────────────────────────────────────────────
+
+def test_geology_layer_thickness():
+    gl = _make_geology(depth_from=0.0, depth_to=10.0)
+    assert gl.thickness_m == 10.0
+
+
+def test_geology_layer_to_dict():
+    gl = _make_geology()
+    d = gl.to_dict()
+    assert d["layer_type"] == "alluvium"
+    assert d["depth_from_m"] == 0.0
+    assert d["depth_to_m"] == 10.0
+    assert d["thickness_m"] == 10.0
+    assert d["color"] == "#90EE90"
+
+
+def test_geology_layer_n_value():
+    gl = _make_geology()
+    assert gl.n_value == 5.0
+    d = gl.to_dict()
+    assert d["n_value"] == 5.0
+
+
+# ─── StationStore ─────────────────────────────────────────────────
+
+def test_station_store_add_get():
+    store = StationStore()
+    st = _make_station()
+    store.add(st)
+    assert store.get("s1") is st
+
+
+def test_station_store_list_by_city():
+    store = StationStore()
+    store.add(_make_station("s1", CityName.TOKYO))
+    store.add(_make_station("s2", CityName.OSAKA))
+    tokyo = store.list_by_city(CityName.TOKYO)
+    assert len(tokyo) == 1
+    assert tokyo[0].id == "s1"
+
+
+def test_station_store_list_by_line():
+    store = StationStore()
+    store.add(_make_station("s1", line_id="lineA"))
+    store.add(_make_station("s2", line_id="lineB"))
+    result = store.list_by_line("lineA")
+    assert len(result) == 1
+
+
+def test_station_store_len():
+    store = StationStore()
+    store.add(_make_station("s1"))
+    store.add(_make_station("s2"))
+    assert len(store) == 2
+
+
+def test_station_store_all():
+    store = StationStore()
+    store.add(_make_station("s1"))
+    store.add(_make_station("s2"))
+    assert len(store.all()) == 2
+
+
+# ─── MetroLineStore ───────────────────────────────────────────────
+
+def test_metro_line_store_add_get():
+    store = MetroLineStore()
+    ln = _make_line()
+    store.add(ln)
+    assert store.get("l1") is ln
+
+
+def test_metro_line_store_list_by_city():
+    store = MetroLineStore()
+    store.add(_make_line("l1", CityName.TOKYO))
+    store.add(_make_line("l2", CityName.OSAKA))
+    osaka = store.list_by_city(CityName.OSAKA)
+    assert len(osaka) == 1
+    assert osaka[0].id == "l2"
+
+
+def test_metro_line_store_len():
+    store = MetroLineStore()
+    store.add(_make_line("l1"))
+    store.add(_make_line("l2"))
+    assert len(store) == 2
+
+
+# ─── GeologyStore ─────────────────────────────────────────────────
+
+def test_geology_store_add_get():
+    store = GeologyStore()
+    gl = _make_geology()
+    store.add(gl)
+    assert store.get("g1") is gl
+
+
+def test_geology_store_list_by_city_sorted():
+    store = GeologyStore()
+    store.add(_make_geology("g2", depth_from=10.0, depth_to=20.0))
+    store.add(_make_geology("g1", depth_from=0.0, depth_to=10.0))
+    result = store.list_by_city(CityName.TOKYO)
+    assert result[0].id == "g1"
+    assert result[1].id == "g2"
+
+
+def test_geology_store_len():
+    store = GeologyStore()
+    store.add(_make_geology("g1"))
+    assert len(store) == 1
+
+
+# ─── CityMapStore ─────────────────────────────────────────────────
+
+def test_city_map_store_get_city_data():
+    store = CityMapStore()
+    store.lines.add(_make_line())
+    store.stations.add(_make_station())
+    store.geology.add(_make_geology())
+    data = store.get_city_data(CityName.TOKYO)
+    assert isinstance(data, CityMapData)
+    assert len(data.lines) == 1
+    assert len(data.stations) == 1
+    assert len(data.geology_layers) == 1
+
+
+def test_city_map_store_cities():
+    store = CityMapStore()
+    store.stations.add(_make_station("s1", CityName.TOKYO))
+    store.stations.add(_make_station("s2", CityName.OSAKA))
+    cities = store.cities()
+    assert "tokyo" in cities
+    assert "osaka" in cities
+
+
+# ─── CityMapData ──────────────────────────────────────────────────
+
+def test_city_map_data_to_dict():
+    data = CityMapData(
+        city=CityName.TOKYO,
+        lines=[_make_line()],
+        stations=[_make_station()],
+        geology_layers=[_make_geology()],
+    )
+    d = data.to_dict()
+    assert d["city"] == "tokyo"
+    assert len(d["lines"]) == 1
+    assert len(d["stations"]) == 1
+    assert len(d["geology_layers"]) == 1
+
+
+def test_city_map_data_to_geojson():
+    data = CityMapData(
+        city=CityName.TOKYO,
+        lines=[],
+        stations=[_make_station()],
+        geology_layers=[],
+    )
+    gj = data.to_geojson()
+    assert gj["type"] == "FeatureCollection"
+    assert len(gj["features"]) == 1
+    feat = gj["features"][0]
+    assert feat["type"] == "Feature"
+    assert feat["geometry"]["type"] == "Point"
+    assert len(feat["geometry"]["coordinates"]) == 2
+
+
+# ─── CityMapDataset (プリセットデータ) ───────────────────────────
+
+def test_dataset_build_returns_store(dataset_store):
+    assert isinstance(dataset_store, CityMapStore)
+
+
+def test_dataset_has_all_cities(dataset_store):
+    cities = dataset_store.cities()
+    for city in ["tokyo", "osaka", "nagoya", "yokohama", "fukuoka"]:
+        assert city in cities
+
+
+def test_dataset_tokyo_marunouchi_line(dataset_store):
+    line = dataset_store.lines.get("tokyo-marunouchi")
+    assert line is not None
+    assert line.name == "丸ノ内線"
+    assert line.city == CityName.TOKYO
+
+
+def test_dataset_tokyo_station_count(dataset_store):
+    stations = dataset_store.stations.list_by_city(CityName.TOKYO)
+    assert len(stations) >= 5
+
+
+def test_dataset_tokyo_geology(dataset_store):
+    layers = dataset_store.geology.list_by_city(CityName.TOKYO)
+    assert len(layers) >= 4
+    assert layers[0].depth_from_m < layers[-1].depth_from_m
+
+
+def test_dataset_osaka_station(dataset_store):
+    stations = dataset_store.stations.list_by_city(CityName.OSAKA)
+    assert len(stations) >= 3
+
+
+def test_dataset_nagoya_geology(dataset_store):
+    layers = dataset_store.geology.list_by_city(CityName.NAGOYA)
+    assert len(layers) >= 3
+
+
+def test_dataset_yokohama_line(dataset_store):
+    line = dataset_store.lines.get("yokohama-blue")
+    assert line is not None
+    assert line.name == "ブルーライン"
+
+
+def test_dataset_fukuoka_station(dataset_store):
+    stations = dataset_store.stations.list_by_city(CityName.FUKUOKA)
+    assert len(stations) >= 3
+
+
+def test_dataset_all_stations_have_depth(dataset_store):
+    for st in dataset_store.stations.all():
+        assert st.depth_m > 0
+
+
+def test_dataset_geology_bedrock_deepest(dataset_store):
+    for city in CityName:
+        layers = dataset_store.geology.list_by_city(city)
+        if layers:
+            deepest = layers[-1]
+            assert deepest.layer_type == GeologyLayerType.BEDROCK
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 71B: map_renderer.py
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# ─── CrossSectionConfig ───────────────────────────────────────────
+
+def test_config_defaults():
+    cfg = CrossSectionConfig()
+    assert cfg.width == 1200
+    assert cfg.height == 600
+    assert cfg.max_depth_m == 60.0
+
+
+def test_config_plot_width():
+    cfg = CrossSectionConfig(width=1200, margin_left=80, margin_right=40)
+    assert cfg.plot_width == 1080
+
+
+def test_config_depth_to_y_surface():
+    cfg = CrossSectionConfig()
+    y = cfg.depth_to_y(0.0)
+    assert y == pytest.approx(cfg.surface_y, abs=1)
+
+
+def test_config_depth_to_y_max():
+    cfg = CrossSectionConfig()
+    y = cfg.depth_to_y(cfg.max_depth_m)
+    assert y < cfg.height
+
+
+def test_config_depth_to_y_ordering():
+    cfg = CrossSectionConfig()
+    y10 = cfg.depth_to_y(10.0)
+    y30 = cfg.depth_to_y(30.0)
+    assert y30 > y10  # 深いほど Y が大きい
+
+
+# ─── SVGCrossSectionRenderer ──────────────────────────────────────
+
+def test_renderer_returns_svg_string():
+    renderer = SVGCrossSectionRenderer()
+    line = _make_line()
+    stations = [_make_station("s1", depth=15.0), _make_station("s2", depth=20.0)]
+    geology = [_make_geology()]
+    svg = renderer.render(line, stations, geology)
+    assert isinstance(svg, str)
+    assert "<svg" in svg
+    assert "</svg>" in svg
+
+
+def test_renderer_svg_has_xml_declaration():
+    renderer = SVGCrossSectionRenderer()
+    svg = renderer.render(_make_line(), [], [])
+    assert svg.startswith('<?xml')
+
+
+def test_renderer_svg_contains_rect():
+    renderer = SVGCrossSectionRenderer()
+    svg = renderer.render(_make_line(), [_make_station()], [_make_geology()])
+    assert "<rect" in svg
+
+
+def test_renderer_svg_contains_circle_for_station():
+    renderer = SVGCrossSectionRenderer()
+    svg = renderer.render(_make_line(), [_make_station()], [])
+    assert "<circle" in svg
+
+
+def test_renderer_svg_with_title():
+    renderer = SVGCrossSectionRenderer()
+    svg = renderer.render(_make_line(), [], [], title="テストタイトル")
+    assert "テストタイトル" in svg
+
+
+def test_renderer_custom_config():
+    cfg = CrossSectionConfig(width=800, height=400)
+    renderer = SVGCrossSectionRenderer(cfg)
+    svg = renderer.render(_make_line(), [], [])
+    assert 'width="800"' in svg
+    assert 'height="400"' in svg
+
+
+def test_renderer_multiple_stations():
+    renderer = SVGCrossSectionRenderer()
+    stations = [_make_station(f"s{i}", depth=10.0 + i * 2) for i in range(5)]
+    svg = renderer.render(_make_line(), stations, [])
+    assert svg.count("<circle") == 5
+
+
+def test_renderer_no_geology_no_error():
+    renderer = SVGCrossSectionRenderer()
+    svg = renderer.render(_make_line(), [_make_station()], [])
+    assert "<svg" in svg
+
+
+# ─── CrossSectionResult ───────────────────────────────────────────
+
+def test_cross_section_result_to_dict():
+    result = CrossSectionResult(
+        city="tokyo", line_id="l1", svg="<svg/>",
+        station_count=5, geology_count=6,
+        width=1200, height=600,
+    )
+    d = result.to_dict()
+    assert d["city"] == "tokyo"
+    assert d["line_id"] == "l1"
+    assert d["format"] == "svg"
+    assert d["station_count"] == 5
+
+
+# ─── CrossSectionEngine ───────────────────────────────────────────
+
+def test_engine_generate(dataset_store):
+    engine = CrossSectionEngine(dataset_store)
+    result = engine.generate(CityName.TOKYO, "tokyo-marunouchi")
+    assert result is not None
+    assert result.city == "tokyo"
+    assert result.station_count > 0
+    assert "<svg" in result.svg
+
+
+def test_engine_generate_invalid_city(dataset_store):
+    engine = CrossSectionEngine(dataset_store)
+    result = engine.generate(CityName.OSAKA, "tokyo-marunouchi")
+    assert result is None  # city mismatch
+
+
+def test_engine_generate_invalid_line(dataset_store):
+    engine = CrossSectionEngine(dataset_store)
+    result = engine.generate(CityName.TOKYO, "no-such-line")
+    assert result is None
+
+
+def test_engine_generate_with_title(dataset_store):
+    engine = CrossSectionEngine(dataset_store)
+    result = engine.generate(CityName.TOKYO, "tokyo-marunouchi", title="丸ノ内線断面図")
+    assert result is not None
+    assert "丸ノ内線断面図" in result.svg
+
+
+def test_engine_generate_all_lines(dataset_store):
+    engine = CrossSectionEngine(dataset_store)
+    results = engine.generate_all_lines(CityName.TOKYO)
+    assert len(results) >= 1
+    for r in results:
+        assert r.city == "tokyo"
+        assert r.svg
+
+
+def test_engine_osaka(dataset_store):
+    engine = CrossSectionEngine(dataset_store)
+    result = engine.generate(CityName.OSAKA, "osaka-midosuji")
+    assert result is not None
+    assert result.geology_count > 0
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 71C: /v1/map/* API エンドポイント
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+def test_api_map_cities(client):
+    resp = client.get("/v1/map/cities")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "cities" in data
+    assert "count" in data
+    assert len(data["cities"]) >= 5
+
+
+def test_api_map_cities_includes_all(client):
+    resp = client.get("/v1/map/cities")
+    cities = resp.json()["cities"]
+    for city in ["tokyo", "osaka", "nagoya", "yokohama", "fukuoka"]:
+        assert city in cities
+
+
+def test_api_map_city_lines_tokyo(client):
+    resp = client.get("/v1/map/tokyo/lines")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["city"] == "tokyo"
+    assert data["count"] >= 1
+    assert len(data["lines"]) >= 1
+
+
+def test_api_map_city_lines_osaka(client):
+    resp = client.get("/v1/map/osaka/lines")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["city"] == "osaka"
+    assert data["count"] >= 1
+
+
+def test_api_map_city_lines_invalid(client):
+    resp = client.get("/v1/map/invalid_city/lines")
+    assert resp.status_code == 404
+
+
+def test_api_map_city_stations_tokyo(client):
+    resp = client.get("/v1/map/tokyo/stations")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["city"] == "tokyo"
+    assert data["count"] >= 5
+
+
+def test_api_map_city_stations_fields(client):
+    resp = client.get("/v1/map/tokyo/stations")
+    stations = resp.json()["stations"]
+    st = stations[0]
+    assert "id" in st
+    assert "name" in st
+    assert "depth_m" in st
+    assert "coord" in st
+
+
+def test_api_map_city_geology_tokyo(client):
+    resp = client.get("/v1/map/tokyo/geology")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["city"] == "tokyo"
+    assert data["count"] >= 4
+
+
+def test_api_map_city_geology_layers_sorted(client):
+    resp = client.get("/v1/map/tokyo/geology")
+    layers = resp.json()["geology_layers"]
+    depths = [ln["depth_from_m"] for ln in layers]
+    assert depths == sorted(depths)
+
+
+def test_api_map_city_geology_invalid(client):
+    resp = client.get("/v1/map/badcity/geology")
+    assert resp.status_code == 404
+
+
+def test_api_map_city_geojson(client):
+    resp = client.get("/v1/map/tokyo/geojson")
+    assert resp.status_code == 200
+    gj = resp.json()
+    assert gj["type"] == "FeatureCollection"
+    assert "features" in gj
+    assert len(gj["features"]) >= 5
+
+
+def test_api_map_geojson_feature_structure(client):
+    resp = client.get("/v1/map/osaka/geojson")
+    features = resp.json()["features"]
+    feat = features[0]
+    assert feat["type"] == "Feature"
+    assert feat["geometry"]["type"] == "Point"
+    coords = feat["geometry"]["coordinates"]
+    assert len(coords) == 2
+
+
+def test_api_map_cross_section_tokyo(client):
+    resp = client.get("/v1/map/tokyo/tokyo-marunouchi/cross-section")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["city"] == "tokyo"
+    assert data["line_id"] == "tokyo-marunouchi"
+    assert "<svg" in data["svg"]
+    assert data["station_count"] > 0
+    assert data["format"] == "svg"
+
+
+def test_api_map_cross_section_osaka(client):
+    resp = client.get("/v1/map/osaka/osaka-midosuji/cross-section")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["city"] == "osaka"
+    assert data["geology_count"] > 0
+
+
+def test_api_map_cross_section_with_title(client):
+    resp = client.get("/v1/map/tokyo/tokyo-marunouchi/cross-section?title=テスト断面図")
+    assert resp.status_code == 200
+    assert "テスト断面図" in resp.json()["svg"]
+
+
+def test_api_map_cross_section_invalid_city(client):
+    resp = client.get("/v1/map/unknown/tokyo-marunouchi/cross-section")
+    assert resp.status_code == 404
+
+
+def test_api_map_cross_section_invalid_line(client):
+    resp = client.get("/v1/map/tokyo/no-such-line/cross-section")
+    assert resp.status_code == 404
+
+
+def test_api_map_city_summary_tokyo(client):
+    resp = client.get("/v1/map/tokyo/summary")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["city"] == "tokyo"
+    assert data["lines"] >= 1
+    assert data["stations"] >= 5
+    assert data["geology_layers"] >= 4
+    assert data["max_station_depth_m"] > 0
+    assert data["avg_station_depth_m"] > 0
+
+
+def test_api_map_city_summary_all_cities(client):
+    for city in ["tokyo", "osaka", "nagoya", "yokohama", "fukuoka"]:
+        resp = client.get(f"/v1/map/{city}/summary")
+        assert resp.status_code == 200, f"Failed for city: {city}"
+
+
+def test_api_map_city_summary_invalid(client):
+    resp = client.get("/v1/map/nowhere/summary")
+    assert resp.status_code == 404

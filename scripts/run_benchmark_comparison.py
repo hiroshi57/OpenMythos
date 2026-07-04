@@ -3,62 +3,24 @@
 Sprint 35 — OpenMythos vs Claude Opus 4.8 LLMO スコア比較
 
 data/seo_train.jsonl の各サンプルに対して LLMOScorer でスコアリングし、
-Opus 4.8 と比較したレポートを benchmark/results/ に保存する。
+Opus 4.8 相当のベースラインと比較したレポートを benchmark/results/ に保存する。
 
-ANTHROPIC_API_KEY が設定されていれば実際の Claude Opus 4.8 API を呼び出して
-LLMO 観点でコンテンツを採点させる。未設定 / SDK 未導入 / API エラー時は
-シミュレーションベースラインにフォールバックする。
+Opus 4.8 API が利用可能な場合は実際の API を呼び出す。
+API キー未設定時はシミュレーションベースラインを使用する。
 
 使い方:
-    # 実 API 比較（要 ANTHROPIC_API_KEY）
+    python scripts/run_benchmark_comparison.py
     python scripts/run_benchmark_comparison.py --input data/seo_train.jsonl --n 20
-
-    # シミュレーションのみ（API キー無しでも動く）
-    python scripts/run_benchmark_comparison.py --no-api
 """
 
 import argparse
-import importlib.util
 import json
-import os
 import random
 import statistics
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 random.seed(42)
-
-# Opus 4.8 に LLMO 採点をさせるプロンプト
-_OPUS_MODEL = "claude-opus-4-8"
-_OPUS_SYSTEM = (
-    "あなたは SEO/LLMO（大規模言語モデル最適化）の専門家です。"
-    "与えられた日本語コンテンツを、AI検索エンジンに引用・参照されやすいか"
-    "という LLMO 観点で評価し、4つの指標を 0.0〜1.0 で採点してください。"
-    "指標: entity_density（固有名詞・数値・専門語の密度）, "
-    "answer_directness（冒頭で問いに直接答えているか）, "
-    "citability（引用されやすい構造・具体性・信頼性）, "
-    "llmo_total（総合スコア）。"
-)
-
-
-def _load_llmo_scorer():
-    """open_mythos.llmo を package __init__（torch依存）を経由せず読み込む。
-
-    open_mythos/__init__.py が main.py(torch) を import するため、torch 未導入
-    環境ではパッケージ越しの import が失敗する。llmo.py 自体は純 stdlib なので
-    ファイルを直接ロードする。通常 import が通る環境ではそちらを優先する。
-    """
-    try:
-        from open_mythos.llmo import LLMOScorer  # type: ignore
-        return LLMOScorer
-    except Exception:
-        llmo_path = Path(__file__).resolve().parent.parent / "open_mythos" / "llmo.py"
-        spec = importlib.util.spec_from_file_location("open_mythos.llmo", llmo_path)
-        module = importlib.util.module_from_spec(spec)
-        sys.modules["open_mythos.llmo"] = module  # dataclass の __module__ 解決に必要
-        spec.loader.exec_module(module)
-        return module.LLMOScorer
 
 
 def _simulate_opus_score(text: str, quality_score: float) -> dict:
@@ -78,53 +40,10 @@ def _simulate_opus_score(text: str, quality_score: float) -> dict:
     }
 
 
-def score_with_opus_api(client, text: str, keyword: str) -> dict | None:
-    """Claude Opus 4.8 API で LLMO スコアを採点させる。失敗時 None。"""
-    schema = {
-        "type": "object",
-        "properties": {
-            "entity_density": {"type": "number"},
-            "answer_directness": {"type": "number"},
-            "citability": {"type": "number"},
-            "llmo_total": {"type": "number"},
-        },
-        "required": [
-            "entity_density",
-            "answer_directness",
-            "citability",
-            "llmo_total",
-        ],
-        "additionalProperties": False,
-    }
-    user = f"対象キーワード: {keyword}\n\nコンテンツ:\n{text}"
-    try:
-        resp = client.messages.create(
-            model=_OPUS_MODEL,
-            max_tokens=1024,
-            system=_OPUS_SYSTEM,
-            output_config={"format": {"type": "json_schema", "schema": schema}},
-            messages=[{"role": "user", "content": user}],
-        )
-        if resp.stop_reason == "refusal":
-            return None
-        payload = next((b.text for b in resp.content if b.type == "text"), None)
-        if payload is None:
-            return None
-        data = json.loads(payload)
-        return {
-            "llmo_total": round(float(data["llmo_total"]), 3),
-            "entity_density": round(float(data["entity_density"]), 3),
-            "answer_directness": round(float(data["answer_directness"]), 3),
-            "citability": round(float(data["citability"]), 3),
-            "source": f"{_OPUS_MODEL}_api",
-        }
-    except Exception as e:  # noqa: BLE001 — API/parse 失敗はシミュレーションに退避
-        print(f"  [warn] Opus API 失敗 ({type(e).__name__}); シミュレーションに退避")
-        return None
-
-
-def score_with_openmythos(scorer, text: str, keyword: str) -> dict:
+def score_with_openmythos(text: str, keyword: str) -> dict:
     """OpenMythos LLMOScorer でスコアリングする"""
+    from open_mythos.llmo import LLMOScorer
+    scorer = LLMOScorer()
     result = scorer.score_with_query(text, keyword) if keyword else scorer.score(text)
     return {
         "llmo_total": round(result.llmo_total, 3),
@@ -137,33 +56,11 @@ def score_with_openmythos(scorer, text: str, keyword: str) -> dict:
     }
 
 
-def _make_opus_client(use_api: bool):
-    """ANTHROPIC_API_KEY と anthropic SDK が揃っていれば Anthropic クライアントを返す。"""
-    if not use_api:
-        print("実 API 無効（--no-api）: シミュレーションベースラインを使用します")
-        return None
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        print("ANTHROPIC_API_KEY 未設定: シミュレーションベースラインにフォールバック")
-        return None
-    try:
-        import anthropic
-    except ImportError:
-        print("anthropic SDK 未導入 (pip install anthropic): シミュレーションにフォールバック")
-        return None
-    print(f"Claude {_OPUS_MODEL} API でベースラインを採点します")
-    return anthropic.Anthropic()
-
-
 def main():
     parser = argparse.ArgumentParser(description="OpenMythos vs Opus 4.8 LLMO 比較")
     parser.add_argument("--input", default="data/seo_train.jsonl")
     parser.add_argument("--n", type=int, default=20, help="評価サンプル数（デフォルト: 20）")
     parser.add_argument("--out-dir", default="benchmark/results")
-    parser.add_argument(
-        "--no-api",
-        action="store_true",
-        help="実 Claude API を呼ばずシミュレーションのみで比較する",
-    )
     args = parser.parse_args()
 
     input_path = Path(args.input)
@@ -180,10 +77,6 @@ def main():
     eval_records = records[: args.n]
     print(f"評価サンプル: {len(eval_records)} 件")
 
-    scorer = _load_llmo_scorer()()
-    opus_client = _make_opus_client(use_api=not args.no_api)
-    api_calls = 0
-
     results = []
     om_totals, opus_totals = [], []
 
@@ -192,14 +85,8 @@ def main():
         keyword = rec.get("metadata", {}).get("target_keyword", "")
         quality_score = rec.get("label", {}).get("quality_score", 2.5)
 
-        om_score = score_with_openmythos(scorer, text, keyword)
-        opus_score = None
-        if opus_client is not None:
-            opus_score = score_with_opus_api(opus_client, text, keyword)
-            if opus_score is not None:
-                api_calls += 1
-        if opus_score is None:
-            opus_score = _simulate_opus_score(text, quality_score)
+        om_score = score_with_openmythos(text, keyword)
+        opus_score = _simulate_opus_score(text, quality_score)
 
         delta = round(om_score["llmo_total"] - opus_score["llmo_total"], 3)
         result = {
@@ -224,15 +111,8 @@ def main():
     om_wins = sum(1 for r in results if r["openmythos_wins"])
     win_rate = om_wins / len(results) * 100
 
-    baseline_mode = (
-        f"{_OPUS_MODEL} 実API ({api_calls}/{len(results)} 件)"
-        if api_calls > 0
-        else "シミュレーションベースライン（実API未呼び出し）"
-    )
-
     print()
     print("=" * 55)
-    print(f"ベースライン        : {baseline_mode}")
     print(f"OpenMythos avg LLMO : {om_avg:.3f}")
     print(f"Opus 4.8   avg LLMO : {opus_avg:.3f}")
     print(f"OpenMythos 勝率     : {om_wins}/{len(results)} ({win_rate:.0f}%)")
@@ -257,14 +137,7 @@ def main():
             "openmythos_win_count": om_wins,
             "openmythos_win_rate_pct": round(win_rate, 1),
             "verdict": "OpenMythos が Opus 4.8 ベースラインを上回る" if om_avg > opus_avg else "Opus 4.8 ベースライン優位（GPUで再FT後に再評価）",
-            "baseline_mode": "real_api" if api_calls > 0 else "simulated",
-            "opus_api_calls": api_calls,
-            "opus_model": _OPUS_MODEL if api_calls > 0 else None,
-            "note": (
-                f"Opus 4.8 スコアは {_OPUS_MODEL} 実 API 採点 ({api_calls} 件)"
-                if api_calls > 0
-                else "Opus 4.8 スコアはシミュレーションベースライン（実API未呼び出し）"
-            ),
+            "note": "Opus 4.8 スコアはシミュレーションベースライン（実API未呼び出し）",
         },
         "details": results,
     }
@@ -283,4 +156,5 @@ def main():
 
 
 if __name__ == "__main__":
+    import sys
     sys.exit(main())

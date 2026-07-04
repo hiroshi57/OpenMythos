@@ -46,8 +46,16 @@
 | 67 | **異常検知自動予算停止 + Fusionキャッシュ + 統合ダッシュボード** | `skills/fusion_cache.py` `campaign_orchestrator.py` | 3703 | v0.70 |
 | 68 | **セキュリティインテリジェンス統合 + リスクカテゴリ分類** | `skills/security_intel.py` `skills/security.py` | 3780 | v0.71 |
 | 69 | **時系列予測統合 TimesFM + マルチモデル** | `skills/time_series.py` | 3842 | v0.72 |
+| 70 | **予測アラート統合 + レポートWebhook + NLQエージェント** | `skills/forecast_alert.py` `skills/report_dispatcher.py` `skills/nlq_agent.py` | 3937 | v0.73 |
+| 71 | **主要都市地図ビジュアライザ** | `skills/city_map.py` `skills/map_renderer.py` | 4014 | v0.74 |
+| 72 | **地図拡張 比較/編集/レポート** | `skills/map_comparator.py` `skills/map_editor.py` `skills/map_report.py` | 4085 | v0.75 |
+| 73 | **地図アニメーション/経路探索/インポート** | `skills/map_animator.py` `skills/route_finder.py` `skills/map_importer.py` | 4161 | v0.76 |
+| 74 | **混雑シミュレーション/アクセシビリティ/地下水位** | `skills/crowd_simulator.py` `skills/accessibility.py` `skills/groundwater.py` | 4238 | v0.77 |
+| 75 | **環境センサー/乗り換え最適化/インフラダッシュボード** | `skills/env_sensor.py` `skills/transfer_optimizer.py` `skills/infra_dashboard.py` | 4319 | v0.78 |
+| 76 | **交通量分析/エネルギーモニタリング/群衆予測** | `skills/traffic_analyzer.py` `skills/energy_monitor.py` `skills/crowd_predictor.py` | 4381 | v0.79 |
+| 77 | **災害アラート/水質モニタリング/騒音マッピング** | `skills/disaster_alert.py` `skills/water_quality.py` `skills/noise_mapper.py` | 4446 | v0.80 |
 
-> **累計テスト数**: 3842 PASS (Sprint 69: +62) — **Sprint 70 候補検討中**
+> **累計テスト数**: 4446 PASS (Sprint 77: +65) — **Sprint 78 候補検討中**
 
 ---
 
@@ -355,21 +363,62 @@
 
 ---
 
-## Sprint 71 — 主要都市地図ビジュアライザ（完了 / v0.74.0）
+## Sprint 71 詳細 (最新 / 完了)
 
-> 参照: [tokyo-danmenzu.pages.dev](https://tokyo-danmenzu.pages.dev/?view=3d&aux=1&lbl=1&lang=ja#12/35.67/139.75/0/50)（東京地下断面図・3D地質断面ビューア / @chizutodesign）
-> 政令指定都市＋首都圏主要市（13都市）の地下鉄路線×地質層の地下断面を GeoJSON + SVG で可視化。A+B+C フル実装。
+### Sprint 71: 主要都市地図ビジュアライザ — v0.74.0
+> 参照: [tokyo-danmenzu.pages.dev](https://tokyo-danmenzu.pages.dev/?view=3d&aux=1&lbl=1&lang=ja#12/35.67/139.75/0/50)
+> 東京・大阪・名古屋・横浜・福岡の地下鉄路線 GeoJSON + 地質層データ + SVG 断面図レンダラー
 
-| task-id | テーマ | コアモジュール | 状態 |
-|---------|--------|--------------|------|
-| 71.A | 主要都市メトロ断面図データ（13都市・GTFS連携+フォールバック+地質モデル） | `open_mythos/skills/city_map.py` | cc:完了 |
-| 71.B | 断面図 SVG レンダラー（地質層帯/駅/路線/凡例・PNGはcairosvg任意） | `open_mythos/skills/map_renderer.py` | cc:完了 |
-| 71.C | 都市地図 API（`/v1/map/cities` `/{city}/lines` `/{city}/{line}/cross-section` `/front-view` `POST /cross-section` `/map` UI） | `serve/map_router.py` + `serve/api.py` | cc:完了 |
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 71A | `skills/city_map.py` — CityMapDataset: 5都市メトロデータ + 地質層プリセット + GeoJSON | cc:完了 |
+| 71B | `skills/map_renderer.py` — SVGCrossSectionRenderer + CrossSectionEngine | cc:完了 |
+| 71C | `serve/api.py` — `/v1/map/*` 7エンドポイント (cities/lines/stations/geology/geojson/cross-section/summary) | cc:完了 |
+| 71T | `tests/test_sprint71.py` — 77 PASS (累計 4014) | cc:完了 |
 
-対象13都市: 東京/横浜/大阪/名古屋/札幌/福岡/神戸/川崎/京都/さいたま/広島/仙台/千葉。
-GTFS には地下深度・地質情報が無いため `GeologyModel` がルールベース推定（絶対値は非保証、順序整合のみ）。
-オフライン/テスト環境では `SampleCityDataSource` へ自動フォールバック（`generated_by="sample(fallback)"`）。
-テスト: `tests/test_sprint71.py` 67 PASS。
+## Sprint 72 詳細 (最新 / 完了)
+
+### Sprint 72: 地図拡張 比較/編集/レポート — v0.75.0
+
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 72A | `skills/map_comparator.py` — MapComparator: 2都市断面比較SVG + DepthStats + geology diff | cc:完了 |
+| 72B | `skills/map_editor.py` — MapEditor: Line/Station/Geology CRUD + 変更履歴 | cc:完了 |
+| 72C | `skills/map_report.py` — MapReportEngine: 単都市/複数都市 Markdown レポート | cc:完了 |
+| 72D | `serve/api.py` — `/v1/map/compare/*` `/v1/map-editor/*` `/v1/map/*/report/md` `/v1/map/report/compare` | cc:完了 |
+| 72T | `tests/test_sprint72.py` — 71 PASS (累計 4085) | cc:完了 |
+
+## Sprint 73 詳細 (最新 / 完了)
+
+### Sprint 73: 地図アニメーション/経路探索/インポート — v0.76.0
+
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 73A | `skills/map_animator.py` — SMIL SVG アニメ (1960/1980/2000/2020 地質変化) | cc:完了 |
+| 73B | `skills/route_finder.py` — Dijkstra 最短経路 + 乗換コスト | cc:完了 |
+| 73C | `skills/map_importer.py` — CSV/GeoJSON 一括インポート | cc:完了 |
+| 73D | `serve/api.py` — 9エンドポイント追加 | cc:完了 |
+| 73T | `tests/test_sprint73.py` — 76 PASS (累計 4161) | cc:完了 |
+
+## Sprint 74 詳細 (最新 / 完了)
+
+### Sprint 74: 混雑シミュレーション/アクセシビリティ/地下水位 — v0.77.0
+
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 74A | `skills/crowd_simulator.py` — 時間帯別混雑 + CrowdDataset 16駅 | cc:完了 |
+| 74B | `skills/accessibility.py` — 8機能100点スコアリング + AccessibilityDataset | cc:完了 |
+| 74C | `skills/groundwater.py` — 4因子浸水リスク評価 + GroundwaterDataset | cc:完了 |
+| 74D | `serve/api.py` — 11エンドポイント追加 | cc:完了 |
+| 74T | `tests/test_sprint74.py` — 77 PASS (累計 4238) | cc:完了 |
+
+## Sprint 75 候補テーマ
+
+| Option | テーマ | コアモジュール | 理由 |
+|--------|--------|--------------|------|
+| **A** | **駅環境センサー統合** | `skills/env_sensor.py` | 気温・湿度・CO2・騒音レベルの駅内環境モニタリング |
+| **B** | **乗り換え最適化** | `skills/transfer_optimizer.py` | 混雑・アクセシビリティ・所要時間を統合した最適乗換提案 |
+| **C** | **都市インフラダッシュボード** | `skills/infra_dashboard.py` | 混雑・アクセシビリティ・地下水位を統合した都市インフラ可視化 |
 
 ---
 

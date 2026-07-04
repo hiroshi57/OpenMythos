@@ -22,28 +22,6 @@ from open_mythos.skills.instructor_extract import (
     ExtractionResult,
     InstructorExtractor,
 )
-# Sprint 71: 主要都市地図ビジュアライザ
-from open_mythos.skills.city_map import (
-    GeoPoint,
-    Station,
-    GeologyLayer,
-    Line,
-    City,
-    CrossSection,
-    BaseCityDataSource,
-    SampleCityDataSource,
-    GTFSCityDataSource,
-    GeologyModel,
-    CrossSectionBuilder,
-    CityMapStore,
-    CityMapFactory,
-)
-from open_mythos.skills.map_renderer import (
-    SvgStyle,
-    CrossSectionSvgRenderer,
-    FrontViewSvgRenderer,
-    MapRenderer,
-)
 
 __all__ = [
     # vector-db
@@ -59,22 +37,4 @@ __all__ = [
     "ExtractionSchema",
     "ExtractionResult",
     "InstructorExtractor",
-    # city-map (Sprint 71)
-    "GeoPoint",
-    "Station",
-    "GeologyLayer",
-    "Line",
-    "City",
-    "CrossSection",
-    "BaseCityDataSource",
-    "SampleCityDataSource",
-    "GTFSCityDataSource",
-    "GeologyModel",
-    "CrossSectionBuilder",
-    "CityMapStore",
-    "CityMapFactory",
-    "SvgStyle",
-    "CrossSectionSvgRenderer",
-    "FrontViewSvgRenderer",
-    "MapRenderer",
 ]
