@@ -1,6 +1,6 @@
 # OpenMythos — Sprint Plans
-> 最終更新: 2026-06-16 (Sprint 60 完了) | ブランチ規約: `feature/<sprint>-<topic>`
-> Sprint 60 完了: 広告キャンペーン管理 (CEP→コピー生成→評価フロー) → v0.63.0
+> 最終更新: 2026-07-04 (Fable 5 品質改革完了) | ブランチ規約: `feature/<sprint>-<topic>`
+> Sprint 77 完了: 災害アラート/水質/騒音 → v0.80.0 | 全 Sprint 品質改革: ruff 0 / CI 全件 / api.py ルーター分割
 > アーカイブ: Sprint 1〜9   → `docs/archive/sprint-plans-1-9.md`
 >            Sprint 10〜19  → `docs/archive/sprint-plans-10-19.md`
 >            Sprint 20〜25  → `docs/archive/sprint-plans-20-25.md`
@@ -56,6 +56,26 @@
 | 77 | **災害アラート/水質モニタリング/騒音マッピング** | `skills/disaster_alert.py` `skills/water_quality.py` `skills/noise_mapper.py` | 4446 | v0.80 |
 
 > **累計テスト数**: 4446 PASS (Sprint 77: +65) — **Sprint 78 候補検討中**
+
+---
+
+## 品質改革 (2026-07-04, Fable 5 全 Sprint レビュー)
+
+全 77 Sprint を対象に品質診断 → 修正を実施。機能追加なし・挙動保存。
+
+| 領域 | Before | After |
+|------|--------|-------|
+| ruff | 103 エラー | **0** |
+| CI | テスト 2 ファイルのみ実行 | **全 88 ファイル** + serve/ lint・coverage |
+| バージョン | 4 箇所不一致 (0.37/0.38/0.41/0.57) | `open_mythos.__version__` = **0.80.0** 単一ソース |
+| serve/api.py | 9264 行・296 ルート単一ファイル | **ドメイン別 5 ルーター分割** (ルート数 305 保存) |
+| Sprint 72〜77 | 未コミット・欠陥 6 件 | 修正済みコミット (ImportRowError/PredictedCrowdLevel ほか) |
+| テスト | 5 FAIL + 13 ERROR | 修正済み |
+
+- `serve/state.py` 新設: AppState シングルトン + DEFAULT_LOOPS/MAX_LOOPS/TASK_LOOPS 一元化
+- `serve/ab_router.py`/`sla_router.py`/`monitor.py` はスタンドアロン構成として維持
+  (monitor は docker-compose 独立サービス PORT 8002)
+- 詳細: `docs/dev/Next.tasks.md`・`CHANGELOG.md` [Unreleased]
 
 ---
 
