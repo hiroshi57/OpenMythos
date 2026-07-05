@@ -397,7 +397,11 @@ class TestExternalSignalAgent:
 
 class TestSignalAPIEndpoint:
     def _src(self) -> str:
-        return (_ROOT / "serve" / "api.py").read_text(encoding="utf-8")
+        src = (_ROOT / "serve" / "api.py").read_text(encoding="utf-8")
+        # ルーター分割後も API 表面全体を対象にする
+        for _p in sorted((_ROOT / "serve" / "routers").glob("*.py")):
+            src += _p.read_text(encoding="utf-8")
+        return src
 
     def test_signal_detect_route_exists(self):
         assert '"/v1/signal/detect"' in self._src()
@@ -409,13 +413,13 @@ class TestSignalAPIEndpoint:
         src = self._src()
         idx = src.index('"/v1/signal/detect"')
         snippet = src[max(0, idx - 60):idx]
-        assert "@app.post" in snippet
+        assert "@app.post" in snippet or "@router.post" in snippet
 
     def test_signal_counter_post_method(self):
         src = self._src()
         idx = src.index('"/v1/signal/counter"')
         snippet = src[max(0, idx - 60):idx]
-        assert "@app.post" in snippet
+        assert "@app.post" in snippet or "@router.post" in snippet
 
     def test_signal_tag_detect(self):
         src = self._src()

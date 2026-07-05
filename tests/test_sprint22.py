@@ -434,7 +434,11 @@ class TestProfilerAgent:
 
 class TestProfilerAPIEndpoint:
     def _src(self) -> str:
-        return (_ROOT / "serve" / "api.py").read_text(encoding="utf-8")
+        src = (_ROOT / "serve" / "api.py").read_text(encoding="utf-8")
+        # ルーター分割後も API 表面全体を対象にする
+        for _p in sorted((_ROOT / "serve" / "routers").glob("*.py")):
+            src += _p.read_text(encoding="utf-8")
+        return src
 
     def test_profile_run_route_exists(self):
         assert '"/v1/profile/run"' in self._src()
@@ -449,13 +453,13 @@ class TestProfilerAPIEndpoint:
         src = self._src()
         idx = src.index('"/v1/profile/run"')
         snippet = src[max(0, idx - 60):idx]
-        assert "@app.post" in snippet
+        assert "@app.post" in snippet or "@router.post" in snippet
 
     def test_profile_fix_post_method(self):
         src = self._src()
         idx = src.index('"/v1/profile/fix"')
         snippet = src[max(0, idx - 60):idx]
-        assert "@app.post" in snippet
+        assert "@app.post" in snippet or "@router.post" in snippet
 
     def test_profiler_tag_run(self):
         src = self._src()

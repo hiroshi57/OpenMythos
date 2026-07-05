@@ -537,7 +537,11 @@ class TestKPIImproveLoop:
 
 class TestKPIAPIEndpoint:
     def _src(self) -> str:
-        return (_ROOT / "serve" / "api.py").read_text(encoding="utf-8")
+        src = (_ROOT / "serve" / "api.py").read_text(encoding="utf-8")
+        # ルーター分割後も API 表面全体を対象にする
+        for _p in sorted((_ROOT / "serve" / "routers").glob("*.py")):
+            src += _p.read_text(encoding="utf-8")
+        return src
 
     def test_kpi_measure_route_exists(self):
         assert '"/v1/kpi/measure"' in self._src()
@@ -549,13 +553,13 @@ class TestKPIAPIEndpoint:
         src = self._src()
         idx = src.index('"/v1/kpi/measure"')
         snippet = src[max(0, idx - 60):idx]
-        assert "@app.post" in snippet
+        assert "@app.post" in snippet or "@router.post" in snippet
 
     def test_kpi_improve_post_method(self):
         src = self._src()
         idx = src.index('"/v1/kpi/improve"')
         snippet = src[max(0, idx - 60):idx]
-        assert "@app.post" in snippet
+        assert "@app.post" in snippet or "@router.post" in snippet
 
     def test_kpi_tag_in_measure(self):
         src = self._src()

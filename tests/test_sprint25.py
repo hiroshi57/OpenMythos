@@ -360,7 +360,11 @@ class TestSelfDistillLoop:
 
 class TestDistillAPIEndpoint:
     def _src(self) -> str:
-        return (_ROOT / "serve" / "api.py").read_text(encoding="utf-8")
+        src = (_ROOT / "serve" / "api.py").read_text(encoding="utf-8")
+        # ルーター分割後も API 表面全体を対象にする
+        for _p in sorted((_ROOT / "serve" / "routers").glob("*.py")):
+            src += _p.read_text(encoding="utf-8")
+        return src
 
     def test_distill_run_route_exists(self):
         assert '"/v1/distill/run"' in self._src()
@@ -372,7 +376,7 @@ class TestDistillAPIEndpoint:
         src = self._src()
         idx = src.index('"/v1/distill/run"')
         snippet = src[max(0, idx - 60):idx]
-        assert "@app.post" in snippet
+        assert "@app.post" in snippet or "@router.post" in snippet
 
     def test_distill_tag(self):
         src = self._src()
