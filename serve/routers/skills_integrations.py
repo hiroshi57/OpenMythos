@@ -318,6 +318,8 @@ def hf_model_info(model_id: str):
     """指定 model_id のモデル情報を返す。"""
     client = _HFHubClient()
     info = client.get_model_info(model_id)
+    if info is None:
+        raise HTTPException(status_code=404, detail=f"model not found: {model_id}")
     return {
         "model_id": info.model_id,
         "task":     info.task,
@@ -1503,7 +1505,7 @@ def domain_lookup(req: _DomainLookupRequest):
     """ドメインの IP / NS / MX 情報を収集する。"""
     di = _DomainIntelligence()
     info = di.lookup(req.domain)
-    result = {
+    result: dict = {
         "domain": info.domain,
         "ip": info.ip,
         "ns_records": info.ns_records,

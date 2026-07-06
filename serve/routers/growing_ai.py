@@ -871,6 +871,7 @@ class MemoryRetrieveRequest(BaseModel):
     dependencies=[Depends(verify_api_key)],
 )
 def memory_store(req: MemoryStoreRequest):
+    entry: Optional[object]
     if req.category == "knowledge" and req.key:
         entry = _memory_agent.store_knowledge(req.key, req.text, tags=req.tags, score=req.score)
     else:

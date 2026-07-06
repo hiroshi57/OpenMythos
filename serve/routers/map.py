@@ -239,15 +239,15 @@ class _AddLineReq(BaseModel):
     line_type: str = "subway"
     color: str = "#999999"
     total_length_km: float = 0.0
-    opened_year: int = None
+    opened_year: Optional[int] = None
 
 
 class _UpdateLineReq(BaseModel):
-    name: str = None
-    name_en: str = None
-    color: str = None
-    total_length_km: float = None
-    opened_year: int = None
+    name: Optional[str] = None
+    name_en: Optional[str] = None
+    color: Optional[str] = None
+    total_length_km: Optional[float] = None
+    opened_year: Optional[int] = None
 
 
 class _AddStationReq(BaseModel):
@@ -260,15 +260,15 @@ class _AddStationReq(BaseModel):
     lon: float
     depth_m: float
     platform_count: int = 2
-    opened_year: int = None
+    opened_year: Optional[int] = None
 
 
 class _UpdateStationReq(BaseModel):
-    name: str = None
-    name_en: str = None
-    depth_m: float = None
-    platform_count: int = None
-    opened_year: int = None
+    name: Optional[str] = None
+    name_en: Optional[str] = None
+    depth_m: Optional[float] = None
+    platform_count: Optional[int] = None
+    opened_year: Optional[int] = None
 
 
 class _AddGeologyReq(BaseModel):
@@ -279,15 +279,15 @@ class _AddGeologyReq(BaseModel):
     depth_from_m: float
     depth_to_m: float
     color: str = "#CCCCCC"
-    n_value: float = None
+    n_value: Optional[float] = None
 
 
 class _UpdateGeologyReq(BaseModel):
-    name: str = None
-    depth_from_m: float = None
-    depth_to_m: float = None
-    color: str = None
-    n_value: float = None
+    name: Optional[str] = None
+    depth_from_m: Optional[float] = None
+    depth_to_m: Optional[float] = None
+    color: Optional[str] = None
+    n_value: Optional[float] = None
 
 
 @router.post(

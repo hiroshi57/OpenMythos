@@ -547,6 +547,7 @@ def run_benchmark(req: _BenchmarkRequest):
         for s in req.samples
     ]
 
+    evaluator: _AdEvaluator | _TextEvaluator
     if req.evaluator_type == "ad":
         evaluator = _AdEvaluator(brand_keywords=req.brand_keywords)
     else:

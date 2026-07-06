@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Literal, Optional
 
 if TYPE_CHECKING:
     import torch
-    from transformers import AutoTokenizer
+    from transformers import PreTrainedTokenizerBase
 
     from open_mythos.agents import MythosAgent, OpenMythosLLM
     from open_mythos.main import OpenMythos
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 class AppState:
     model: "OpenMythos"
-    tokenizer: "AutoTokenizer"
+    tokenizer: "PreTrainedTokenizerBase"
     device: "torch.device"
     n_params: int
     llm: "OpenMythosLLM"

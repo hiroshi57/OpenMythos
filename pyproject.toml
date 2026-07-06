@@ -82,6 +82,13 @@ markers = [
     "gpu: GPU が必要なテスト",
 ]
 
+[tool.mypy]
+# 段階導入: まずルーター分割で新設したモジュールから適用する。
+# 対象拡大は serve/api.py → open_mythos/skills/ → コアの順を想定。
+files = ["serve/state.py", "serve/routers"]
+ignore_missing_imports = true
+follow_imports = "silent"
+
 [tool.ruff]
 line-length = 88
 exclude = ["examples/*.ipynb"]
