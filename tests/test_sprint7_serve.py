@@ -58,11 +58,15 @@ def mock_transformers():
 
 @pytest.fixture(scope="module")
 def api_constants():
-    """serve/api.py から TASK_LOOPS と _TASK_SYSTEM_PROMPTS を取得。"""
+    """serve/api.py + serve/state.py から TASK_LOOPS と _TASK_SYSTEM_PROMPTS を取得。
+
+    共有定数はルーター分割後 serve/state.py に移動したため両方を走査する。
+    """
     import ast
     import pathlib
 
     src = pathlib.Path("serve/api.py").read_text(encoding="utf-8")
+    src += "\n" + pathlib.Path("serve/state.py").read_text(encoding="utf-8")
     tree = ast.parse(src)
 
     TARGET_NAMES = {"TASK_LOOPS", "_TASK_SYSTEM_PROMPTS", "DEFAULT_LOOPS"}

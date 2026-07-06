@@ -40,6 +40,10 @@ MAX_LOOPS = int(os.getenv("MAX_LOOPS", "16"))
 
 # タスク種別ごとの推奨ループ数
 TASK_LOOPS: dict[str, int] = {
+    "ad_performance": 2,  # リアルタイム入稿審査: 速度優先
+    "content_quality": 6,  # SEO品質スコア: 精度と速度のバランス
+    "persona_segment": 4,  # ペルソナ分類: 中程度
+    "market_research": 4,  # 市場調査要約: 中程度
     "identity_verify": 4,  # 本人確認: リアルタイム
     "fraud_detect": 12,  # 詐欺検知: 精度最優先
     "seo_content": 6,  # SEO記事生成: 品質重視
