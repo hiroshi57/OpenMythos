@@ -46,13 +46,16 @@ def get_openapi_tag_names() -> list[str]:
 # ---------------------------------------------------------------------------
 
 class TestApiVersion:
-    """FastAPI app の version が最新に更新されている"""
+    """FastAPI app の version が open_mythos.__version__ に一元化されている"""
 
-    def test_version_is_0_38_0(self):
-        assert 'version="0.38.0"' in api_src()
+    def test_version_single_source(self):
+        # ハードコードではなくパッケージバージョンを参照する
+        assert "version=_OM_VERSION" in api_src()
+        assert "from open_mythos import __version__ as _OM_VERSION" in api_src()
 
     def test_old_version_removed(self):
         assert 'version="0.22.0"' not in api_src()
+        assert 'version="0.38.0"' not in api_src()
 
 
 # ---------------------------------------------------------------------------
