@@ -316,6 +316,7 @@ class TestThroughput:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 class TestLMEvalWrapper:
 
     @pytest.fixture

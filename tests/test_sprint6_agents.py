@@ -37,6 +37,7 @@ def _agent(**kwargs) -> MythosAgent:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 class TestOpenMythosLLM:
     def test_from_variant_returns_instance(self):
         llm = _llm()
@@ -124,6 +125,7 @@ class TestOpenMythosLLM:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 class TestMythosAgent:
     def test_from_variant_returns_instance(self):
         agent = _agent()

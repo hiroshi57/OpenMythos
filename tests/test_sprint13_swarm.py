@@ -8,6 +8,8 @@ Sprint 13.2.1 テスト — SwarmOrchestrator
 from __future__ import annotations
 
 import pytest
+
+pytestmark = pytest.mark.slow  # 全テストが実生成を伴い遅い
 import torch
 
 from open_mythos.main import OpenMythos

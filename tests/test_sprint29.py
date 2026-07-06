@@ -12,6 +12,8 @@ Sprint 29 テスト — 自律タスク計画 TaskPlanner (P10)
 
 from __future__ import annotations
 
+import pytest
+
 import pathlib
 
 _ROOT = pathlib.Path(__file__).parent.parent
@@ -310,6 +312,7 @@ class TestTaskPlanner:
 # ===========================================================================
 
 
+@pytest.mark.slow
 class TestIntegration:
     def test_swarm_orchestrator_as_executor(self):
         """SwarmOrchestrator (Sprint 13) をタスク実行に使用。"""

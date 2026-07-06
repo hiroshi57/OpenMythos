@@ -277,6 +277,7 @@ class TestCLI:
         )
         assert result.returncode == 0
 
+    @pytest.mark.slow
     def test_generate_stream_no_crash(self):
         import subprocess
 

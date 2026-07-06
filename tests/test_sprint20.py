@@ -11,6 +11,8 @@ Sprint 20 テスト — 討議型集合知 DebateOrchestrator
 
 from __future__ import annotations
 
+import pytest
+
 
 def _tiny_model():
     from open_mythos.main import OpenMythos, MythosConfig
@@ -244,6 +246,7 @@ class TestDebateResult:
 # ===========================================================================
 
 
+@pytest.mark.slow
 class TestDebateOrchestrator:
     def test_run_returns_debate_result(self):
         from open_mythos.debate import DebateOrchestrator, DebateConfig, DebateResult

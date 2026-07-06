@@ -290,6 +290,7 @@ class TestGenerateEndpoint:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 class TestAgentEndpoint:
 
     def test_agent_creates_session(self, client):
