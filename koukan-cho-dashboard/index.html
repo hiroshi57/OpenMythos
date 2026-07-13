@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>官公庁 入札・落札データ分析 × DI受注戦略ダッシュボード</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#f5f7fb; --panel:#ffffff; --ink:#1e2430; --sub:#6b7686; --line:#e6eaf1;
+  --brand:#2b5ce6; --brand2:#00b3a4; --accent:#f5a623;
+  --mkt:#e6533c; --web:#2b5ce6; --it:#5a6acf; --res:#00a3b4; --print:#9b8cff;
+  --hr:#c77dff; --energy:#f5a623; --const:#8d99a6; --maint:#7f8fa6; --env:#4caf87;
+  --goods:#b0872c; --other:#aab3c0;
+  --hi:#1a9d63; --mid:#f0a500; --lo:#e07b39; --out:#b9c0cc;
+  --radius:14px; --shadow:0 1px 3px rgba(20,30,50,.06),0 8px 24px rgba(20,30,50,.05);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:"Hiragino Sans","Yu Gothic UI","Segoe UI",system-ui,sans-serif;font-size:14px;line-height:1.55}
+a{color:var(--brand);text-decoration:none}
+.layout{display:flex;min-height:100vh}
+/* ---- sidebar ---- */
+.sidebar{width:230px;background:#fff;border-right:1px solid var(--line);position:sticky;top:0;height:100vh;
+  padding:22px 16px;display:flex;flex-direction:column;gap:6px;flex-shrink:0}
+.sidebar h1{font-size:15px;margin:0 0 2px;letter-spacing:.02em}
+.sidebar .tag{font-size:11px;color:var(--sub);margin-bottom:18px;line-height:1.4}
+.nav a{display:block;padding:9px 12px;border-radius:9px;color:var(--sub);font-size:13px;font-weight:600}
+.nav a:hover{background:#f1f4fa;color:var(--ink)}
+.nav a.active{background:#eef3ff;color:var(--brand)}
+.side-foot{margin-top:auto;font-size:10.5px;color:var(--sub);border-top:1px solid var(--line);padding-top:12px}
+/* ---- main ---- */
+.main{flex:1;min-width:0;padding:26px 30px 60px;max-width:1280px}
+.pagehead{margin-bottom:20px}
+.pagehead h2{font-size:22px;margin:0 0 6px}
+.pagehead p{margin:0;color:var(--sub);font-size:12.5px;max-width:940px}
+section{margin-bottom:34px;scroll-margin-top:14px}
+.sec-title{display:flex;align-items:baseline;gap:10px;margin:0 0 14px}
+.sec-title h3{font-size:16px;margin:0}
+.sec-title span{font-size:11.5px;color:var(--sub)}
+/* ---- kpi ---- */
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;box-shadow:var(--shadow)}
+.kpi .lbl{font-size:11.5px;color:var(--sub);font-weight:600}
+.kpi .val{font-size:26px;font-weight:800;margin-top:4px;letter-spacing:-.01em}
+.kpi .val small{font-size:13px;font-weight:700;color:var(--sub);margin-left:3px}
+.kpi .sub{font-size:11px;color:var(--sub);margin-top:3px}
+.kpi.brand{background:linear-gradient(135deg,#2b5ce6,#4d7cff);color:#fff;border:none}
+.kpi.brand .lbl,.kpi.brand .sub{color:#dbe6ff}
+.kpi.teal{background:linear-gradient(135deg,#00b3a4,#12cdb0);color:#fff;border:none}
+.kpi.teal .lbl,.kpi.teal .sub{color:#d6fff8}
+/* ---- panels ---- */
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;box-shadow:var(--shadow)}
+.cols{display:grid;gap:16px}
+.c2{grid-template-columns:1fr 1fr}
+.c3{grid-template-columns:1.4fr 1fr 1fr}
+.c-2-1{grid-template-columns:1.6fr 1fr}
+.chart-box{position:relative;height:260px}
+.chart-box.sm{height:210px}
+.panel h4{margin:0 0 4px;font-size:14px}
+.panel .hint{font-size:11px;color:var(--sub);margin:0 0 12px}
+/* ---- insight ---- */
+.insight{background:linear-gradient(180deg,#fbfcff,#f4f7ff);border:1px solid #dfe7ff}
+.insight ul{margin:0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:10px}
+.insight li{display:flex;gap:10px;font-size:13px;line-height:1.6}
+.insight li::before{content:"▶";color:var(--brand);font-size:10px;margin-top:5px}
+.insight li.warn::before{content:"⚠";color:var(--accent)}
+/* ---- table ---- */
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th,td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle}
+th{font-size:11px;color:var(--sub);font-weight:700;cursor:pointer;user-select:none;white-space:nowrap;position:sticky;top:0;background:#fff;z-index:1}
+th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
+tbody tr:hover{background:#f7f9fe}
+.tbl-wrap{overflow:auto;max-height:560px;border:1px solid var(--line);border-radius:12px}
+.mini{font-size:11px;color:var(--sub)}
+/* ---- chips / bars ---- */
+.chip{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10.5px;font-weight:700;color:#fff;white-space:nowrap}
+.lab-高{background:var(--hi)} .lab-中{background:var(--mid)} .lab-低{background:var(--lo)} .lab-圏外{background:var(--out)}
+.ind-chip{display:inline-block;padding:1px 7px;border-radius:6px;font-size:10.5px;font-weight:700;color:#fff}
+.bar-cell{position:relative;min-width:120px}
+.bar-cell .bar{position:absolute;left:0;top:50%;transform:translateY(-50%);height:16px;border-radius:4px;opacity:.16}
+.bar-cell .txt{position:relative;z-index:1;font-variant-numeric:tabular-nums}
+.scorebar{height:7px;border-radius:4px;background:#eef1f6;overflow:hidden;min-width:56px;display:inline-block;width:70px;vertical-align:middle}
+.scorebar>i{display:block;height:100%;border-radius:4px}
+/* ---- filters ---- */
+.filters{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px}
+.filters input,.filters select{padding:8px 11px;border:1px solid var(--line);border-radius:9px;font-size:12.5px;background:#fff;color:var(--ink)}
+.filters input[type=text]{min-width:230px}
+.filters label{font-size:11.5px;color:var(--sub);font-weight:600}
+.pill{padding:5px 12px;border:1px solid var(--line);border-radius:20px;font-size:11.5px;cursor:pointer;background:#fff;font-weight:600;color:var(--sub)}
+.pill.on{background:var(--brand);color:#fff;border-color:var(--brand)}
+.note{font-size:11px;color:var(--sub);background:#fbfbfd;border:1px dashed var(--line);border-radius:10px;padding:10px 14px}
+.legend{display:flex;flex-wrap:wrap;gap:10px;font-size:11px;color:var(--sub);margin-top:8px}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
+/* ---- opportunity stacked bar ---- */
+.oppstack{display:flex;height:10px;width:110px;border-radius:5px;overflow:hidden;background:#eef1f6}
+.oppstack i{display:block;height:100%}
+.opp-card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.opp-card b{display:block;margin-bottom:3px}
+/* ---- details expander ---- */
+details.rowdetail{font-size:12px}
+details.rowdetail summary{cursor:pointer;color:var(--brand);font-weight:700;font-size:11.5px;list-style:none;user-select:none}
+details.rowdetail summary::before{content:"▸ "}
+details.rowdetail[open] summary::before{content:"▾ "}
+details.rowdetail .dbox{margin-top:8px;background:#f8fafd;border:1px solid var(--line);border-radius:10px;padding:10px 14px;display:flex;flex-direction:column;gap:8px}
+details.rowdetail .dbox h5{margin:0;font-size:11.5px;color:var(--ink)}
+details.rowdetail .dbox ul{margin:0;padding-left:16px;display:flex;flex-direction:column;gap:3px;color:#4b5563}
+details.rowdetail .dbox .sim{font-size:11px;color:var(--sub)}
+@media(max-width:1080px){.kpi-grid{grid-template-columns:repeat(2,1fr)}.c2,.c3,.c-2-1{grid-template-columns:1fr}.sidebar{display:none}}
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <h1>官公庁調達 × DI</h1>
+    <div class="tag">政府調達・入札落札データ<br>受注戦略ダッシュボード</div>
+    <nav class="nav" id="nav">
+      <a href="#kpi">サマリKPI</a>
+      <a href="#insight">総評・示唆</a>
+      <a href="#di">DI適性分析</a>
+      <a href="#industry">業界業種分析</a>
+      <a href="#size">金額規模・省庁</a>
+      <a href="#company">落札企業ランキング</a>
+      <a href="#complogic">DI競合度ロジック</a>
+      <a href="#targets">DI狙い目案件</a>
+      <a href="#forecast">予測・今後のネタ</a>
+      <a href="#explorer">全案件エクスプローラ</a>
+    </nav>
+    <div class="side-foot" id="sidefoot"></div>
+  </aside>
+
+  <main class="main">
+    <div class="pagehead">
+      <h2>官公庁 入札・落札データ分析 × DI受注戦略</h2>
+      <p id="head-note"></p>
+    </div>
+
+    <section id="kpi">
+      <div class="sec-title"><h3>サマリKPI</h3><span>分析対象サンプルの全体像とDI(デジタルアイデンティティ)から見た市場規模</span></div>
+      <div class="kpi-grid" id="kpiGrid"></div>
+    </section>
+
+    <section id="insight">
+      <div class="sec-title"><h3>総評・示唆</h3><span>この画面だけで営業判断できるよう要点を言語化</span></div>
+      <div class="panel insight"><ul id="insightList"></ul></div>
+    </section>
+
+    <section id="di">
+      <div class="sec-title"><h3>DI適性分析</h3><span>親和性(受注適性)と落札可能性(推定勝率)の分布</span></div>
+      <div class="cols c3">
+        <div class="panel">
+          <h4>DI親和性の分布</h4><p class="hint">案件がDIの事業領域にどれだけ合致するか(0-100)</p>
+          <div class="chart-box sm"><canvas id="affChart"></canvas></div>
+        </div>
+        <div class="panel">
+          <h4>推定落札可能性の分布</h4><p class="hint">DIが入札した場合の勝率帯</p>
+          <div class="chart-box sm"><canvas id="winChart"></canvas></div>
+        </div>
+        <div class="panel">
+          <h4>DIの獲得可能市場</h4><p class="hint">親和性40以上を射程(SAM)とした試算</p>
+          <div id="samBox"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="industry">
+      <div class="sec-title"><h3>業界業種分析</h3><span>業種別の件数・金額・DI親和性・勝率を多面比較</span></div>
+      <div class="cols c-2-1">
+        <div class="panel">
+          <h4>業種別 落札金額シェア</h4><p class="hint">官公庁調達がどの業種に流れているか</p>
+          <div class="chart-box"><canvas id="indAmtChart"></canvas></div>
+        </div>
+        <div class="panel">
+          <h4>業種別 DI親和性 × 勝率</h4><p class="hint">右上ほどDIが狙うべき業種</p>
+          <div class="chart-box"><canvas id="indScatter"></canvas></div>
+        </div>
+      </div>
+      <div class="panel" style="margin-top:16px">
+        <h4>業種別 明細(件数・金額・シェア・DI適性)</h4>
+        <div class="tbl-wrap" style="max-height:none"><table id="indTable"></table></div>
+      </div>
+    </section>
+
+    <section id="size">
+      <div class="sec-title"><h3>金額規模・発注省庁</h3><span>案件サイズの構造と発注元の内訳</span></div>
+      <div class="cols c2">
+        <div class="panel">
+          <h4>落札金額の規模分布</h4><p class="hint">件数(棒)と金額合計(折れ線)</p>
+          <div class="chart-box"><canvas id="sizeChart"></canvas></div>
+        </div>
+        <div class="panel">
+          <h4>発注省庁 Top12(件数)</h4><p class="hint">どの省庁の案件が多いか</p>
+          <div class="chart-box"><canvas id="miniChart"></canvas></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="company">
+      <div class="sec-title"><h3>落札企業ランキング</h3><span>落札額上位の企業=DIの主要競合</span></div>
+      <div class="panel">
+        <div class="tbl-wrap" style="max-height:460px"><table id="compTable"></table></div>
+      </div>
+    </section>
+
+    <section id="complogic">
+      <div class="sec-title"><h3>DI競合度の詳細ロジック</h3><span>「競り負けやすい/競争可能」の判定根拠と、競争の土台に載るための条件</span></div>
+      <div class="cols c-2-1">
+        <div class="panel">
+          <h4>算出式と判定レベル</h4>
+          <p class="hint" id="compFormula"></p>
+          <div class="tbl-wrap" style="max-height:none"><table id="compLevelTable"></table></div>
+        </div>
+        <div class="panel">
+          <h4>競合度レベル別の案件分布</h4><p class="hint">DIから見た市場の攻めやすさの構造</p>
+          <div class="chart-box"><canvas id="compDistChart"></canvas></div>
+        </div>
+      </div>
+      <div class="cols c2" style="margin-top:16px">
+        <div class="panel">
+          <h4>因子① 現職タイプ係数</h4><p class="hint">現落札企業のタイプごとに「DIがどれだけ競り込めるか」を係数化</p>
+          <div class="tbl-wrap" style="max-height:none"><table id="incumbentTable"></table></div>
+        </div>
+        <div class="panel">
+          <h4>因子② 金額障壁係数</h4><p class="hint">案件金額が生む参入障壁(入札参加資格の等級・実績要件)</p>
+          <div class="tbl-wrap" style="max-height:none"><table id="scaleTable"></table></div>
+        </div>
+      </div>
+      <div class="panel" style="margin-top:16px;background:linear-gradient(180deg,#fffdf6,#fff8e8);border-color:#f0dfb0">
+        <h4>🏁 競争の土台に載るための共通条件(5ステップ)</h4>
+        <p class="hint">どの案件でも前提になる、DIが官公庁入札へ参入するための実務ステップ</p>
+        <ul id="footholdCommon" style="margin:6px 0 0;padding-left:4px;list-style:none;display:flex;flex-direction:column;gap:8px;font-size:13px"></ul>
+      </div>
+    </section>
+
+    <section id="targets">
+      <div class="sec-title"><h3>DI狙い目案件 Top40</h3><span>親和性40以上を狙い目スコア順に並べた優先リスト。行の「詳細」で競合評価・土台条件を展開</span></div>
+      <div class="panel" style="margin-bottom:14px;background:linear-gradient(180deg,#fbfcff,#f4f7ff);border-color:#dfe7ff">
+        <h4>📐 狙い目スコアの読み方</h4>
+        <p class="hint" id="oppFormula"></p>
+        <div id="oppComponents" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;font-size:12px"></div>
+        <div class="legend" id="oppLegend"></div>
+      </div>
+      <div class="panel">
+        <div class="tbl-wrap"><table id="targetTable"></table></div>
+      </div>
+    </section>
+
+    <section id="forecast">
+      <div class="sec-title"><h3>予測・今後の勝てそうなネタ Top30</h3><span>類似案件学習(TabFM流)×年度再帰予測(TimesFM流)による来年度公告の先読み</span></div>
+      <div class="panel" style="margin-bottom:14px">
+        <h4>🔮 予測の仕組み</h4>
+        <p class="hint" id="predNote"></p>
+        <div id="predMethod" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;font-size:12px"></div>
+      </div>
+      <div class="panel">
+        <div class="tbl-wrap"><table id="forecastTable"></table></div>
+      </div>
+    </section>
+
+    <section id="explorer">
+      <div class="sec-title"><h3>全案件エクスプローラ</h3><span>1000件を業種・親和性・キーワードで絞り込み、案件概要まで確認</span></div>
+      <div class="panel">
+        <div class="filters">
+          <input type="text" id="q" placeholder="案件名・企業名で検索…">
+          <label>業種
+            <select id="fIndustry"><option value="">すべて</option></select>
+          </label>
+          <label>DI親和性 ≥
+            <select id="fAff">
+              <option value="0">0</option><option value="20">20</option>
+              <option value="40">40</option><option value="70">70</option>
+            </select>
+          </label>
+          <label>並び
+            <select id="fSort">
+              <option value="opportunity">狙い目スコア</option>
+              <option value="winnability">落札可能性</option>
+              <option value="affinity">親和性</option>
+              <option value="amount">落札金額</option>
+            </select>
+          </label>
+          <span class="pill on" id="pDiOnly">DI射程のみ</span>
+          <span class="mini" id="explCount"></span>
+        </div>
+        <div class="tbl-wrap"><table id="explTable"></table></div>
+      </div>
+    </section>
+
+    <div class="note" id="footnote"></div>
+  </main>
+</div>
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
