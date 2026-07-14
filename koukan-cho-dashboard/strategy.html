@@ -14,13 +14,14 @@
     <div class="tag">参加したい案件を選ぶ →<br>現状勝率 → エージェント戦略会議 →<br>改善後勝率とRFP読込効果</div>
     <nav class="nav" id="nav">
       <a href="#search">① 案件検索・抽出</a>
-      <a href="#baseline">② 現状の勝率(As-Is)</a>
-      <a href="#agents">③ エージェント戦略会議</a>
-      <a href="#waterfall">④ 戦略後の勝率(To-Be)</a>
-      <a href="#rfp">⑤ RFP・企画書読み込み</a>
-      <a href="#pricing">⑥ 価格戦略の詳細</a>
-      <a href="#verdict">⑦ 総合判定</a>
+      <a href="#baseline" class="locked">② 現状の勝率(As-Is)</a>
+      <a href="#agents" class="locked">③ エージェント戦略会議</a>
+      <a href="#waterfall" class="locked">④ 戦略後の勝率(To-Be)</a>
+      <a href="#rfp" class="locked">⑤ RFP・企画書読み込み</a>
+      <a href="#pricing" class="locked">⑥ 価格戦略の詳細</a>
+      <a href="#verdict" class="locked">⑦ 総合判定</a>
     </nav>
+    <div class="nav-note" id="navNote">🔒 は①で案件を選択すると開きます</div>
     <div style="margin-top:10px;border-top:1px solid var(--line);padding-top:12px">
       <a href="index.html" class="simulator-link" style="background:linear-gradient(135deg,#5a6acf,#8d99a6)">📊 分析ダッシュボードへ戻る</a>
     </div>
@@ -60,6 +61,8 @@
           <span class="mini" id="searchCount"></span>
         </div>
         <div class="tbl-wrap" style="max-height:380px"><table id="searchTable"></table></div>
+        <p class="hint" style="margin:10px 0 0">📅 公示日(入札公告日)は元データ(調達ポータル収集分)に未収録のため「未収録」表示。落札日は実績値。
+        「毎年度型」案件は前年の落札日から次回サイクル(公告≈落札の2〜3ヶ月前、入札期日≈落札の1〜2ヶ月前)を予測表示している。実際の公告・期日は調達ポータルで要確認。</p>
       </div>
     </section>
 
@@ -120,7 +123,11 @@
       </section>
     </div>
 
-    <div class="empty-hint panel" id="emptyHint">☝️ まず①で案件を検索し、行をクリックして選択してください。選択すると②〜⑦の戦略分析が表示されます。</div>
+    <div class="empty-hint panel" id="emptyHint">
+      <div style="font-size:15px;font-weight:700;color:var(--ink);margin-bottom:6px">☝️ まず①で案件を検索し、行をクリックして選択してください</div>
+      <div style="margin-bottom:14px">選択すると ②現状の勝率 → ③エージェント戦略会議 → ④戦略後の勝率 → ⑤RFP読込 → ⑥価格戦略 → ⑦総合判定 が順に表示されます。</div>
+      <button class="btn" id="btnDemo">🎯 例: 狙い目スコア1位の案件で試してみる</button>
+    </div>
 
     <div class="note" style="margin-top:26px">
       <b>免責</b>：エージェントはDIの事業領域を基準にしたルールベースの戦略シミュレーションであり、実在の入札結果・予定価格・競合行動を保証しません。

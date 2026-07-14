@@ -41,6 +41,37 @@
 
   function isRecur(r) { return FY_RE.test(Z2A(r.project_name)); }
 
+  /* 日程表示: 公示日は元データ未収録のため、落札日(実績) + 毎年度型は次回サイクル予測を出す */
+  const fmtDate = (d) => {
+    if (!d) return null;
+    const [y, m, dd] = d.split("-");
+    return `${y}/${+m}/${+dd}`;
+  };
+  function nextCycle(r) {
+    // 前年の落札日から次回サイクルを推定: 落札は約1年後の同時期、
+    // 公告はその約2ヶ月前、入札期日(提出締切)は落札の約3週間前
+    if (!isRecur(r) || !r.award_date) return null;
+    const [y, m] = r.award_date.split("-").map(Number);
+    const ny = y + 1;
+    const annM = ((m - 3 + 12) % 12) + 1;               // 公告 ≈ 2〜3ヶ月前
+    const annY = m - 3 < 0 ? ny - 1 : ny;
+    const dlM = ((m - 2 + 12) % 12) + 1;                 // 入札期日 ≈ 1〜2ヶ月前
+    const dlY = m - 2 < 0 ? ny - 1 : ny;
+    return {
+      announce: `${annY}年${annM}〜${annM % 12 + 1}月頃`,
+      deadline: `${dlY}年${dlM}月〜${ny}年${m}月上旬頃`,
+      award: `${ny}年${m}月頃`,
+    };
+  }
+  function scheduleCell(r) {
+    const parts = [];
+    parts.push(`<div class="mini" style="white-space:nowrap">公示日: ${r.announcement_date ? fmtDate(r.announcement_date) : "未収録"}</div>`);
+    parts.push(`<div style="white-space:nowrap;font-weight:600">落札日: ${fmtDate(r.award_date) || "—"}</div>`);
+    const nc = nextCycle(r);
+    if (nc) parts.push(`<div class="mini" style="white-space:nowrap;color:#2b5ce6" title="毎年度型のため前年サイクルから予測">次回公告予測: ${nc.announce}<br>入札期日予測: ${nc.deadline}</div>`);
+    return parts.join("");
+  }
+
   function renderSearch() {
     let rows = D.records.filter(r => {
       if (st.diOnly && r.affinity < 40) return false;
@@ -54,11 +85,12 @@
     $("searchCount").textContent = `${rows.length.toLocaleString()} 件ヒット`;
     const view = rows.slice(0, 200);
     $("searchTable").innerHTML =
-      `<thead><tr><th>業種</th><th>案件名 / 発注元</th><th class="num">落札金額</th><th class="num">現状勝率</th><th>競合度</th><th>年度</th></tr></thead><tbody>` +
+      `<thead><tr><th>業種</th><th>案件名 / 発注元</th><th>公示日・入札期日</th><th class="num">落札金額</th><th class="num">現状勝率</th><th>競合度</th><th>年度</th></tr></thead><tbody>` +
       view.map(r => `<tr class="sel-row ${r.id === st.selectedId ? "selected" : ""}" data-id="${r.id}">
         <td>${indChip(r.industry)}</td>
-        <td><div style="font-weight:600;max-width:380px">${esc(r.project_name)}</div>
+        <td><div style="font-weight:600;max-width:340px">${esc(r.project_name)}</div>
             <div class="mini">${esc(r.ministry)} ／ 現落札: ${esc(r.company)}</div></td>
+        <td style="font-size:11.5px">${scheduleCell(r)}</td>
         <td class="num">${yen(r.amount)}</td>
         <td class="num"><b>${r.winnability}%</b></td>
         <td>${clChip(r.comp_level)}</td>
@@ -237,10 +269,28 @@
     rfp = null; $("rfpText").value = ""; $("rfpResult").innerHTML = ""; $("rfpStatus").textContent = "";
     $("simBody").style.display = "";
     $("emptyHint").style.display = "none";
+    // ナビのロック解除
+    document.querySelectorAll("#nav a.locked").forEach(a => a.classList.remove("locked"));
+    const nn = $("navNote");
+    if (nn) nn.textContent = "✅ 案件選択済み — 各セクションへ移動できます";
     renderSearch();
     renderAll();
     document.getElementById("baseline").scrollIntoView({ behavior: "smooth" });
   }
+
+  /* 未選択時にロック中ナビを押したら、①へ誘導してハイライト */
+  function guideToSearch() {
+    document.getElementById("search").scrollIntoView({ behavior: "smooth" });
+    const panel = document.querySelector("#search .panel");
+    panel.classList.remove("flash-guide");
+    void panel.offsetWidth; // reflow でアニメ再発火
+    panel.classList.add("flash-guide");
+    $("searchCount").textContent = "👈 まず案件の行をクリックして選択してください";
+  }
+  document.getElementById("nav").addEventListener("click", e => {
+    const a = e.target.closest("a");
+    if (a && a.classList.contains("locked")) { e.preventDefault(); guideToSearch(); }
+  });
 
   function renderAll() {
     const r = currentCase;
@@ -252,6 +302,7 @@
       <h4>${indChip(r.industry)} 選択中の案件</h4>
       <div style="font-size:15px;font-weight:700;margin:6px 0">${esc(r.project_name)}</div>
       <div class="mini" style="margin-bottom:10px">${esc(r.ministry)}${r.agency ? " ・" + esc(r.agency) : ""} ／ 現落札: ${esc(r.company)}(${esc(r.comp_ilabel)}) ／ 落札額 ${yen(r.amount)}</div>
+      <div class="mini" style="margin-bottom:10px">📅 公示日: ${r.announcement_date ? fmtDate(r.announcement_date) : "未収録"} ／ 落札日: ${fmtDate(r.award_date) || "—"}${(() => { const nc = nextCycle(r); return nc ? ` ／ <b style="color:#2b5ce6">次回公告予測 ${nc.announce}・入札期日予測 ${nc.deadline}</b>` : ""; })()}</div>
       <div style="font-size:12.5px;color:#4b5563">${esc(r.summary)}</div>
       ${isRecur(r) ? `<div class="mini" style="margin-top:8px">📅 毎年度型案件 — 来年度の再公告が見込まれるため、公告3ヶ月前からの準備が可能。</div>` : ""}`;
     const nb = expectedBidders(r.amount, r.project_name);
@@ -444,8 +495,10 @@
     $("btnAnalyze").click();
   };
 
-  /* ---------- 初期化 (URL ?id= 対応) ---------- */
+  /* ---------- 初期化 (URL ?id= 対応 / デモボタン) ---------- */
   renderSearch();
+  const btnDemo = $("btnDemo");
+  if (btnDemo) btnDemo.onclick = () => selectCase(D.di_targets[0].id);
   const pid = new URLSearchParams(location.search).get("id");
   if (pid) selectCase(pid);
 

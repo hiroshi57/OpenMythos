@@ -574,6 +574,8 @@ def main():
             "agency": r.get("agency") or "",
             "company": comp or "(不明)",
             "amount": amt,
+            "announcement_date": (r.get("announcement_date") or "")[:10] or None,
+            "award_date": (r.get("award_date") or "")[:10] or None,
             "industry": industry,
             "industry_key": INDUSTRY_COLORKEY[industry],
             "affinity": aff,
