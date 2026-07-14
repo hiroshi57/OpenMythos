@@ -270,7 +270,7 @@
     return rows.map((t, i) => `<tr>
       <td class="num">${i + 1}</td>
       <td>${indChip(t.industry)}</td>
-      <td><div style="font-weight:600">${esc(t.project_name)}</div>
+      <td><div style="font-weight:600">${esc(t.project_name)} <a class="simlink" href="strategy.html?id=${t.id}" title="入札戦略シミュレータで勝率改善を試算">🎯</a></div>
           <div class="mini">${esc(t.ministry)}${t.agency ? " ・" + esc(t.agency) : ""} ／ 現落札: ${esc(t.company)}</div>
           ${detailBox(t)}</td>
       <td class="num">${yen(t.amount)}</td>
@@ -338,7 +338,7 @@
         <th class="num">親和性</th><th class="num">勝率</th><th>競合度</th><th>案件概要（DI視点）</th></tr></thead><tbody>` +
       view.map(r => `<tr>
         <td>${indChip(r.industry)}</td>
-        <td><div style="font-weight:600;max-width:280px">${esc(r.project_name)}</div>
+        <td><div style="font-weight:600;max-width:280px">${esc(r.project_name)} <a class="simlink" href="strategy.html?id=${r.id}" title="入札戦略シミュレータで勝率改善を試算">🎯</a></div>
             <div class="mini">${esc(r.ministry)} ／ ${esc(r.company)}</div></td>
         <td class="num">${yen(r.amount)}</td>
         <td class="num">${scoreBar(r.affinity, "#2b5ce6")}<br>${lab(r.affinity_label)}</td>

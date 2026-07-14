@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>入札戦略シミュレータ | 官公庁調達 × DI</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <h1>🎯 入札戦略シミュレータ</h1>
+    <div class="tag">参加したい案件を選ぶ →<br>現状勝率 → エージェント戦略会議 →<br>改善後勝率とRFP読込効果</div>
+    <nav class="nav" id="nav">
+      <a href="#search">① 案件検索・抽出</a>
+      <a href="#baseline">② 現状の勝率(As-Is)</a>
+      <a href="#agents">③ エージェント戦略会議</a>
+      <a href="#waterfall">④ 戦略後の勝率(To-Be)</a>
+      <a href="#rfp">⑤ RFP・企画書読み込み</a>
+      <a href="#pricing">⑥ 価格戦略の詳細</a>
+      <a href="#verdict">⑦ 総合判定</a>
+    </nav>
+    <div style="margin-top:10px;border-top:1px solid var(--line);padding-top:12px">
+      <a href="index.html" class="simulator-link" style="background:linear-gradient(135deg,#5a6acf,#8d99a6)">📊 分析ダッシュボードへ戻る</a>
+    </div>
+    <div class="side-foot">エージェントはルールベースの戦略シミュレーション。勝率は推定・参考値。</div>
+  </aside>
+
+  <main class="main">
+    <div class="pagehead">
+      <h2>入札戦略シミュレータ — 現状勝率 vs 戦略立案後勝率</h2>
+      <p>参加を検討する入札案件を検索・選択すると、①現状のままの推定勝率、②5人の専門エージェントが競合の方向性・価格戦略・提案戦略を組んだ場合の勝率、③さらにRFP・企画書を読み込んでマーケティング戦略を練った場合の勝率、を段階的に試算します。</p>
+    </div>
+
+    <section id="search">
+      <div class="sec-title"><h3>① 参加したい入札案件を検索・抽出</h3><span>キーワード・業種・競合度・金額帯で絞り込み、行をクリックして選択</span></div>
+      <div class="panel">
+        <div class="filters">
+          <input type="text" id="q" placeholder="案件名・省庁・企業名で検索（例: 広報 / SNS / ウェブ / 調査）…">
+          <label>業種
+            <select id="fIndustry"><option value="">すべて</option></select>
+          </label>
+          <label>競合度
+            <select id="fComp">
+              <option value="">すべて</option>
+              <option>参入容易</option><option>競争可能</option><option>要準備</option><option>参入困難</option>
+            </select>
+          </label>
+          <label>金額
+            <select id="fAmt">
+              <option value="">すべて</option>
+              <option value="0-3000000">〜300万</option>
+              <option value="3000000-50000000">300万〜5千万</option>
+              <option value="50000000-1000000000000">5千万〜</option>
+            </select>
+          </label>
+          <span class="pill on" id="pDiOnly">DI射程のみ</span>
+          <span class="pill" id="pRecur">年度案件のみ(来年度も見込)</span>
+          <span class="mini" id="searchCount"></span>
+        </div>
+        <div class="tbl-wrap" style="max-height:380px"><table id="searchTable"></table></div>
+      </div>
+    </section>
+
+    <div id="simBody" style="display:none">
+      <section id="baseline">
+        <div class="sec-title"><h3>② 現状のままの勝率（As-Is）</h3><span>戦略なし・現状の体制のまま入札した場合の推定値</span></div>
+        <div class="cols c-2-1">
+          <div class="panel" id="caseCard"></div>
+          <div class="panel" id="baselineCard"></div>
+        </div>
+      </section>
+
+      <section id="agents">
+        <div class="sec-title"><h3>③ エージェント戦略会議</h3><span>5人の専門エージェントがこの案件を分析し、戦略と勝率への寄与を提示</span></div>
+        <div class="agent-grid" id="agentGrid"></div>
+      </section>
+
+      <section id="waterfall">
+        <div class="sec-title"><h3>④ 戦略立案後の勝率（To-Be）</h3><span>各エージェントの寄与を積み上げたウォーターフォール</span></div>
+        <div class="cols c-2-1">
+          <div class="panel">
+            <h4>勝率の積み上げ（As-Is → To-Be → RFP読込後）</h4>
+            <p class="hint">係数は乗算で適用、上限92%。RFP読込は⑤にテキストを貼ると反映</p>
+            <div class="chart-box" style="height:300px"><canvas id="wfChart"></canvas></div>
+          </div>
+          <div class="panel">
+            <h4>勝率サマリ</h4><p class="hint">3段階の比較</p>
+            <div id="compareBox"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="rfp">
+        <div class="sec-title"><h3>⑤ RFP・企画書・公告文の読み込み</h3><span>仕様書/公告の本文を貼り付けると解析し、マーケティング戦略の精度向上分を勝率に反映</span></div>
+        <div class="panel">
+          <textarea class="rfp-area" id="rfpText" placeholder="ここにRFP・仕様書・公告文・企画書のテキストを貼り付けてください。&#10;例: 「本業務は、○○省のWebサイトのアクセス解析及びSEO改善、SNSを活用した情報発信、広告運用の支援を行うものである。KPIの設計と月次レポートを求める…」"></textarea>
+          <div style="margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <button class="btn" id="btnAnalyze">🔍 RFPを解析して勝率を再計算</button>
+            <button class="btn ghost" id="btnSample">サンプルRFPを入れる</button>
+            <span class="mini" id="rfpStatus"></span>
+          </div>
+          <div id="rfpResult" style="margin-top:14px"></div>
+        </div>
+      </section>
+
+      <section id="pricing">
+        <div class="sec-title"><h3>⑥ 価格戦略の詳細</h3><span>価格戦略エージェントの算定根拠</span></div>
+        <div class="panel" id="pricingCard"></div>
+      </section>
+
+      <section id="verdict">
+        <div class="sec-title"><h3>⑦ 総合判定</h3><span>この案件に入札すべきか、勝つために何をすべきか</span></div>
+        <div class="panel insight"><ul id="verdictList"></ul></div>
+      </section>
+    </div>
+
+    <div class="empty-hint panel" id="emptyHint">☝️ まず①で案件を検索し、行をクリックして選択してください。選択すると②〜⑦の戦略分析が表示されます。</div>
+
+    <div class="note" style="margin-top:26px">
+      <b>免責</b>：エージェントはDIの事業領域を基準にしたルールベースの戦略シミュレーションであり、実在の入札結果・予定価格・競合行動を保証しません。
+      価格・勝率はすべて推定値です。実際の入札判断は公告原文・仕様書・入札説明書を必ず確認してください。
+    </div>
+  </main>
+</div>
+<script src="data.js"></script>
+<script src="strategy.js"></script>
+</body>
+</html>
