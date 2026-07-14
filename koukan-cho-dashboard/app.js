@@ -44,7 +44,7 @@
     { lbl: "DI射程案件(親和≥40)", val: num(k.di_pool_count), unit: "件", sub: `全体の${(k.di_pool_count / k.total_count * 100).toFixed(0)}%`, cls: "brand" },
     { lbl: "DI獲得可能市場 SAM", val: oku(k.di_sam_amount), unit: "億円", sub: "射程案件の落札額合計", cls: "brand" },
     { lbl: "勝率加重 期待受注額", val: oku(k.di_expected_amount), unit: "億円", sub: "SAM×推定勝率", cls: "teal" },
-    { lbl: "高優先ターゲット", val: num(k.di_high_target_count), unit: "件", sub: "親和≥40 かつ 勝率≥40%", cls: "teal" },
+    { lbl: "高優先ターゲット", val: num(k.di_high_target_count), unit: "件", sub: "親和≥40 かつ 勝率≥25%(競合込み)", cls: "teal" },
     { lbl: "来年度 再公告予測(勝てそうなネタ)", val: num(k.upcoming_count), unit: "件", sub: "年度再帰×類似案件学習による先読み", cls: "" },
     { lbl: "来年度 予測期待受注額", val: oku(k.upcoming_expected_amount), unit: "億円", sub: "予想金額×勝てる期待値の合計", cls: "" },
   ];
@@ -213,6 +213,16 @@
       <td style="white-space:nowrap;font-weight:600">${esc(x.band)}</td>
       <td class="num">${scoreBar(x.coef * 100, x.coef >= 0.7 ? "#1a9d63" : x.coef >= 0.4 ? "#f0a500" : "#e07b39")}</td>
       <td style="font-size:12px;color:#4b5563">${esc(x.note)}</td></tr>`).join("") + "</tbody>";
+  document.getElementById("biddersTable").innerHTML =
+    `<thead><tr><th>金額帯 / 方式</th><th class="num">推定入札者数</th><th class="num">平均勝率(1/n)</th><th>背景</th></tr></thead><tbody>` +
+    M.competition.bidders.map(x => {
+      const n = parseFloat((x.n.match(/[\d.]+/) || [])[0]);
+      return `<tr>
+        <td style="white-space:nowrap;font-weight:600">${esc(x.band)}</td>
+        <td class="num">${esc(x.n)}</td>
+        <td class="num">${n ? "約" + Math.round(100 / n) + "%" : "—"}</td>
+        <td style="font-size:12px;color:#4b5563">${esc(x.note)}</td></tr>`;
+    }).join("") + "</tbody>";
   document.getElementById("footholdCommon").innerHTML =
     M.competition.foothold_common.map(t => `<li>✅ ${esc(t)}</li>`).join("");
 

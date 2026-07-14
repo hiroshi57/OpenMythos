@@ -265,11 +265,37 @@ def assess_competition(company, affinity, amount):
             "ilabel": ilabel, "reason": reason, "foothold": foothold}
 
 
-def score_winnability(affinity, amount, company):
-    """DIが入札した場合の推定勝率(%) = 得意度 × 現職への参入度 × 規模障壁クリア度"""
+PROPOSAL_KW = ["支援", "企画", "広報", "調査", "戦略", "検討", "推進"]
+
+
+def is_proposal_type(name):
+    """企画競争(プロポーザル)型らしさ"""
+    return any(k in (name or "") for k in PROPOSAL_KW)
+
+
+def expected_bidders(amount, name):
+    """推定入札者数(競争環境)。官公庁の役務調達は平均3〜6社が応札する前提。"""
+    a = amount or 0
+    if a <= 0:          n = 3.5
+    elif a < 1e6:       n = 2.5   # 少額は応札社数が少ない
+    elif a < 1e7:       n = 3.5
+    elif a < 5e7:       n = 4.5
+    elif a < 1.5e8:     n = 5.5
+    else:               n = 6.5   # 大型は大手も参入し混戦
+    if is_proposal_type(name):
+        n -= 1.0                  # 企画競争は提案コストが高く参加社数は少なめ
+    return max(2.0, n)
+
+
+def score_winnability(affinity, amount, company, name=""):
+    """DIが入札した場合の推定勝率(%)
+    = 得意度 × 現職への参入度 × 規模障壁クリア度 ÷ 推定入札者数(競争環境)
+    競合他社・コンペの存在を織り込むため、挑戦者の勝率上限は60%とする。"""
     _itype, _il, entry = classify_incumbent(company)
-    p = (affinity / 100.0) * entry * scale_factor(amount)
-    return round(min(0.95, p) * 100, 1)
+    n = expected_bidders(amount, name)
+    p = (affinity / 100.0) * entry * scale_factor(amount) / n * 2.0
+    # /n*2.0: 平均的な1/n勝率に対し、親和性・参入度が最大なら2倍まで優位に立てる想定
+    return round(min(0.60, p) * 100, 1)
 
 
 def size_attractiveness(amount):
@@ -456,7 +482,7 @@ METHODOLOGY = {
             {"name": "案件規模の魅力(重み20%)", "desc": "落札金額の対数スケール(100万円≈25点、1千万円≈45点、1億円≈68点)。売上インパクトを加点するが、勝率より重みを小さくして「勝てる案件」優先を維持。"},
             {"name": "DI親和性(重み30%)", "desc": "DI事業領域(SEO/運用型広告/Web制作/DX/データ分析)への合致度。得意領域は提案品質・利益率が高いため加点。"},
         ],
-        "reading": "70以上=最優先で入札検討 / 50-69=積極検討 / 30-49=条件次第 / 30未満=見送り",
+        "reading": "50以上=最優先で入札検討 / 35-49=積極検討 / 20-34=条件次第 / 20未満=見送り",
     },
     "competition": {
         "formula": "DI競合度(参入度 0-100) = 現職タイプ係数 × 金額障壁係数 × 100",
@@ -476,6 +502,14 @@ METHODOLOGY = {
             {"band": "3億〜10億円", "coef": 0.30, "note": "大規模実績・体制が壁"},
             {"band": "10億円超", "coef": 0.15, "note": "単独受注は非現実的、JV/再委託のみ"},
         ],
+        "bidders": [
+            {"band": "〜100万円", "n": "約2.5社", "note": "少額は応札社数が少なく取りやすい"},
+            {"band": "100万〜1千万円", "n": "約3.5社", "note": "中小中心の標準的な競争"},
+            {"band": "1千万〜5千万円", "n": "約4.5社", "note": "中堅も参入し競争が厚くなる"},
+            {"band": "5千万〜1.5億円", "n": "約5.5社", "note": "大手も応札、混戦"},
+            {"band": "1.5億円超", "n": "約6.5社", "note": "大手SI/代理店が本気で取りに来る"},
+            {"band": "企画競争(プロポーザル)型", "n": "上記から-1社", "note": "提案コストが高く参加社数は少なめ"},
+        ],
         "levels": [
             {"level": "参入容易", "range": "72-100", "meaning": "中小現職×少額〜中規模。統一資格があれば即入札可能", "action": "公告を定点監視し、片っ端から提案"},
             {"level": "競争可能", "range": "48-71", "meaning": "正面から競争できるが資格・実績の準備は必要", "action": "同種実績を整理し企画競争で提案力勝負"},
@@ -492,8 +526,8 @@ METHODOLOGY = {
         ],
     },
     "winnability": {
-        "formula": "推定勝率(%) = DI親和性/100 × 現職タイプ係数 × 金額障壁係数 × 100 (上限95%)",
-        "desc": "「どれだけ得意か × 現職にどれだけ競り込めるか × 資格・実績の壁をどれだけ越えられるか」の積。3因子のどれかが0に近いと勝率も0に近づく。",
+        "formula": "推定勝率(%) = DI親和性/100 × 現職タイプ係数 × 金額障壁係数 ÷ 推定入札者数 × 2 (上限60%)",
+        "desc": "「どれだけ得意か × 現職にどれだけ競り込めるか × 資格・実績の壁をどれだけ越えられるか」を、競合他社・コンペの存在(推定入札者数2〜6.5社)で割り引いた値。平均的な入札者は1/n の勝率しかなく、親和性・参入度が最大でもその2倍(挑戦者上限60%)が現実的な天井。",
     },
     "prediction": {
         "note": "TimesFM(時系列基盤モデル)・TabFM(表形式基盤モデル)の思想を踏まえた軽量実装。"
@@ -524,7 +558,7 @@ def main():
         comp = r.get("awarded_company") or ""
         industry = classify_industry(name, mini)
         aff = score_affinity(name, industry)
-        win = score_winnability(aff, amt, comp)
+        win = score_winnability(aff, amt, comp, name)
         comp_assess = assess_competition(comp, aff, amt)
         # 狙い目スコア(0-100) = 透明な加重平均。「勝てて・大きくて・得意」な案件ほど高い。
         #   勝率 50% + 案件規模の魅力 20% + DI親和性 30%
@@ -545,7 +579,7 @@ def main():
             "affinity": aff,
             "affinity_label": label4(aff, 70, 40, 20),
             "winnability": win,
-            "winnability_label": label4(win, 50, 25, 10),
+            "winnability_label": label4(win, 30, 15, 5),
             "opportunity": opp,
             "opp_parts": {"win": c_win, "size": c_size, "aff": c_aff},
             "size_attractiveness": sz,
@@ -642,13 +676,13 @@ def main():
         else: aff_bins["圏外(0-19)"] += 1
 
     # 勝率帯別分布
-    win_bins = {"高(50%+)": 0, "中(25-49%)": 0, "低(10-24%)": 0, "圏外(<10%)": 0}
+    win_bins = {"高(30%+)": 0, "中(15-29%)": 0, "低(5-14%)": 0, "圏外(<5%)": 0}
     for e in enriched:
         w = e["winnability"]
-        if w >= 50: win_bins["高(50%+)"] += 1
-        elif w >= 25: win_bins["中(25-49%)"] += 1
-        elif w >= 10: win_bins["低(10-24%)"] += 1
-        else: win_bins["圏外(<10%)"] += 1
+        if w >= 30: win_bins["高(30%+)"] += 1
+        elif w >= 15: win_bins["中(15-29%)"] += 1
+        elif w >= 5: win_bins["低(5-14%)"] += 1
+        else: win_bins["圏外(<5%)"] += 1
 
     # 金額規模ヒストグラム(対数帯)
     amt_bins = [
@@ -682,7 +716,7 @@ def main():
         "di_pool_count": len(di_pool),
         "di_sam_amount": sam,
         "di_expected_amount": round(expected),
-        "di_high_target_count": sum(1 for e in enriched if e["affinity"] >= 40 and e["winnability"] >= 40),
+        "di_high_target_count": sum(1 for e in enriched if e["affinity"] >= 40 and e["winnability"] >= 25),
         "upcoming_count": len(upcoming),
         "upcoming_expected_amount": round(sum(
             u["pred_amount"] * u["expected"] / 100 for u in upcoming)),
@@ -730,7 +764,7 @@ def main():
     print(f"  案件 {n} 件 / 落札総額 {total_amt/1e8:.1f}億円 / 企業 {kpi['distinct_companies']}社")
     print(f"  平均DI親和性 {avg_aff} / 平均勝率 {avg_win}%")
     print(f"  DI対象プール {len(di_pool)}件, SAM {sam/1e8:.1f}億円, 期待受注額 {expected/1e8:.1f}億円")
-    print(f"  高優先ターゲット(親和>=40 & 勝率>=40) {kpi['di_high_target_count']}件")
+    print(f"  高優先ターゲット(親和>=40 & 勝率>=25) {kpi['di_high_target_count']}件")
 
 
 def build_insights(kpi, by_industry, di_targets, top_companies, sam, expected, n, upcoming=None):

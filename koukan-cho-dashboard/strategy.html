@@ -93,11 +93,15 @@
       </section>
 
       <section id="rfp">
-        <div class="sec-title"><h3>⑤ RFP・企画書・公告文の読み込み</h3><span>仕様書/公告の本文を貼り付けると解析し、マーケティング戦略の精度向上分を勝率に反映</span></div>
+        <div class="sec-title"><h3>⑤ RFP・企画書・公告文の読み込み</h3><span>ファイルをドラッグ&ドロップ(PDF/テキスト対応)または本文貼り付けで解析し、マーケティング戦略の精度向上分を勝率に反映</span></div>
         <div class="panel">
-          <textarea class="rfp-area" id="rfpText" placeholder="ここにRFP・仕様書・公告文・企画書のテキストを貼り付けてください。&#10;例: 「本業務は、○○省のWebサイトのアクセス解析及びSEO改善、SNSを活用した情報発信、広告運用の支援を行うものである。KPIの設計と月次レポートを求める…」"></textarea>
+          <div class="rfp-drop" id="rfpDrop">
+            <div class="rfp-drop-hint" id="rfpDropHint">📄 ここに RFP・仕様書・公告文ファイルをドラッグ&ドロップ<span class="mini">（PDF / .txt / .md / .csv 対応、複数可） または下のテキスト欄に貼り付け</span></div>
+            <textarea class="rfp-area" id="rfpText" placeholder="ここにRFP・仕様書・公告文・企画書のテキストを貼り付けてください。&#10;例: 「本業務は、○○省のWebサイトのアクセス解析及びSEO改善、SNSを活用した情報発信、広告運用の支援を行うものである。KPIの設計と月次レポートを求める…」"></textarea>
+          </div>
           <div style="margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
             <button class="btn" id="btnAnalyze">🔍 RFPを解析して勝率を再計算</button>
+            <label class="btn ghost" style="cursor:pointer">📁 ファイルを選択<input type="file" id="rfpFile" accept=".pdf,.txt,.md,.csv,text/plain,application/pdf" multiple style="display:none"></label>
             <button class="btn ghost" id="btnSample">サンプルRFPを入れる</button>
             <span class="mini" id="rfpStatus"></span>
           </div>

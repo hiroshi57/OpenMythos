@@ -20,12 +20,17 @@
   const Z2A = s => (s || "").replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
   const FY_RE = /令和\s*([0-9]{1,2})\s*年度/;
 
-  /* 現職タイプ係数・金額障壁係数 (build.py と同一モデル) */
+  /* 現職タイプ係数・金額障壁係数・推定入札者数 (build.py と同一モデル) */
   const ITYPE_COEF = { si: 0.30, ad: 0.78, carrier: 0.15, const: 0.05, org: 0.55, general: 1.0, unknown: 0.7 };
   function scaleFactor(a) {
     if (!a || a <= 0) return 0.7;
     if (a < 1e6) return 1.0; if (a < 1e7) return 1.0; if (a < 5e7) return 0.9;
     if (a < 1.5e8) return 0.75; if (a < 3e8) return 0.55; if (a < 1e9) return 0.3; return 0.15;
+  }
+  function expectedBidders(a, name) {
+    let n = !a || a <= 0 ? 3.5 : a < 1e6 ? 2.5 : a < 1e7 ? 3.5 : a < 5e7 ? 4.5 : a < 1.5e8 ? 5.5 : 6.5;
+    if (isProposal(name || "")) n -= 1.0;
+    return Math.max(2.0, n);
   }
 
   /* ---------- ① 案件検索・抽出 ---------- */
@@ -118,14 +123,14 @@
 
     /* A2 競合分析 */
     const compPlan = {
-      si: { coef: 1.08, dir: "大手SIは体制・実績で勝るが、間接費が高く小回りが利かない。デジタルマーケ専門性では劣る。", win: "「専門特化 × 機動力 × コスト効率」ポジションで差別化。全面勝負を避け、デジタル領域の提案深度で勝つ。" },
-      ad: { coef: 1.12, dir: "大手広告代理店はマス統合に強いが、運用型・SEO・解析の内製度はDIが優位に立てる。", win: "運用実績の数値(改善率・CPA等)を前面に。マス前提の見積り構造より低コストで同等以上の効果を提示。" },
-      org: { coef: 1.15, dir: "団体・独法は随意的な継続受注が多く、提案品質での競争には弱い傾向。", win: "企画競争化のタイミングを捉え、民間水準の提案品質・スピード・KPI管理で明確な差を見せる。" },
-      general: { coef: 1.10, dir: "現職は中堅・中小の一般企業。価格・提案とも正面から競争可能。", win: "現職の納品物を調査し、デジタル専門性(解析・広告・SEO)の上積みを提案の軸に。" },
+      si: { coef: 1.05, dir: "大手SIは体制・実績で勝るが、間接費が高く小回りが利かない。デジタルマーケ専門性では劣る。", win: "「専門特化 × 機動力 × コスト効率」ポジションで差別化。全面勝負を避け、デジタル領域の提案深度で勝つ。" },
+      ad: { coef: 1.07, dir: "大手広告代理店はマス統合に強いが、運用型・SEO・解析の内製度はDIが優位に立てる。", win: "運用実績の数値(改善率・CPA等)を前面に。マス前提の見積り構造より低コストで同等以上の効果を提示。" },
+      org: { coef: 1.08, dir: "団体・独法は随意的な継続受注が多く、提案品質での競争には弱い傾向。", win: "企画競争化のタイミングを捉え、民間水準の提案品質・スピード・KPI管理で明確な差を見せる。" },
+      general: { coef: 1.06, dir: "現職は中堅・中小の一般企業。価格・提案とも正面から競争可能。", win: "現職の納品物を調査し、デジタル専門性(解析・広告・SEO)の上積みを提案の軸に。" },
       carrier: { coef: 1.0, dir: "通信キャリアのインフラ案件で競合対象にならない。", win: "参入対象外。" },
       const: { coef: 1.0, dir: "建設・設備の許可業種で競合対象にならない。", win: "参入対象外。" },
-      unknown: { coef: 1.08, dir: "現職の素性が不明。過去落札履歴の調査が先決。", win: "調達ポータルで過去3年の同種案件の落札者・金額を確認し、勝ち筋を見極める。" },
-    }[itype] || { coef: 1.05, dir: "-", win: "-" };
+      unknown: { coef: 1.05, dir: "現職の素性が不明。過去落札履歴の調査が先決。", win: "調達ポータルで過去3年の同種案件の落札者・金額を確認し、勝ち筋を見極める。" },
+    }[itype] || { coef: 1.03, dir: "-", win: "-" };
     const a2 = {
       icon: "⚔️", color: "#e6533c", name: "競合分析エージェント", role: "現職の方向性分析とポジショニング設計",
       coef: outOfScope ? 1.0 : compPlan.coef, coefNote: "競合理解によるポジショニング効果",
@@ -140,9 +145,9 @@
     const estBudget = r.amount ? Math.round(r.amount / 0.88) : 0; // 前年落札額≒予定価格の88%と仮定
     const proposal = isProposal(t);
     const range = proposal ? [0.90, 0.95] : [0.82, 0.88];
-    const priceCoefMap = { si: 1.20, general: 1.15, ad: 1.12, org: 1.10, unknown: 1.08, carrier: 1.0, const: 1.0 };
-    let priceCoef = priceCoefMap[itype] ?? 1.05;
-    if (r.amount && r.amount < 1e6) priceCoef = Math.min(priceCoef, 1.05);
+    const priceCoefMap = { si: 1.12, general: 1.08, ad: 1.07, org: 1.06, unknown: 1.05, carrier: 1.0, const: 1.0 };
+    let priceCoef = priceCoefMap[itype] ?? 1.04;
+    if (r.amount && r.amount < 1e6) priceCoef = Math.min(priceCoef, 1.03);
     const a3 = {
       icon: "💴", color: "#f5a623", name: "価格戦略エージェント", role: "予定価格の推定と入札価格レンジの設計",
       coef: outOfScope ? 1.0 : priceCoef, coefNote: "適正価格設計による価格点・費用対効果の向上",
@@ -157,8 +162,8 @@
 
     /* A4 提案・マーケティング戦略 */
     const strengths = reqs.map(q => DI_STRENGTH[q]).filter(Boolean);
-    let propCoef = 1 + 0.10 + 0.15 * aff / 100;
-    if (proposal) propCoef += 0.05;
+    let propCoef = 1 + 0.05 + 0.09 * aff / 100;
+    if (proposal) propCoef += 0.03;
     const a4 = {
       icon: "📣", color: "#2b5ce6", name: "提案・マーケティング戦略エージェント", role: "DI強みの提案骨子への変換とKPI設計",
       coef: outOfScope ? 1.0 : +propCoef.toFixed(2), coefNote: "提案品質・技術点の向上(親和性が高いほど大)",
@@ -172,8 +177,8 @@
     };
 
     /* A5 体制・実績 */
-    const newSf = Math.min(1, sf + 0.15);
-    const orgCoef = +(newSf / sf).toFixed(2);
+    const newSf = Math.min(1, sf + 0.10);
+    const orgCoef = +Math.min(1.12, newSf / sf).toFixed(2);
     const a5 = {
       icon: "🏗️", color: "#00a3b4", name: "体制・実績エージェント", role: "資格・実績・体制の障壁解消プラン",
       coef: outOfScope ? 1.0 : orgCoef, coefNote: "金額障壁係数の1段階改善(資格・実績・体制整備)",
@@ -198,14 +203,15 @@
     if (!text || text.trim().length < 20) return null;
     const pos = [...new Set(RFP_POS.filter(k => text.includes(k)))];
     const neg = [...new Set(RFP_NEG.filter(k => text.includes(k)))];
-    const up = Math.min(0.20, pos.length * 0.02);
-    const down = Math.min(0.15, neg.length * 0.03);
+    const up = Math.min(0.12, pos.length * 0.015);
+    const down = Math.min(0.20, neg.length * 0.04);
     return { pos, neg, coef: +(1 + up - down).toFixed(2), textLen: text.length };
   }
 
   /* ---------- シミュレーション実行 ---------- */
   let currentCase = null, agents = [], rfp = null, wfChart = null;
-  const CAP = 95; // 推定上限(build.pyのAs-Is上限と同一)。戦略でAs-Isを下回ることはない
+  // 挑戦者のAs-Is上限は60%(競合・コンペを織り込み)。戦略を尽くしても65%が現実的な天井。
+  const CAP = 65;
 
   function computeWin() {
     const base = currentCase.winnability;
@@ -219,7 +225,7 @@
     const toBe = +Math.max(base, cum).toFixed(1);
     let final = toBe;
     if (rfp) final = +Math.min(CAP, toBe * rfp.coef).toFixed(1); // RFPで領域外が判明した場合は下がり得る
-    const saturated = base >= CAP - 1;
+    const saturated = toBe >= CAP - 1;
     return { base, steps, toBe, final, saturated };
   }
 
@@ -248,11 +254,14 @@
       <div class="mini" style="margin-bottom:10px">${esc(r.ministry)}${r.agency ? " ・" + esc(r.agency) : ""} ／ 現落札: ${esc(r.company)}(${esc(r.comp_ilabel)}) ／ 落札額 ${yen(r.amount)}</div>
       <div style="font-size:12.5px;color:#4b5563">${esc(r.summary)}</div>
       ${isRecur(r) ? `<div class="mini" style="margin-top:8px">📅 毎年度型案件 — 来年度の再公告が見込まれるため、公告3ヶ月前からの準備が可能。</div>` : ""}`;
+    const nb = expectedBidders(r.amount, r.project_name);
     $("baselineCard").innerHTML = `
       <h4>現状のままの勝率(As-Is)</h4>
-      <div class="winbig" style="color:${W.base >= 50 ? "#1a9d63" : W.base >= 25 ? "#f0a500" : "#e07b39"}">${W.base}<small>%</small></div>
-      <p class="hint" style="margin-top:8px">= 親和性 ${r.affinity}/100 × 現職係数 ${entry.toFixed(2)}(${esc(r.comp_ilabel)}) × 金額障壁 ${sf.toFixed(2)}</p>
-      <div style="font-size:12px;color:#4b5563">戦略なし・現状の資格/実績/体制のまま、価格も相場感のみで入札した場合の推定値。競合度: ${clChip(r.comp_level, r.comp_score)}</div>`;
+      <div class="winbig" style="color:${W.base >= 30 ? "#1a9d63" : W.base >= 15 ? "#f0a500" : "#e07b39"}">${W.base}<small>%</small></div>
+      <p class="hint" style="margin-top:8px">= 親和性 ${r.affinity}/100 × 現職係数 ${entry.toFixed(2)}(${esc(r.comp_ilabel)}) × 金額障壁 ${sf.toFixed(2)} ÷ 推定入札者数 ${nb}社 × 2</p>
+      <div style="font-size:12px;color:#4b5563">戦略なし・現状の資格/実績/体制のまま入札した場合の推定値。
+      この規模・方式の案件には<b>約${nb}社</b>の応札が見込まれ、平均的な参加者の勝率は${(100 / nb).toFixed(0)}%。
+      競合・コンペの存在を織り込むため挑戦者の上限は60%(戦略を尽くしても75%)としている。競合度: ${clChip(r.comp_level, r.comp_score)}</div>`;
 
     /* ③ エージェント */
     $("agentGrid").innerHTML = agents.map(a => `
@@ -294,7 +303,7 @@
         <div class="compare-card"><div class="t">② エージェント戦略立案後</div><div class="winbig" style="font-size:30px;color:#2b5ce6">${W.toBe}<small>%</small></div>${dlt(W.base, W.toBe)}</div>
         <div class="compare-card hero"><div class="t">③ ＋RFP・企画書読込＆マーケ戦略</div><div class="winbig" style="font-size:30px">${rfp ? W.final + "<small>%</small>" : "—"}</div>${rfp ? dlt(W.toBe, W.final) : '<span class="mini" style="color:#dff1ff">⑤にRFPを貼ると算出</span>'}</div>
       </div>
-      ${W.saturated ? '<p class="hint" style="margin-top:10px">※ この案件は現状勝率が推定上限(95%)に到達済みのため、戦略による上積み余地は小さい。エージェントの提言は「確実に取り切る」ための実行チェックリストとして活用。</p>' : ""}`;
+      ${W.saturated ? '<p class="hint" style="margin-top:10px">※ この案件は勝率が戦略後の推定上限(65%)近くに到達。競合・コンペがある以上100%はあり得ないため、エージェントの提言は「取りこぼさない」ための実行チェックリストとして活用。</p>' : ""}`;
   }
 
   function renderPricing(r) {
@@ -318,9 +327,9 @@
     if (r.affinity < 20) {
       lines.push("この案件はDIの提供役務の範囲外。戦略を組んでも勝率改善は限定的で、原則【見送り】を推奨。");
     } else {
-      const judge = rec >= 55 ? "【入札推奨】戦略を実行すれば勝率は十分に競争水準。" :
-        rec >= 35 ? "【条件付き推奨】提案体制と価格の詰めができれば挑戦価値あり。" :
-        "【慎重判断】現状は分が悪い。実績積み上げか再委託参画から始めるのが現実的。";
+      const judge = rec >= 40 ? "【入札推奨】複数社競合の中でも頭一つ抜けられる水準。" :
+        rec >= 25 ? "【条件付き推奨】平均的な応札者(勝率2〜3割)を上回れる。提案体制と価格の詰めができれば挑戦価値あり。" :
+        "【慎重判断】競合を考慮すると現状は分が悪い。実績積み上げか再委託参画から始めるのが現実的。";
       lines.push(`${judge}(現状${W.base}% → 戦略後${W.toBe}%${rfp ? ` → RFP読込後${W.final}%` : ""})`);
     }
     const gain = +(W.toBe - W.base).toFixed(1);
@@ -329,7 +338,7 @@
       lines.push(`RFP読込の効果は×${rfp.coef}(${rfp.coef >= 1 ? "+" : ""}${((rfp.coef - 1) * 100).toFixed(0)}%相対)。検出キーワード${rfp.pos.length}件から仕様の解像度が上がり、提案の的中率とマーケティング戦略の具体性が向上。`);
       if (rfp.neg.length) lines.push(`【注意】RFPにDI領域外のキーワード(${rfp.neg.join("/")})を検出。役務範囲の切り分けを仕様確認で必ず行うこと。`);
     } else {
-      lines.push("⑤でRFP・仕様書を読み込むと、マーケティング戦略の精度向上分がさらに上乗せされる(最大+20%相対)。");
+      lines.push("⑤でRFP・仕様書を読み込むと、マーケティング戦略の精度向上分がさらに上乗せされる(適合キーワードで最大+12%相対、領域外検出時は減点)。");
     }
     if (isRecur(r)) {
       const m = Z2A(r.project_name).match(FY_RE);
@@ -362,6 +371,74 @@
       </div>`;
     renderWaterfall(W); renderCompare(W); renderVerdict(currentCase, W);
   };
+  /* ---------- RFPファイル読込 (ドラッグ&ドロップ / ファイル選択 / PDF対応) ---------- */
+  const PDFJS_URL = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+  const PDFJS_WORKER = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  let pdfjsReady = null;
+  function loadPdfjs() {
+    if (window.pdfjsLib) return Promise.resolve();
+    if (pdfjsReady) return pdfjsReady;
+    pdfjsReady = new Promise((res, rej) => {
+      const s = document.createElement("script");
+      s.src = PDFJS_URL;
+      s.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER; res(); };
+      s.onerror = () => rej(new Error("pdf.js の読み込みに失敗(オフライン?)"));
+      document.head.appendChild(s);
+    });
+    return pdfjsReady;
+  }
+  async function extractPdfText(file) {
+    await loadPdfjs();
+    const buf = await file.arrayBuffer();
+    const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
+    let text = "";
+    const maxPages = Math.min(pdf.numPages, 60);
+    for (let p = 1; p <= maxPages; p++) {
+      const page = await pdf.getPage(p);
+      const tc = await page.getTextContent();
+      text += tc.items.map(i => i.str).join(" ") + "\n";
+    }
+    if (pdf.numPages > maxPages) text += `\n(※ ${pdf.numPages}ページ中 先頭${maxPages}ページを抽出)`;
+    return text;
+  }
+  async function readRfpFiles(files) {
+    const list = [...files].filter(f =>
+      f.type === "application/pdf" || /\.(pdf|txt|md|csv|text)$/i.test(f.name) || f.type.startsWith("text/"));
+    if (!list.length) { $("rfpStatus").textContent = "対応形式は PDF / .txt / .md / .csv です"; return; }
+    $("rfpStatus").textContent = "読み込み中…";
+    const parts = [];
+    for (const f of list) {
+      try {
+        const isPdf = f.type === "application/pdf" || /\.pdf$/i.test(f.name);
+        const text = isPdf ? await extractPdfText(f) : await f.text();
+        parts.push(`【${f.name}】\n${text.trim()}`);
+      } catch (e) {
+        parts.push(`【${f.name}】(読み込み失敗: ${e.message})`);
+      }
+    }
+    const merged = parts.join("\n\n");
+    $("rfpText").value = ($("rfpText").value.trim() ? $("rfpText").value.trim() + "\n\n" : "") + merged;
+    $("rfpDropHint").innerHTML = "📄 読み込み済み: " +
+      list.map(f => `<span class="rfp-file-chip">${esc(f.name)}</span>`).join("") +
+      '<span class="mini">追加のファイルをドロップ、またはこのまま解析</span>';
+    $("rfpStatus").textContent = `${list.length}ファイル読込完了 → 自動解析します`;
+    if (currentCase) $("btnAnalyze").click();
+  }
+  const dropZone = $("rfpDrop");
+  ["dragenter", "dragover"].forEach(ev => dropZone.addEventListener(ev, e => {
+    e.preventDefault(); e.stopPropagation(); dropZone.classList.add("dragover");
+  }));
+  ["dragleave", "drop"].forEach(ev => dropZone.addEventListener(ev, e => {
+    e.preventDefault(); e.stopPropagation(); dropZone.classList.remove("dragover");
+  }));
+  dropZone.addEventListener("drop", e => {
+    if (e.dataTransfer && e.dataTransfer.files.length) readRfpFiles(e.dataTransfer.files);
+  });
+  $("rfpFile").addEventListener("change", e => {
+    if (e.target.files.length) readRfpFiles(e.target.files);
+    e.target.value = "";
+  });
+
   $("btnSample").onclick = () => {
     $("rfpText").value = "本業務は、当省が運営するウェブサイトについて、アクセス解析に基づく課題抽出及びSEO改善、SNSを活用した情報発信の強化、運用型広告(リスティング広告等)の企画・運用、並びに効果測定(KPI設計・月次レポート)を行うものである。受託者は、ターゲットの分析(ペルソナ設計)を行い、コンテンツの企画制作及び改善提案を継続的に実施すること。デジタルマーケティングに関する専門的知見を有する者を配置し、広報戦略の策定を支援すること。";
     $("btnAnalyze").click();
