@@ -80,6 +80,17 @@
           <div class="kw-suggest" id="kwSuggest">
             <span class="kw-suggest-label">💡 検索キーワードに迷ったら（DIの得意領域）:</span>
           </div>
+          <div class="filters" id="openFilters" style="display:none">
+            <label>都道府県
+              <select id="fPref"><option value="">すべて</option></select>
+            </label>
+            <label>調達区分
+              <select id="fCat"><option value="">すべて</option></select>
+            </label>
+            <span class="pill on" id="pDiFirst">DI親和性順</span>
+            <span class="pill" id="pDeadline">締切が近い順</span>
+            <span class="mini" id="openFilterCount"></span>
+          </div>
           <div class="tbl-wrap" style="max-height:420px"><table id="openTable"></table></div>
           <p class="hint" style="margin:10px 0 0">📢 出典: <b>官公需情報ポータル(kkj.go.jp)</b>の公開API。国・自治体が<b>いま公示中</b>の入札・公募案件を、公告日・
           <b style="color:#c74a1d">入札期日(提出締切)</b>・発注機関・調達区分つきで取得。金額(予定価格)は事前非公表が多く未取得。DI親和性順に表示。実際の参加可否・締切は必ず公告原文で確認してください。</p>

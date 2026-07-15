@@ -347,8 +347,11 @@
         <b style="color:#c74a1d">📢 現在公示中の案件</b>
         <div class="mini" style="margin-top:3px">公告日: ${r.announcement_date ? fmtDate(r.announcement_date) : "—"} ／
           <b style="color:#c74a1d">入札期日(提出締切): ${r.deadline ? fmtDate(r.deadline) : "公告本文で要確認"}</b>
-          ／ 区分: ${esc(r.category || "—")} ／ 方式: ${esc(r.procedure || "—")}</div>
-        ${r.url ? `<a class="mini" href="${esc(r.url)}" target="_blank" rel="noopener">📄 公告原文を開く（正確な期日・仕様・参加資格を必ず確認）</a>` : ""}
+          ／ 地域: ${esc(r.pref || "—")} ／ 区分: ${esc(r.category || "—")} ／ 方式: ${esc(r.procedure || "—")}</div>
+        ${r.url ? `<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button class="btn" id="btnImportDoc" style="padding:6px 12px;font-size:12px">📥 この公告をRFP解析に取り込む(⑤)</button>
+          <a class="mini" href="${esc(r.url)}" target="_blank" rel="noopener">📄 公告原文を開く（正確な期日・仕様・参加資格を確認）</a>
+        </div>` : ""}
       </div>` : "";
     $("caseCard").innerHTML = `
       <h4>${indChip(r.industry)} 選択中の案件</h4>
@@ -376,6 +379,9 @@
         <ul>${a.findings.map(f => `<li>${esc(f)}</li>`).join("")}</ul>
         <div class="verdict">💡 ${esc(a.verdict)}</div>
       </div>`).join("");
+
+    const bImport = $("btnImportDoc");
+    if (bImport) bImport.onclick = () => importDocToRfp(r.url, r.project_name);
 
     renderWaterfall(W);
     renderCompare(W);
@@ -503,10 +509,9 @@
     });
     return pdfjsReady;
   }
-  async function extractPdfText(file) {
+  async function extractPdfData(data) {
     await loadPdfjs();
-    const buf = await file.arrayBuffer();
-    const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
+    const pdf = await window.pdfjsLib.getDocument({ data }).promise;
     let text = "";
     const maxPages = Math.min(pdf.numPages, 60);
     for (let p = 1; p <= maxPages; p++) {
@@ -516,6 +521,37 @@
     }
     if (pdf.numPages > maxPages) text += `\n(※ ${pdf.numPages}ページ中 先頭${maxPages}ページを抽出)`;
     return text;
+  }
+  async function extractPdfText(file) {
+    return extractPdfData(await file.arrayBuffer());
+  }
+
+  /* 公告URL(PDF/HTML)をプロキシ経由で取得しRFP欄に流し込む → 自動解析 */
+  async function importDocToRfp(url, label) {
+    if (!url) { $("rfpStatus").textContent = "公告URLがありません"; return; }
+    document.getElementById("rfp").scrollIntoView({ behavior: "smooth" });
+    $("rfpStatus").textContent = "公告を取得中…（外部サイトから読み込み）";
+    try {
+      const r = await fetch(`api/fetch-doc?url=${encodeURIComponent(url)}`);
+      const d = await r.json();
+      if (!r.ok || d.error) throw new Error(d.error || `HTTP ${r.status}`);
+      let text = "";
+      if (d.type === "pdf") {
+        const bin = Uint8Array.from(atob(d.b64), c => c.charCodeAt(0));
+        text = await extractPdfData(bin);
+      } else {
+        text = d.text || "";
+      }
+      if (!text.trim() || text.trim().length < 20) {
+        $("rfpStatus").innerHTML = `<span style="color:#c74a1d">本文を抽出できませんでした（画像PDF等の可能性）。公告原文を開いて本文をコピー＆ペーストしてください。</span>`;
+        return;
+      }
+      $("rfpText").value = (label ? `【取り込み元: ${label}】\n` : "") + text;
+      $("rfpStatus").textContent = `公告を取り込みました（${text.length.toLocaleString()}文字）→ 自動解析`;
+      $("btnAnalyze").click();
+    } catch (e) {
+      $("rfpStatus").innerHTML = `<span style="color:#c74a1d">取り込めませんでした: ${esc(e.message)}。公告原文を開いて本文を貼り付けてください。（ローカルfile://では動作しません）</span>`;
+    }
   }
   async function readRfpFiles(files) {
     const list = [...files].filter(f =>
@@ -563,7 +599,8 @@
   /* ================================================================
      公示中案件モード (官公需情報ポータル kkj.go.jp をプロキシ経由で取得)
      ================================================================ */
-  let openResults = [];
+  let openResultsAll = [], openResults = [];
+  const openFilter = { pref: "", cat: "", sort: "aff" };
 
   function synthFromOpenBid(bid, idx) {
     const name = bid.name || "";
@@ -606,8 +643,9 @@
       deadline: bid.deadline,
       url: bid.url,
       description: bid.description,
-      category: bid.category,
+      category: bid.category || "(区分なし)",
       procedure: bid.procedure,
+      pref: bid.pref || "(地域不明)",
     };
   }
 
@@ -623,10 +661,10 @@
         throw new Error(e.error || `HTTP ${r.status}`);
       }
       const data = await r.json();
-      // DIが提案しうる区分(役務・業務委託系)を優先し、物品・工事単体は後ろに
-      openResults = data.items.map((b, i) => synthFromOpenBid(b, i))
-        .sort((a, b) => b.affinity - a.affinity || b.opportunity - a.opportunity);
-      $("openStatus").innerHTML = `全国 <b>${data.hits.toLocaleString()}</b> 件中 上位 ${data.items.length} 件を取得（DI親和性順）`;
+      openResultsAll = data.items.map((b, i) => synthFromOpenBid(b, i));
+      $("openStatus").innerHTML = `全国 <b>${data.hits.toLocaleString()}</b> 件中 上位 ${data.items.length} 件を取得`;
+      populateOpenFilters();
+      $("openFilters").style.display = data.items.length ? "" : "none";
       renderOpenTable();
     } catch (e) {
       openResults = [];
@@ -635,15 +673,40 @@
     }
   }
 
+  function populateOpenFilters() {
+    const fill = (sel, values) => {
+      const cur = sel.value;
+      sel.innerHTML = '<option value="">すべて</option>' +
+        values.map(v => `<option>${v}</option>`).join("");
+      if (values.includes(cur)) sel.value = cur; else sel.value = "";
+    };
+    const prefOrder = ["北海道","青森県","岩手県","宮城県","秋田県","山形県","福島県","茨城県","栃木県","群馬県","埼玉県","千葉県","東京都","神奈川県","新潟県","富山県","石川県","福井県","山梨県","長野県","岐阜県","静岡県","愛知県","三重県","滋賀県","京都府","大阪府","兵庫県","奈良県","和歌山県","鳥取県","島根県","岡山県","広島県","山口県","徳島県","香川県","愛媛県","高知県","福岡県","佐賀県","長崎県","熊本県","大分県","宮崎県","鹿児島県","沖縄県","(地域不明)"];
+    const prefs = [...new Set(openResultsAll.map(r => r.pref))].sort((a, b) => prefOrder.indexOf(a) - prefOrder.indexOf(b));
+    const cats = [...new Set(openResultsAll.map(r => r.category))].sort();
+    fill($("fPref"), prefs);
+    fill($("fCat"), cats);
+  }
+
   function renderOpenTable() {
-    if (!openResults.length) { $("openTable").innerHTML = ""; return; }
+    let rows = openResultsAll.filter(r =>
+      (!openFilter.pref || r.pref === openFilter.pref) &&
+      (!openFilter.cat || r.category === openFilter.cat));
+    if (openFilter.sort === "deadline") {
+      rows.sort((a, b) => (a.deadline || "9999").localeCompare(b.deadline || "9999") || b.affinity - a.affinity);
+    } else {
+      rows.sort((a, b) => b.affinity - a.affinity || b.opportunity - a.opportunity);
+    }
+    openResults = rows;
+    $("openFilterCount").textContent = `${rows.length}件表示（全${openResultsAll.length}件中）`;
+    if (!rows.length) { $("openTable").innerHTML = '<tbody><tr><td class="empty-hint">条件に合う案件がありません。フィルタを緩めてください。</td></tr></tbody>'; return; }
     $("openTable").innerHTML =
-      `<thead><tr><th>業種</th><th>案件名 / 発注機関</th><th>公告日・入札期日</th><th>区分/方式</th><th class="num">DI親和性</th><th class="num">推定勝率</th><th></th></tr></thead><tbody>` +
+      `<thead><tr><th>業種</th><th>案件名 / 発注機関</th><th>地域</th><th>公告日・入札期日</th><th>区分/方式</th><th class="num">DI親和性</th><th class="num">推定勝率</th><th></th></tr></thead><tbody>` +
       openResults.map(r => `<tr class="sel-row ${r.id === st.selectedId ? "selected" : ""}" data-id="${r.id}">
         <td>${indChip(r.industry)}</td>
-        <td><div style="font-weight:600;max-width:330px">${esc(r.project_name)}</div>
+        <td><div style="font-weight:600;max-width:300px">${esc(r.project_name)}</div>
             <div class="mini">${esc(r.ministry)}</div>
             ${r.url ? `<a class="mini" href="${esc(r.url)}" target="_blank" rel="noopener">📄 公告原文を開く</a>` : ""}</td>
+        <td style="font-size:11px;white-space:nowrap">${esc(r.pref)}</td>
         <td style="font-size:11.5px;white-space:nowrap">公告: ${r.announcement_date ? fmtDate(r.announcement_date) : "—"}<br><b style="color:#c74a1d">期日: ${r.deadline ? fmtDate(r.deadline) : "本文参照"}</b></td>
         <td style="font-size:11px">${esc(r.category || "—")}<br>${esc(r.procedure || "—")}</td>
         <td class="num">${scoreBar(r.affinity, "#2b5ce6")}<br>${lab(r.affinity_label)}</td>
@@ -686,6 +749,10 @@
   document.querySelectorAll(".src-tab").forEach(b => b.onclick = () => setMode(b.dataset.mode));
   $("btnOpenSearch").onclick = searchOpenBids;
   $("openQ").addEventListener("keydown", e => { if (e.key === "Enter") searchOpenBids(); });
+  $("fPref").onchange = e => { openFilter.pref = e.target.value; renderOpenTable(); };
+  $("fCat").onchange = e => { openFilter.cat = e.target.value; renderOpenTable(); };
+  $("pDiFirst").onclick = () => { openFilter.sort = "aff"; $("pDiFirst").classList.add("on"); $("pDeadline").classList.remove("on"); renderOpenTable(); };
+  $("pDeadline").onclick = () => { openFilter.sort = "deadline"; $("pDeadline").classList.add("on"); $("pDiFirst").classList.remove("on"); renderOpenTable(); };
 
   /* ---------- 初期化 (URL ?id= 対応 / デモボタン) ---------- */
   renderSearch();
