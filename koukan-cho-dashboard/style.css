@@ -148,3 +148,10 @@ details.rowdetail .dbox .sim{font-size:11px;color:var(--sub)}
 .nav-note{font-size:10.5px;color:var(--sub);padding:6px 12px 0;line-height:1.5}
 .flash-guide{animation:flashGuide 1s ease 2}
 @keyframes flashGuide{0%,100%{box-shadow:var(--shadow)}50%{box-shadow:0 0 0 5px rgba(43,92,230,.35)}}
+/* ---- source tabs (strategy search) ---- */
+.src-tabs{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.src-tab{flex:1;min-width:240px;text-align:left;padding:12px 16px;border:1.5px solid var(--line);border-radius:12px;background:#fff;cursor:pointer;font-size:14px;font-weight:800;color:var(--sub);display:flex;flex-direction:column;gap:3px;transition:all .15s}
+.src-tab small{font-weight:500;font-size:10.5px;color:var(--sub)}
+.src-tab:hover{border-color:#c6d2e8}
+.src-tab.on{border-color:var(--brand);background:#eef3ff;color:var(--brand)}
+.src-tab.on small{color:#5a7fd6}

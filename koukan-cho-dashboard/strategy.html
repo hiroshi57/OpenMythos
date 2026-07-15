@@ -35,34 +35,52 @@
     </div>
 
     <section id="search">
-      <div class="sec-title"><h3>① 参加したい入札案件を検索・抽出</h3><span>キーワード・業種・競合度・金額帯で絞り込み、行をクリックして選択</span></div>
+      <div class="sec-title"><h3>① 参加したい入札案件を検索・抽出</h3><span>「過去の落札実績」または「現在公示中の案件」から選び、行をクリックして戦略分析へ</span></div>
       <div class="panel">
-        <div class="filters">
-          <input type="text" id="q" placeholder="案件名・省庁・企業名で検索（例: 広報 / SNS / ウェブ / 調査）…">
-          <label>業種
-            <select id="fIndustry"><option value="">すべて</option></select>
-          </label>
-          <label>競合度
-            <select id="fComp">
-              <option value="">すべて</option>
-              <option>参入容易</option><option>競争可能</option><option>要準備</option><option>参入困難</option>
-            </select>
-          </label>
-          <label>金額
-            <select id="fAmt">
-              <option value="">すべて</option>
-              <option value="0-3000000">〜300万</option>
-              <option value="3000000-50000000">300万〜5千万</option>
-              <option value="50000000-1000000000000">5千万〜</option>
-            </select>
-          </label>
-          <span class="pill on" id="pDiOnly">DI射程のみ</span>
-          <span class="pill" id="pRecur">年度案件のみ(来年度も見込)</span>
-          <span class="mini" id="searchCount"></span>
+        <div class="src-tabs">
+          <button class="src-tab on" data-mode="past">📊 過去の落札実績から選ぶ<small>Data-Walkers 43,008件を分析（勝てる領域の把握・来年度予測向き）</small></button>
+          <button class="src-tab" data-mode="open">📢 いま公示中の案件から選ぶ<small>官公需情報ポータル リアルタイム（入札期日つき・今すぐ参加できる）</small></button>
         </div>
-        <div class="tbl-wrap" style="max-height:380px"><table id="searchTable"></table></div>
-        <p class="hint" style="margin:10px 0 0">📅 公示日(入札公告日)は元データ(調達ポータル収集分)に未収録のため「未収録」表示。落札日は実績値。
-        「毎年度型」案件は前年の落札日から次回サイクル(公告≈落札の2〜3ヶ月前、入札期日≈落札の1〜2ヶ月前)を予測表示している。実際の公告・期日は調達ポータルで要確認。</p>
+
+        <div id="pastPane">
+          <div class="filters">
+            <input type="text" id="q" placeholder="案件名・省庁・企業名で検索（例: 広報 / SNS / ウェブ / 調査）…">
+            <label>業種
+              <select id="fIndustry"><option value="">すべて</option></select>
+            </label>
+            <label>競合度
+              <select id="fComp">
+                <option value="">すべて</option>
+                <option>参入容易</option><option>競争可能</option><option>要準備</option><option>参入困難</option>
+              </select>
+            </label>
+            <label>金額
+              <select id="fAmt">
+                <option value="">すべて</option>
+                <option value="0-3000000">〜300万</option>
+                <option value="3000000-50000000">300万〜5千万</option>
+                <option value="50000000-1000000000000">5千万〜</option>
+              </select>
+            </label>
+            <span class="pill on" id="pDiOnly">DI射程のみ</span>
+            <span class="pill" id="pRecur">年度案件のみ(来年度も見込)</span>
+            <span class="mini" id="searchCount"></span>
+          </div>
+          <div class="tbl-wrap" style="max-height:380px"><table id="searchTable"></table></div>
+          <p class="hint" style="margin:10px 0 0">📅 これは<b>落札済み(過去実績)</b>のデータ。公示日は元データ未収録のため「未収録」表示、落札日は実績値。
+          「毎年度型」案件は前年の落札日から次回サイクル(公告≈落札の2〜3ヶ月前、入札期日≈落札の1〜2ヶ月前)を予測表示。今すぐ参加できる案件は「📢 いま公示中」タブへ。</p>
+        </div>
+
+        <div id="openPane" style="display:none">
+          <div class="filters">
+            <input type="text" id="openQ" placeholder="キーワードで公示中案件を検索（例: ウェブサイト / 広報 / SEO / 動画 / 情報発信）…">
+            <button class="btn" id="btnOpenSearch">🔍 公示中の案件を検索</button>
+            <span class="mini" id="openStatus"></span>
+          </div>
+          <div class="tbl-wrap" style="max-height:420px"><table id="openTable"></table></div>
+          <p class="hint" style="margin:10px 0 0">📢 出典: <b>官公需情報ポータル(kkj.go.jp)</b>の公開API。国・自治体が<b>いま公示中</b>の入札・公募案件を、公告日・
+          <b style="color:#c74a1d">入札期日(提出締切)</b>・発注機関・調達区分つきで取得。金額(予定価格)は事前非公表が多く未取得。DI親和性順に表示。実際の参加可否・締切は必ず公告原文で確認してください。</p>
+        </div>
       </div>
     </section>
 

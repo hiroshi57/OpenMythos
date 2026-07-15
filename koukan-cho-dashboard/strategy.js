@@ -17,6 +17,9 @@
   const esc = (s) => (s || "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const indChip = (n) => `<span class="ind-chip" style="background:${IND_COLOR[n] || "#aab3c0"}">${n}</span>`;
   const clChip = (lv, s) => `<span class="chip" style="background:${CL_COLOR[lv] || "#b9c0cc"}">${lv}${s != null ? " " + s : ""}</span>`;
+  const LAB_COLOR = { "高": "#1a9d63", "中": "#f0a500", "低": "#e07b39", "圏外": "#b9c0cc" };
+  const lab = (l) => `<span class="chip" style="background:${LAB_COLOR[l] || "#b9c0cc"}">${l}</span>`;
+  const scoreBar = (v, color) => `<span class="scorebar"><i style="width:${v}%;background:${color}"></i></span> <b>${v}</b>`;
   const Z2A = s => (s || "").replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
   const FY_RE = /令和\s*([0-9]{1,2})\s*年度/;
 
@@ -33,10 +36,46 @@
     return Math.max(2.0, n);
   }
 
+  /* ---------- 業種分類・DI親和性 (build.py と同一ルールの移植) ---------- */
+  const INDUSTRY_RULES = [
+    ["広報・広告・マーケティング", ["広報", "広告", "ＰＲ", "プロモーション", "情報発信", "普及啓発", "啓発", "動画", "映像", "ＳＮＳ", "ＳＮＳ", "キャンペーン", "ブランディング", "マーケティング", "周知", "特設サイト", "広報誌", "パンフレット"]],
+    ["Web・デジタル", ["ホームページ", "ウェブ", "Ｗｅｂ", "ＷＥＢ", "ポータルサイト", "サイト構築", "サイト運用", "サイト改修", "オンライン", "電子申請", "ＵＩ", "ＵＸ", "アクセシビリティ", "デジタル化", "ＤＸ", "オープンデータ", "アプリ"]],
+    ["システム・IT", ["システム", "ソフトウェア", "ネットワーク", "サーバ", "クラウド", "データベース", "プログラム", "情報基盤", "情報処理", "ＩＴ", "ＡＩ", "ＲＰＡ", "ＬＡＮ", "電子計算機", "端末", "ＰＣ", "セキュリティ", "保守等業務"]],
+    ["調査・コンサル・研究", ["調査", "分析", "検討", "研究", "コンサル", "診断", "アンケート", "統計", "実態把握", "評価業務", "検証", "モニタリング", "推計", "計画策定", "支援業務"]],
+    ["印刷・製本", ["印刷", "製本", "封入", "封緘", "丁合", "発送業務"]],
+    ["人材・研修・運営", ["派遣", "研修", "講師", "運営業務", "運営支援", "相談", "窓口", "人材", "セミナー", "説明会", "受付業務", "事務局"]],
+    ["電気・ガス・エネルギー", ["電気", "ガス", "電力", "エネルギー", "燃料", "灯油", "重油", "ＬＰ", "太陽光"]],
+    ["建設・土木・設備工事", ["工事", "建設", "土木", "改修工事", "修繕", "舗装", "建築", "解体", "設備工事", "電気工事", "空調", "外構", "撤去"]],
+    ["保守・管理・警備・清掃", ["保守", "管理業務", "点検", "清掃", "警備", "保全", "メンテナンス", "運転管理", "維持管理", "設備管理", "植栽", "除草"]],
+    ["医療・環境・検査", ["医療", "検査", "環境", "廃棄物", "測定", "衛生", "医薬", "試験"]],
+    ["物品・機器・車両調達", ["購入", "調達", "供給", "借入", "賃貸借", "リース", "機器", "装置", "車両", "図書", "消耗品", "備品", "用紙", "什器", "食料", "被服"]],
+  ];
+  const AFF_BASE = {
+    "広報・広告・マーケティング": 88, "Web・デジタル": 82, "調査・コンサル・研究": 64, "システム・IT": 52,
+    "印刷・製本": 34, "人材・研修・運営": 30, "医療・環境・検査": 12, "保守・管理・警備・清掃": 12,
+    "物品・機器・車両調達": 6, "電気・ガス・エネルギー": 3, "建設・土木・設備工事": 2, "その他": 20,
+  };
+  const AFF_BOOST = { "ＳＥＯ": 12, "検索": 6, "広告": 10, "運用型": 10, "リスティング": 12, "ＳＮＳ": 10, "動画": 8, "映像": 6, "コンテンツ": 8, "サイト": 8, "ホームページ": 8, "ウェブ": 8, "Ｗｅｂ": 8, "ＷＥＢ": 8, "デジタルマーケ": 15, "マーケティング": 10, "ブランディング": 8, "ＵＩ": 6, "ＵＸ": 6, "アクセス解析": 12, "データ分析": 10, "ＤＸ": 8, "普及啓発": 6, "情報発信": 8, "プロモーション": 10, "ＰＲ": 6, "ＡＩ": 5 };
+  const AFF_PENALTY = { "工事": -20, "建設": -20, "電気の購入": -30, "ガスの": -25, "燃料": -25, "清掃": -15, "警備": -15, "医薬": -15, "車両": -12, "什器": -10, "食料": -12 };
+  function classifyIndustry(name, org) {
+    const t = (name || "") + " " + (org || "");
+    for (const [cat, kws] of INDUSTRY_RULES) if (kws.some(k => t.includes(k))) return cat;
+    return "その他";
+  }
+  function scoreAffinity(name, industry) {
+    let s = AFF_BASE[industry] ?? 20;
+    const t = name || "";
+    for (const k in AFF_BOOST) if (t.includes(k)) s += AFF_BOOST[k];
+    for (const k in AFF_PENALTY) if (t.includes(k)) s += AFF_PENALTY[k];
+    return Math.max(0, Math.min(100, s));
+  }
+  const affLabel = (v) => v >= 70 ? "高" : v >= 40 ? "中" : v >= 20 ? "低" : "圏外";
+  const winLabel = (v) => v >= 30 ? "高" : v >= 15 ? "中" : v >= 5 ? "低" : "圏外";
+
   /* ---------- ① 案件検索・抽出 ---------- */
   const selInd = document.getElementById("fIndustry");
   D.industry_order.forEach(n => { const o = document.createElement("option"); o.value = n; o.textContent = n; selInd.appendChild(o); });
-  const st = { q: "", ind: "", comp: "", amt: "", diOnly: true, recur: false, selectedId: null };
+  const st = { q: "", ind: "", comp: "", amt: "", diOnly: true, recur: false, selectedId: null, sourceMode: "past" };
   const $ = id => document.getElementById(id);
 
   function isRecur(r) { return FY_RE.test(Z2A(r.project_name)); }
@@ -261,11 +300,9 @@
     return { base, steps, toBe, final, saturated };
   }
 
-  function selectCase(id) {
-    currentCase = D.records.find(r => r.id === id);
-    if (!currentCase) return;
-    st.selectedId = id;
-    agents = runAgents(currentCase);
+  function applyCase(rec) {
+    currentCase = rec;
+    agents = runAgents(rec);
     rfp = null; $("rfpText").value = ""; $("rfpResult").innerHTML = ""; $("rfpStatus").textContent = "";
     $("simBody").style.display = "";
     $("emptyHint").style.display = "none";
@@ -273,9 +310,16 @@
     document.querySelectorAll("#nav a.locked").forEach(a => a.classList.remove("locked"));
     const nn = $("navNote");
     if (nn) nn.textContent = "✅ 案件選択済み — 各セクションへ移動できます";
-    renderSearch();
     renderAll();
     document.getElementById("baseline").scrollIntoView({ behavior: "smooth" });
+  }
+
+  function selectCase(id) {
+    const rec = D.records.find(r => r.id === id);
+    if (!rec) return;
+    st.selectedId = id;
+    applyCase(rec);
+    renderSearch();
   }
 
   /* 未選択時にロック中ナビを押したら、①へ誘導してハイライト */
@@ -298,13 +342,22 @@
     const entry = ITYPE_COEF[r.comp_itype] ?? 0.7, sf = scaleFactor(r.amount);
 
     /* ② 案件カード + As-Is */
+    const openBanner = r.isOpen ? `
+      <div style="background:#fff3ee;border:1px solid #f5c4ad;border-radius:10px;padding:10px 12px;margin-bottom:10px">
+        <b style="color:#c74a1d">📢 現在公示中の案件</b>
+        <div class="mini" style="margin-top:3px">公告日: ${r.announcement_date ? fmtDate(r.announcement_date) : "—"} ／
+          <b style="color:#c74a1d">入札期日(提出締切): ${r.deadline ? fmtDate(r.deadline) : "公告本文で要確認"}</b>
+          ／ 区分: ${esc(r.category || "—")} ／ 方式: ${esc(r.procedure || "—")}</div>
+        ${r.url ? `<a class="mini" href="${esc(r.url)}" target="_blank" rel="noopener">📄 公告原文を開く（正確な期日・仕様・参加資格を必ず確認）</a>` : ""}
+      </div>` : "";
     $("caseCard").innerHTML = `
       <h4>${indChip(r.industry)} 選択中の案件</h4>
       <div style="font-size:15px;font-weight:700;margin:6px 0">${esc(r.project_name)}</div>
-      <div class="mini" style="margin-bottom:10px">${esc(r.ministry)}${r.agency ? " ・" + esc(r.agency) : ""} ／ 現落札: ${esc(r.company)}(${esc(r.comp_ilabel)}) ／ 落札額 ${yen(r.amount)}</div>
-      <div class="mini" style="margin-bottom:10px">📅 公示日: ${r.announcement_date ? fmtDate(r.announcement_date) : "未収録"} ／ 落札日: ${fmtDate(r.award_date) || "—"}${(() => { const nc = nextCycle(r); return nc ? ` ／ <b style="color:#2b5ce6">次回公告予測 ${nc.announce}・入札期日予測 ${nc.deadline}</b>` : ""; })()}</div>
+      ${openBanner}
+      <div class="mini" style="margin-bottom:10px">${esc(r.ministry)}${r.agency ? " ・" + esc(r.agency) : ""} ／ ${r.isOpen ? "落札者未定（新規公示）" : "現落札: " + esc(r.company) + "(" + esc(r.comp_ilabel) + ") ／ 落札額 " + yen(r.amount)}</div>
+      ${!r.isOpen ? `<div class="mini" style="margin-bottom:10px">📅 公示日: ${r.announcement_date ? fmtDate(r.announcement_date) : "未収録"} ／ 落札日: ${fmtDate(r.award_date) || "—"}${(() => { const nc = nextCycle(r); return nc ? ` ／ <b style="color:#2b5ce6">次回公告予測 ${nc.announce}・入札期日予測 ${nc.deadline}</b>` : ""; })()}</div>` : ""}
       <div style="font-size:12.5px;color:#4b5563">${esc(r.summary)}</div>
-      ${isRecur(r) ? `<div class="mini" style="margin-top:8px">📅 毎年度型案件 — 来年度の再公告が見込まれるため、公告3ヶ月前からの準備が可能。</div>` : ""}`;
+      ${!r.isOpen && isRecur(r) ? `<div class="mini" style="margin-top:8px">📅 毎年度型案件 — 来年度の再公告が見込まれるため、公告3ヶ月前からの準備が可能。</div>` : ""}`;
     const nb = expectedBidders(r.amount, r.project_name);
     $("baselineCard").innerHTML = `
       <h4>現状のままの勝率(As-Is)</h4>
@@ -358,9 +411,19 @@
   }
 
   function renderPricing(r) {
-    const estBudget = r.amount ? Math.round(r.amount / 0.88) : 0;
     const proposal = isProposal(r.project_name);
     const range = proposal ? [0.90, 0.95] : [0.82, 0.88];
+    if (r.isOpen || !r.amount) {
+      $("pricingCard").innerHTML = `
+        <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr)">
+          <div class="kpi"><div class="lbl">予定価格</div><div class="val" style="font-size:18px">事前非公表/不明</div><div class="sub">${r.isOpen ? "公告本文・入札説明書で確認" : "元データに金額なし"}</div></div>
+          <div class="kpi"><div class="lbl">入札方式の推定</div><div class="val" style="font-size:16px">${proposal ? "企画競争型" : "価格競争型"}</div><div class="sub">${proposal ? "技術点重視・安値不要" : "価格重視・低入基準に注意"}</div></div>
+          <div class="kpi brand"><div class="lbl">価格戦略の指針</div><div class="val" style="font-size:15px">${proposal ? "提案品質で勝負" : "予定価格の82〜88%狙い"}</div><div class="sub">${proposal ? "無理な安値は不要" : "予定価格公表なら逆算"}</div></div>
+        </div>
+        <p class="hint" style="margin-top:12px">※ ${r.isOpen ? "公示中案件は予定価格が事前非公表のことが多い。公告原文・入札説明書で予定価格(公表の場合)・最低制限価格・過去の同種落札額を確認して価格を設計する。" : "この案件は金額情報がないため価格戦略は方式ベースの指針のみ。"}</p>`;
+      return;
+    }
+    const estBudget = Math.round(r.amount / 0.88);
     $("pricingCard").innerHTML = `
       <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">
         <div class="kpi"><div class="lbl">前年落札額(実績)</div><div class="val" style="font-size:20px">${yen(r.amount)}</div></div>
@@ -391,7 +454,9 @@
     } else {
       lines.push("⑤でRFP・仕様書を読み込むと、マーケティング戦略の精度向上分がさらに上乗せされる(適合キーワードで最大+12%相対、領域外検出時は減点)。");
     }
-    if (isRecur(r)) {
+    if (r.isOpen) {
+      lines.push(`📢 この案件は現在公示中。入札期日は${r.deadline ? fmtDate(r.deadline) : "公告本文で要確認"}。まず参加資格の充足を確認し、締切から逆算して提案・見積・必要書類を準備すること。`);
+    } else if (isRecur(r)) {
       const m = Z2A(r.project_name).match(FY_RE);
       if (m) lines.push(`毎年度型のため、令和${+m[1] + 1}年度の公告(${2019 + (+m[1])}年1〜3月頃)に向けて、今から資格・実績・提案骨子を準備すれば間に合う。`);
     }
@@ -494,6 +559,113 @@
     $("rfpText").value = "本業務は、当省が運営するウェブサイトについて、アクセス解析に基づく課題抽出及びSEO改善、SNSを活用した情報発信の強化、運用型広告(リスティング広告等)の企画・運用、並びに効果測定(KPI設計・月次レポート)を行うものである。受託者は、ターゲットの分析(ペルソナ設計)を行い、コンテンツの企画制作及び改善提案を継続的に実施すること。デジタルマーケティングに関する専門的知見を有する者を配置し、広報戦略の策定を支援すること。";
     $("btnAnalyze").click();
   };
+
+  /* ================================================================
+     公示中案件モード (官公需情報ポータル kkj.go.jp をプロキシ経由で取得)
+     ================================================================ */
+  let openResults = [];
+
+  function synthFromOpenBid(bid, idx) {
+    const name = bid.name || "";
+    const industry = classifyIndustry(name, bid.org);
+    const aff = scoreAffinity(name, industry);
+    // 公示中=現職を倒す構図ではなく新規競争。現職係数は中立寄り0.85、金額は非公表が多く0.7
+    const entry = 0.85, sf = 0.7;
+    const nb = expectedBidders(0, name);
+    const raw = (aff / 100) * entry * sf / nb * 2;         // 勝率(小数)
+    const win = Math.round(Math.min(0.60, raw) * 1000) / 10; // % 小数1桁
+    const compReason = `新規公示案件のため特定の現職はいないが、同種業務の既存業者や大手が応札する可能性あり。約${nb}社の競争を想定。`;
+    return {
+      id: "open:" + idx,
+      isOpen: true,
+      project_name: name,
+      ministry: bid.org || bid.pref || "(発注機関不明)",
+      agency: "",
+      company: "（公示中・落札者未定）",
+      amount: 0,
+      industry,
+      affinity: aff,
+      affinity_label: affLabel(aff),
+      winnability: win,
+      winnability_label: winLabel(win),
+      opportunity: Math.round((win * 0.5 + 15 * 0.2 + aff * 0.3) * 10) / 10,
+      comp_itype: "unknown",
+      comp_ilabel: "新規公示(現職なし)",
+      comp_level: aff < 20 ? "対象外(領域外)" : win >= 20 ? "競争可能" : "要準備",
+      comp_score: Math.round(entry * sf * 100),
+      comp_reason: compReason,
+      foothold: [
+        `入札期日: ${bid.deadline || "公告本文で要確認"} — 締切から逆算して提案・見積を準備。`,
+        "入札参加資格: 発注機関の競争入札参加資格(全省庁統一資格または自治体の登録)を保有しているか即確認。",
+        aff >= 40 ? "企画競争(プロポーザル)ならDIのデジタル専門性で提案勝負が可能。" : "DI事業領域との距離を仕様書で見極め、参加要否を判断。",
+      ],
+      size_band: "予定価格 事前非公表/不明",
+      summary: `${bid.org || "官公庁"}が公示中の「${industry}」案件。区分:${bid.category || "不明"}/方式:${bid.procedure || "不明"}。入札期日 ${bid.deadline || "本文参照"}。DI視点では${aff >= 70 ? "中核領域" : aff >= 40 ? "周辺領域" : "対象外寄り"}。`,
+      announcement_date: bid.issue_date,
+      award_date: null,
+      deadline: bid.deadline,
+      url: bid.url,
+      description: bid.description,
+      category: bid.category,
+      procedure: bid.procedure,
+    };
+  }
+
+  async function searchOpenBids() {
+    const q = $("openQ").value.trim();
+    if (!q) { $("openStatus").textContent = "キーワードを入力してください"; return; }
+    $("openStatus").textContent = "検索中…（官公需ポータルに問い合わせ）";
+    $("openTable").innerHTML = "";
+    try {
+      const r = await fetch(`api/open-bids?q=${encodeURIComponent(q)}&count=60`);
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        throw new Error(e.error || `HTTP ${r.status}`);
+      }
+      const data = await r.json();
+      // DIが提案しうる区分(役務・業務委託系)を優先し、物品・工事単体は後ろに
+      openResults = data.items.map((b, i) => synthFromOpenBid(b, i))
+        .sort((a, b) => b.affinity - a.affinity || b.opportunity - a.opportunity);
+      $("openStatus").innerHTML = `全国 <b>${data.hits.toLocaleString()}</b> 件中 上位 ${data.items.length} 件を取得（DI親和性順）`;
+      renderOpenTable();
+    } catch (e) {
+      openResults = [];
+      $("openStatus").innerHTML = `<span style="color:#c74a1d">取得できませんでした: ${esc(e.message)}。` +
+        `（ローカルfile://では動作しません。本番URLで実行するか、時間をおいて再試行してください）</span>`;
+    }
+  }
+
+  function renderOpenTable() {
+    if (!openResults.length) { $("openTable").innerHTML = ""; return; }
+    $("openTable").innerHTML =
+      `<thead><tr><th>業種</th><th>案件名 / 発注機関</th><th>公告日・入札期日</th><th>区分/方式</th><th class="num">DI親和性</th><th class="num">推定勝率</th><th></th></tr></thead><tbody>` +
+      openResults.map(r => `<tr class="sel-row ${r.id === st.selectedId ? "selected" : ""}" data-id="${r.id}">
+        <td>${indChip(r.industry)}</td>
+        <td><div style="font-weight:600;max-width:330px">${esc(r.project_name)}</div>
+            <div class="mini">${esc(r.ministry)}</div>
+            ${r.url ? `<a class="mini" href="${esc(r.url)}" target="_blank" rel="noopener">📄 公告原文を開く</a>` : ""}</td>
+        <td style="font-size:11.5px;white-space:nowrap">公告: ${r.announcement_date ? fmtDate(r.announcement_date) : "—"}<br><b style="color:#c74a1d">期日: ${r.deadline ? fmtDate(r.deadline) : "本文参照"}</b></td>
+        <td style="font-size:11px">${esc(r.category || "—")}<br>${esc(r.procedure || "—")}</td>
+        <td class="num">${scoreBar(r.affinity, "#2b5ce6")}<br>${lab(r.affinity_label)}</td>
+        <td class="num"><b>${r.winnability}%</b></td>
+        <td><button class="btn" style="padding:5px 10px;font-size:11px">戦略分析 →</button></td></tr>`).join("") + "</tbody>";
+    [...document.querySelectorAll("#openTable .sel-row")].forEach(tr =>
+      tr.addEventListener("click", () => {
+        const rec = openResults.find(x => x.id === tr.dataset.id);
+        if (rec) { st.selectedId = rec.id; applyCase(rec); renderOpenTable(); }
+      }));
+  }
+
+  /* ソースタブ切替 */
+  function setMode(mode) {
+    st.sourceMode = mode;
+    document.querySelectorAll(".src-tab").forEach(b => b.classList.toggle("on", b.dataset.mode === mode));
+    $("pastPane").style.display = mode === "past" ? "" : "none";
+    $("openPane").style.display = mode === "open" ? "" : "none";
+  }
+  document.querySelectorAll(".src-tab").forEach(b => b.onclick = () => setMode(b.dataset.mode));
+  $("btnOpenSearch").onclick = searchOpenBids;
+  $("openQ").addEventListener("keydown", e => { if (e.key === "Enter") searchOpenBids(); });
 
   /* ---------- 初期化 (URL ?id= 対応 / デモボタン) ---------- */
   renderSearch();
