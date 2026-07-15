@@ -73,9 +73,12 @@
 
         <div id="openPane" style="display:none">
           <div class="filters">
-            <input type="text" id="openQ" placeholder="キーワードで公示中案件を検索（例: ウェブサイト / 広報 / SEO / 動画 / 情報発信）…">
+            <input type="text" id="openQ" placeholder="キーワードで公示中案件を検索…">
             <button class="btn" id="btnOpenSearch">🔍 公示中の案件を検索</button>
             <span class="mini" id="openStatus"></span>
+          </div>
+          <div class="kw-suggest" id="kwSuggest">
+            <span class="kw-suggest-label">💡 検索キーワードに迷ったら（DIの得意領域）:</span>
           </div>
           <div class="tbl-wrap" style="max-height:420px"><table id="openTable"></table></div>
           <p class="hint" style="margin:10px 0 0">📢 出典: <b>官公需情報ポータル(kkj.go.jp)</b>の公開API。国・自治体が<b>いま公示中</b>の入札・公募案件を、公告日・

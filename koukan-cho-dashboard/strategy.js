@@ -656,6 +656,26 @@
       }));
   }
 
+  /* おすすめ検索キーワード (DI中核領域・実際にヒットするもの) */
+  const KW_SUGGEST = [
+    { kw: "ウェブサイト", note: "サイト構築・改修・運用" },
+    { kw: "広報", note: "広報業務・広報誌・PR" },
+    { kw: "情報発信", note: "SNS・オウンドメディア" },
+    { kw: "動画制作", note: "広報動画・映像制作" },
+    { kw: "デジタルマーケティング", note: "運用型広告・SEO・解析" },
+  ];
+  (function renderKwChips() {
+    const box = $("kwSuggest");
+    if (!box) return;
+    KW_SUGGEST.forEach(s => {
+      const el = document.createElement("span");
+      el.className = "kw-chip";
+      el.innerHTML = `<b>${esc(s.kw)}</b><small>${esc(s.note)}</small>`;
+      el.onclick = () => { $("openQ").value = s.kw; searchOpenBids(); };
+      box.appendChild(el);
+    });
+  })();
+
   /* ソースタブ切替 */
   function setMode(mode) {
     st.sourceMode = mode;
