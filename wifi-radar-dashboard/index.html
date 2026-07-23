@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AuraSense — Wi-Fi 空間センシング・ダッシュボード</title>
+<meta name="description" content="カメラ・レンズ・映像なし。Wi-Fi電波の乱れから人とモノ、姿勢・呼吸・転倒を推定するプライバシー保全型 空間AI。" />
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="logo">〰</div>
+    <div>
+      <h1>AuraSense</h1>
+      <p>Wi-Fi 空間センシング / プライバシー保全型 空間AI</p>
+    </div>
+  </div>
+  <div class="privacy-badges">
+    <span class="pill">🚫 カメラなし</span>
+    <span class="pill">🚫 レンズなし</span>
+    <span class="pill">🚫 顔認証なし</span>
+    <span class="pill ok">✅ 映像を記録しない</span>
+  </div>
+  <div class="live"><span class="dot"></span>LIVE 推論中</div>
+</header>
+
+<!-- KPI 帯 -->
+<section class="kpis">
+  <div class="kpi"><div class="k-label">在室(推定)</div><div class="k-val" id="kpiPresence">0</div><div class="k-unit">名</div></div>
+  <div class="kpi"><div class="k-label">静止物</div><div class="k-val" id="kpiObjects">0</div><div class="k-unit">点</div></div>
+  <div class="kpi"><div class="k-label">移動中</div><div class="k-val" id="kpiMoving">0</div><div class="k-unit">名</div></div>
+  <div class="kpi"><div class="k-label">平均呼吸</div><div class="k-val" id="kpiResp">—</div><div class="k-unit">rpm</div></div>
+</section>
+
+<main class="grid">
+
+  <!-- 左: 空間ビュー -->
+  <section class="card stage-card">
+    <div class="card-head">
+      <h2>🛰 空間レーダービュー</h2>
+      <div class="controls">
+        <button id="btnWalk" class="ctrl">🚶 歩かせる</button>
+        <button id="btnFall" class="ctrl danger">🆘 転倒させる</button>
+        <button id="btnAdd" class="ctrl">＋ 人を追加</button>
+        <button id="btnPause" class="ctrl">⏸ 一時停止</button>
+        <label class="speed-ctrl">速度
+          <input type="range" id="speed" min="0.5" max="3" step="0.5" value="1" />
+          <span id="speedVal">1.0×</span>
+        </label>
+      </div>
+    </div>
+    <canvas id="stage"></canvas>
+    <div class="legend">
+      <span><i class="dot-h"></i>人型(発光)</span>
+      <span><i class="dot-o"></i>モノ(反射体)</span>
+      <span><i class="dot-ap"></i>Wi-Fi AP</span>
+      <span><i class="dot-r"></i>電波の反射波</span>
+    </div>
+  </section>
+
+  <!-- 右: シナリオ + アラート -->
+  <section class="card scenario-card">
+    <div class="card-head"><h2>🏢 シナリオ</h2></div>
+    <div class="scenarios">
+      <button class="scenario-btn" data-scenario="care">🏥 介護施設<small>転倒・見守り</small></button>
+      <button class="scenario-btn" data-scenario="hotel">🏨 ホテル<small>在室確認</small></button>
+      <button class="scenario-btn" data-scenario="factory">🏭 工場<small>危険エリア</small></button>
+      <button class="scenario-btn" data-scenario="home">🏠 家庭<small>高齢者見守り</small></button>
+    </div>
+    <p class="scenario-desc" id="scenarioDesc"></p>
+    <div class="card-head sub"><h3>🚨 アラート</h3></div>
+    <div class="alert-log" id="alertLog"></div>
+  </section>
+
+  <!-- 信号 -->
+  <section class="card signal-card">
+    <div class="card-head"><h2>📡 Wi-Fi CSI 信号 (マルチサブキャリア)</h2>
+      <span class="hint">人・モノが引き起こすチャネル応答の乱れ。呼吸で周期的、体動で大きく揺れる。</span></div>
+    <canvas id="signalCanvas"></canvas>
+  </section>
+
+  <!-- 状態推定 -->
+  <section class="card people-card">
+    <div class="card-head"><h2>🧍 状態推定 (確信度付き)</h2></div>
+    <div class="people-list" id="peopleList"></div>
+  </section>
+
+  <!-- バイタル -->
+  <section class="card vitals-card">
+    <div class="card-head"><h2>❤️ バイタル推定</h2><span class="hint">静止時のみ・胸郭/心拍の微動から</span></div>
+    <div class="vitals-list" id="vitalsList"></div>
+  </section>
+
+  <!-- スペクトログラム (心拍可視化) -->
+  <section class="card spectro-card">
+    <div class="card-head">
+      <h2>🌈 バイタル・スペクトログラム</h2>
+      <span class="hint">周波数×時間。呼吸(青帯)は明瞭、心拍(赤帯)は微弱で断続的にしか現れない。</span>
+    </div>
+    <div class="spectro-focus" id="spectroFocus">対象: —</div>
+    <canvas id="spectroCanvas"></canvas>
+    <div class="spectro-axis"><span>150bpm / 2.5Hz</span><span>← 時間経過 →</span><span>0Hz</span></div>
+  </section>
+
+  <!-- 時系列 -->
+  <section class="card trends-card">
+    <div class="card-head"><h2>📊 時系列トレンド</h2></div>
+    <div class="trend"><div class="t-label">在室者数</div><canvas id="occChart"></canvas></div>
+    <div class="trend"><div class="t-label">体動エネルギー</div><canvas id="motionChart"></canvas></div>
+    <div class="trend"><div class="t-label">平均呼吸レート (rpm)</div><canvas id="respChart"></canvas></div>
+  </section>
+
+  <!-- AI 総評 -->
+  <section class="card assess-card">
+    <div class="card-head"><h2>🧠 AI 総評</h2></div>
+    <div class="assessment" id="assessment"></div>
+  </section>
+
+  <!-- 実現性 -->
+  <section class="card feasibility-card">
+    <div class="card-head"><h2>🔬 技術的実現性 — 本当に Wi-Fi でできる?</h2></div>
+    <div class="feas">
+      <p><b>結論: 可能性は高い。</b>市販の Wi-Fi は通信のために常時 <b>CSI(Channel State Information)</b> を測定しており、人やモノが電波の多重反射(マルチパス)を乱すと CSI が変化する。これを AI で解くのが Wi-Fi センシング。</p>
+      <div class="feas-grid">
+        <div class="feas-item"><div class="fi-h">📶 在/不在・動き</div>CSI 振幅の分散で「誰かいる/動いている」を高精度に検出。実装難易度：<b class="lo">低</b></div>
+        <div class="feas-item"><div class="fi-h">🧍 姿勢・転倒</div>反射プロファイルの時間変化で立位/着座/臥位を分類、転倒を推定。難易度：<b class="mid">中</b></div>
+        <div class="feas-item"><div class="fi-h">🫁 呼吸</div>胸郭の数mmの動きが CSI 位相を周期変調。0.2–0.4Hz のピーク抽出で推定。難易度：<b class="mid">中</b></div>
+        <div class="feas-item"><div class="fi-h">💓 心拍</div>~1Hz の微小変調。マルチアンテナ+高SNRなら静止時に推定報告あり。難易度：<b class="hi">高</b></div>
+      </div>
+      <p class="feas-ref">研究の裏付け: MIT CSAIL <i>RF-Pose</i> / CMU <i>DensePose from WiFi</i> / 呼吸・心拍の CSI 推定論文群 / 標準化 <b>IEEE 802.11bf (WLAN Sensing)</b>。<br>
+      本ダッシュボードは実機の代わりに、これら物理モデルを内蔵シミュレータで再現したコンセプト実証です。</p>
+    </div>
+  </section>
+
+</main>
+
+<footer class="foot">AuraSense · 映像を撮らない安全インフラ · コンセプト実証デモ (シミュレーション)</footer>
+
+<script src="js/dsp.js"></script>
+<script src="js/sim.js"></script>
+<script src="js/infer.js"></script>
+<script src="js/render.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

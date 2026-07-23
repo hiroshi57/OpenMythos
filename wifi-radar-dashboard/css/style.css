@@ -1,0 +1,210 @@
+/* ============================================================
+ * AuraSense — Wi-Fi 空間センシング ダッシュボード
+ * ============================================================ */
+:root {
+  --bg: #05070f;
+  --bg2: #0a1020;
+  --card: #0d1526;
+  --card2: #111b30;
+  --line: #1e2c47;
+  --text: #dfe9ff;
+  --muted: #8397b8;
+  --cyan: #5ad1ff;
+  --green: #7cff9a;
+  --amber: #ffd166;
+  --red: #ff6b5e;
+  --violet: #b48cff;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: radial-gradient(1200px 600px at 70% -10%, #10203f 0%, var(--bg) 60%);
+  color: var(--text);
+  font-family: "Segoe UI", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", Meiryo, system-ui, sans-serif;
+  min-height: 100vh;
+  padding-bottom: 30px;
+}
+
+/* ---- Topbar ---- */
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; padding: 14px 22px;
+  background: linear-gradient(90deg, rgba(13,21,38,.95), rgba(10,16,32,.7));
+  border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; z-index: 20; backdrop-filter: blur(8px);
+  flex-wrap: wrap;
+}
+.brand { display: flex; align-items: center; gap: 14px; }
+.logo {
+  width: 44px; height: 44px; border-radius: 12px;
+  display: grid; place-items: center; font-size: 26px;
+  background: radial-gradient(circle at 30% 30%, #1e5bff, #0a2a6b);
+  box-shadow: 0 0 20px rgba(70,140,255,.5); color: #cfe4ff;
+}
+.brand h1 { margin: 0; font-size: 22px; letter-spacing: .5px; }
+.brand p { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+.privacy-badges { display: flex; gap: 8px; flex-wrap: wrap; }
+.pill {
+  font-size: 12px; padding: 5px 11px; border-radius: 20px;
+  background: rgba(255,90,80,.1); color: #ff9a90; border: 1px solid rgba(255,90,80,.3);
+}
+.pill.ok { background: rgba(90,255,150,.1); color: var(--green); border-color: rgba(90,255,150,.3); }
+.live { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--green); font-weight: 600; }
+.live .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px var(--green); animation: pulse 1.4s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+
+/* ---- KPI ---- */
+.kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; padding: 18px 22px 6px; }
+.kpi {
+  background: linear-gradient(160deg, var(--card2), var(--card));
+  border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px;
+  position: relative; overflow: hidden;
+}
+.kpi::before { content:""; position:absolute; inset:0; background: radial-gradient(200px 60px at 100% 0, rgba(90,209,255,.12), transparent); }
+.k-label { font-size: 12px; color: var(--muted); }
+.k-val { font-size: 40px; font-weight: 800; line-height: 1.05; margin-top: 4px; letter-spacing: -1px; }
+.k-unit { font-size: 12px; color: var(--muted); }
+
+/* ---- Grid ---- */
+.grid {
+  display: grid; gap: 16px; padding: 16px 22px;
+  grid-template-columns: 2fr 1fr;
+  grid-template-areas:
+    "stage    scenario"
+    "signal   scenario"
+    "people   vitals"
+    "spectro  spectro"
+    "trends   assess"
+    "feas     feas";
+}
+.stage-card { grid-area: stage; }
+.scenario-card { grid-area: scenario; }
+.signal-card { grid-area: signal; }
+.people-card { grid-area: people; }
+.vitals-card { grid-area: vitals; }
+.spectro-card { grid-area: spectro; }
+.trends-card { grid-area: trends; }
+.assess-card { grid-area: assess; }
+.feasibility-card { grid-area: feas; }
+
+.card {
+  background: linear-gradient(160deg, rgba(17,27,48,.9), rgba(13,21,38,.9));
+  border: 1px solid var(--line); border-radius: 16px; padding: 16px;
+  box-shadow: 0 8px 30px rgba(0,0,0,.3);
+}
+.card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.card-head.sub { margin-top: 16px; }
+.card-head h2 { margin: 0; font-size: 15px; letter-spacing: .3px; }
+.card-head h3 { margin: 0; font-size: 13px; color: var(--muted); }
+.hint { font-size: 11px; color: var(--muted); max-width: 55%; text-align: right; }
+
+/* ---- Stage ---- */
+.stage-card canvas { width: 100%; height: 440px; border-radius: 12px; background: #03060f; display: block; }
+.controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.ctrl {
+  background: #16233d; color: var(--text); border: 1px solid var(--line);
+  border-radius: 9px; padding: 7px 12px; font-size: 12px; cursor: pointer; transition: .15s;
+}
+.ctrl:hover { background: #1f3357; border-color: var(--cyan); }
+.ctrl.danger { background: rgba(255,90,80,.12); border-color: rgba(255,90,80,.4); color: #ff9a90; }
+.ctrl.danger:hover { background: rgba(255,90,80,.22); }
+.speed-ctrl { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.speed-ctrl input { width: 80px; accent-color: var(--cyan); }
+.legend { display: flex; gap: 18px; margin-top: 10px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+.legend i { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+.dot-h { background: var(--green); box-shadow: 0 0 8px var(--green); }
+.dot-o { background: #e08c50; border-radius: 2px !important; }
+.dot-ap { background: var(--cyan); box-shadow: 0 0 8px var(--cyan); }
+.dot-r { background: transparent; border: 1px solid var(--cyan); }
+
+/* ---- Signal ---- */
+.signal-card canvas { width: 100%; height: 150px; border-radius: 10px; display: block; }
+
+/* ---- Scenario ---- */
+.scenarios { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.scenario-btn {
+  background: #12203a; border: 1px solid var(--line); border-radius: 11px;
+  padding: 12px 10px; color: var(--text); cursor: pointer; text-align: left;
+  font-size: 13px; font-weight: 600; display: flex; flex-direction: column; gap: 3px; transition: .15s;
+}
+.scenario-btn small { font-weight: 400; font-size: 11px; color: var(--muted); }
+.scenario-btn:hover { border-color: var(--cyan); }
+.scenario-btn.active { background: linear-gradient(160deg, #163a6b, #10233f); border-color: var(--cyan); box-shadow: 0 0 14px rgba(90,209,255,.25); }
+.scenario-desc { font-size: 12px; color: var(--muted); line-height: 1.6; margin: 12px 0 0; }
+
+/* ---- Alerts ---- */
+.alert-log { display: flex; flex-direction: column; gap: 8px; max-height: 240px; overflow-y: auto; }
+.alert-item { display: flex; gap: 10px; padding: 10px; border-radius: 10px; background: #101c33; border-left: 3px solid var(--muted); }
+.alert-item.critical { border-left-color: var(--red); background: rgba(255,90,80,.08); }
+.alert-item.warn { border-left-color: var(--amber); background: rgba(255,209,102,.07); }
+.alert-item.info { border-left-color: var(--cyan); background: rgba(90,209,255,.06); }
+.ai-icon { font-size: 18px; }
+.ai-title { font-size: 13px; font-weight: 700; }
+.ai-text { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.ai-time { font-size: 10px; color: #5a6c8a; margin-top: 3px; }
+.empty { font-size: 12px; color: #5a6c8a; text-align: center; padding: 20px 0; }
+
+/* ---- People ---- */
+.people-list, .vitals-list { display: flex; flex-direction: column; gap: 10px; }
+.person { background: #101c33; border: 1px solid var(--line); border-radius: 11px; padding: 12px; }
+.person.danger { border-color: rgba(255,90,80,.5); background: rgba(255,90,80,.07); animation: flash 1.2s infinite; }
+@keyframes flash { 0%,100%{box-shadow:0 0 0 rgba(255,90,80,0)} 50%{box-shadow:0 0 16px rgba(255,90,80,.4)} }
+.p-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.p-name { font-weight: 700; font-size: 14px; }
+.p-state { font-weight: 700; font-size: 13px; }
+.p-row { display: grid; grid-template-columns: 80px 1fr 42px; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); margin: 4px 0; }
+.p-row b { color: var(--text); text-align: right; font-size: 11px; }
+.bar { height: 7px; background: #0a1424; border-radius: 5px; overflow: hidden; }
+.bar span { display: block; height: 100%; border-radius: 5px; transition: width .4s; }
+
+/* ---- Vitals ---- */
+.vital { background: #101c33; border: 1px solid var(--line); border-radius: 11px; padding: 12px; }
+.v-name { font-weight: 700; font-size: 13px; margin-bottom: 8px; }
+.v-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.v-metric { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 9px; background: #0a1424; }
+.v-metric.breath { border: 1px solid rgba(90,209,255,.25); }
+.v-metric.heart { border: 1px solid rgba(255,90,80,.25); }
+.v-icon { font-size: 22px; }
+.v-val { font-size: 24px; font-weight: 800; }
+.v-val small { font-size: 11px; font-weight: 500; color: var(--muted); margin-left: 3px; }
+.v-label { font-size: 10px; color: var(--muted); }
+
+/* ---- Spectrogram ---- */
+.spectro-card canvas { width: 100%; height: 180px; border-radius: 10px; display: block; background: #040a14; }
+.spectro-focus { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.spectro-focus b { color: var(--text); }
+.spectro-axis { display: flex; justify-content: space-between; font-size: 10px; color: #5a6c8a; margin-top: 5px; }
+
+/* ---- Trends ---- */
+.trend { margin-bottom: 12px; }
+.t-label { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+.trend canvas { width: 100%; height: 56px; display: block; }
+
+/* ---- Assessment ---- */
+.assessment { font-size: 13px; }
+.as-headline { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 14px; padding: 10px 12px; border-radius: 10px; background: #101c33; border-left: 3px solid var(--cyan); margin-bottom: 12px; }
+.as-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.as-points, .as-rec { margin: 6px 0 12px; padding-left: 20px; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.as-sub { font-size: 12px; font-weight: 700; color: var(--text); margin-top: 8px; }
+.as-forecast { font-size: 12px; color: var(--cyan); background: rgba(90,209,255,.07); border-radius: 8px; padding: 8px 10px; margin-top: 4px; }
+
+/* ---- Feasibility ---- */
+.feas { font-size: 13px; line-height: 1.7; color: var(--muted); }
+.feas b { color: var(--text); }
+.feas-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 14px 0; }
+.feas-item { background: #101c33; border: 1px solid var(--line); border-radius: 11px; padding: 12px; font-size: 12px; }
+.fi-h { font-weight: 700; color: var(--text); margin-bottom: 6px; font-size: 13px; }
+.feas-item .lo { color: var(--green); } .feas-item .mid { color: var(--amber); } .feas-item .hi { color: var(--red); }
+.feas-ref { font-size: 11.5px; border-top: 1px solid var(--line); padding-top: 12px; }
+.feas-ref i { color: var(--cyan); font-style: italic; }
+
+/* ---- Footer ---- */
+.foot { text-align: center; font-size: 11px; color: #5a6c8a; padding: 20px; }
+
+/* ---- Responsive ---- */
+@media (max-width: 1000px) {
+  .grid { grid-template-columns: 1fr; grid-template-areas: "stage" "scenario" "signal" "people" "vitals" "spectro" "trends" "assess" "feas"; }
+  .kpis { grid-template-columns: repeat(2, 1fr); }
+  .feas-grid { grid-template-columns: 1fr 1fr; }
+  .hint { max-width: 100%; text-align: left; }
+}
