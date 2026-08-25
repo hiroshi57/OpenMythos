@@ -55,8 +55,9 @@
 | 76 | **交通量分析/エネルギーモニタリング/群衆予測** | `skills/traffic_analyzer.py` `skills/energy_monitor.py` `skills/crowd_predictor.py` | 4381 | v0.79 |
 | 77 | **災害アラート/水質モニタリング/騒音マッピング** | `skills/disaster_alert.py` `skills/water_quality.py` `skills/noise_mapper.py` | 4446 | v0.80 |
 | 78 | **3D 都市マップビジュアライゼーション** | `skills/city_map_viz.py` `tokyo_map_preview.html` | 4487 | v0.81 |
+| 79 | **都市マップ WebSocket リアルタイム更新** | `skills/city_map_realtime.py` | 4541 | v0.82 |
 
-> **累計テスト数**: 4487 PASS (Sprint 78: +41) — **Sprint 79 候補検討中**
+> **累計テスト数**: 4541 PASS (Sprint 79: +54) — **Sprint 80 候補検討中**
 
 ---
 
@@ -460,19 +461,38 @@
 
 ---
 
-## Sprint 79 候補テーマ
+## Sprint 79 詳細 (完了)
 
-> **方針**: 地図ビジュアライゼーション系を深化させるか、広告マーケ系に戻るか選択。
+### Sprint 79A: 都市マップ WebSocket リアルタイム更新 — v0.82.0
+> Sprint 78 の 3D 都市マップに WebSocket Push チャンネルを追加。電車位置・混雑・エネルギー・騒音・災害をリアルタイムストリーミング。
+
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 79A.1 | `UpdateType` / `TrainLine` / `ConnectionState` (Enum 層) | cc:完了 |
+| 79A.2 | `TrainPosition` / `DistrictUpdate` / `RealtimeEvent` (データモデル) | cc:完了 |
+| 79A.3 | `RealtimeSnapshot` / `RealtimeConfig` (設定・スナップショット) | cc:完了 |
+| 79A.4 | `TrainScheduler` — 山手線・中央線・東海道線の電車位置シミュレーション | cc:完了 |
+| 79A.5 | `DistrictStateSimulator` — 混雑/エネルギー/騒音/災害の確率的状態遷移 | cc:完了 |
+| 79A.6 | `RealtimeEngine` — asyncio 非依存純粋 tick ステートマシン | cc:完了 |
+| 79A.7 | `RealtimeSession` / `RealtimeManager` / `RealtimeManagerFactory` | cc:完了 |
+| 79A.8 | `serve/api.py` — WS `/v1/viz/citymap/{city}/ws` + REST 3エンドポイント | cc:完了 |
+| 79.T | `tests/test_sprint79.py` — 54 PASS (累計 4541) | cc:完了 |
+
+---
+
+## Sprint 80 候補テーマ
+
+> **方針**: Sprint 79A の WebSocket を活かした拡張か、論文移植か選択。
 
 | Option | テーマ | コアモジュール | 理由 |
 |--------|--------|--------------|------|
-| **A** | **地図 WebSocket リアルタイム更新** | `skills/city_map_realtime.py` | 電車/混雑をWebSocket Push で動的更新。Three.js 3D との相性◎ |
+| **A** | **WebSocket × Three.js フロント統合** | `tokyo_map_preview.html` 拡張 | Sprint 79A の WS クライアントを 3D プレビューに組み込み。電車が実際に動く |
 | **B** | **AR/VR 地図エクスポート** | `skills/city_map_xr.py` | glTF/USD 形式で3DモデルをExport。Unity/Unreal/Apple Vision Pro連携 |
 | **C** | **地図AI ナレッジグラフ** | `skills/city_knowledge_graph.py` | 駅・地区・施設をGraphで表現。NLQ「新宿から徒歩10分のカフェ」クエリ対応 |
 | **D** | **広告×地理情報 ジオターゲティング** | `skills/geo_targeting.py` | 地区データ×広告キャンペーンを統合。位置属性ベースのCTR予測 |
 | **E** | **都市シミュレーション エージェント** | `skills/city_agent.py` | 「電車遅延→混雑→広告効果低下」を自律エージェントでシミュレーション |
-| **F** | **トレースコンパイラ** ★論文移植 | `skills/trace_compiler.py` | arXiv:2608.02680 TraceCompiler — エージェント実行ログ (`.claude/harness-logs/`) を採掘し、成功パターンを再利用可能な決定論的スキルに自動コンパイル。Harness自己改善ループと直接連携 |
-| **G** | **自己適応LLM実行エンジン** ★論文移植 | `skills/self_adapting.py` | arXiv:2506.10943 Self-Adapting LMs — Sprint 20-30「育つAI」の延長。実行フィードバックでモデル挙動を動的調整するアダプタ層 |
+| **F** | **トレースコンパイラ** ★論文移植 | `skills/trace_compiler.py` | arXiv:2608.02680 TraceCompiler — エージェント実行ログを決定論的スキルに自動コンパイル |
+| **G** | **自己適応LLM実行エンジン** ★論文移植 | `skills/self_adapting.py` | arXiv:2506.10943 Self-Adapting LMs — 実行フィードバックでモデル挙動を動的適応 |
 
 ---
 
