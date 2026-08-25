@@ -9499,3 +9499,156 @@ async def viz_realtime_tick(city: str):
     event = _rt_manager.engine.tick(dt=2.0)
     sent = await _rt_manager.broadcast(event)
     return {"ok": True, "tick": event.tick, "sent_to": sent, "event": event.to_dict()}
+
+
+# ---------------------------------------------------------------------------
+# Sprint 80F — TraceCompiler: LLMエージェントトレース → 決定論的ワークフロー
+# ---------------------------------------------------------------------------
+
+from open_mythos.skills.trace_compiler import (
+    AgentTrace as _AgentTrace,
+    TraceStep as _TraceStep,
+    StepType as _StepType,
+    SkillPattern as _SkillPattern,
+    CompiledWorkflow as _CompiledWorkflow,
+    TraceCompilerPipeline as _TCPipeline,
+    WorkflowExecutor as _WFExecutor,
+)
+
+_tc_pipeline = _TCPipeline(min_frequency=2, min_skill_length=2)
+
+
+class _TraceStepIn(BaseModel):
+    step_type: str = "llm_call"
+    action: str
+    inputs: dict = Field(default_factory=dict)
+    outputs: dict = Field(default_factory=dict)
+    duration_ms: float = 0.0
+    success: bool = True
+
+
+class _TraceIn(BaseModel):
+    task: str = ""
+    steps: List[_TraceStepIn]
+    success: bool = True
+    total_ms: float = 0.0
+    metadata: dict = Field(default_factory=dict)
+
+
+@app.post(
+    "/v1/trace/submit",
+    tags=["trace_compiler"],
+    summary="エージェントトレースを登録 — Sprint 80F",
+)
+def tc_submit_trace(body: _TraceIn):
+    steps = []
+    for i, s in enumerate(body.steps):
+        try:
+            stype = _StepType(s.step_type)
+        except ValueError:
+            stype = _StepType.LLM_CALL
+        steps.append(_TraceStep(
+            step_id=f"step-{i:03d}",
+            step_type=stype,
+            action=s.action,
+            inputs=s.inputs,
+            outputs=s.outputs,
+            duration_ms=s.duration_ms,
+            success=s.success,
+        ))
+    trace = _AgentTrace(task=body.task, steps=steps, success=body.success,
+                        total_ms=body.total_ms, metadata=body.metadata)
+    _tc_pipeline.ingest(trace)
+    return {"ok": True, "trace_id": trace.trace_id, "step_count": len(steps)}
+
+
+@app.get(
+    "/v1/trace/{trace_id}",
+    tags=["trace_compiler"],
+    summary="トレース詳細取得 — Sprint 80F",
+)
+def tc_get_trace(trace_id: str):
+    trace = _tc_pipeline.trace_store.get(trace_id)
+    if trace is None:
+        raise HTTPException(404, f"Trace not found: {trace_id}")
+    return trace.to_dict()
+
+
+@app.get(
+    "/v1/trace",
+    tags=["trace_compiler"],
+    summary="トレース一覧 — Sprint 80F",
+)
+def tc_list_traces():
+    traces = _tc_pipeline.trace_store.list_all()
+    return {"count": len(traces), "traces": [
+        {"trace_id": t.trace_id, "task": t.task, "step_count": len(t.steps), "success": t.success}
+        for t in traces
+    ]}
+
+
+@app.post(
+    "/v1/trace/mine",
+    tags=["trace_compiler"],
+    summary="スキルパターンをマイニング — Sprint 80F",
+)
+def tc_mine_skills():
+    skills = _tc_pipeline.mine()
+    return {"ok": True, "skills_found": len(skills),
+            "skills": [s.to_dict() for s in skills]}
+
+
+@app.get(
+    "/v1/trace/skills",
+    tags=["trace_compiler"],
+    summary="採掘済みスキル一覧 — Sprint 80F",
+)
+def tc_list_skills():
+    skills = _tc_pipeline.skill_store.list_all()
+    return {"count": len(skills), "skills": [s.to_dict() for s in skills]}
+
+
+@app.post(
+    "/v1/trace/compile",
+    tags=["trace_compiler"],
+    summary="ワークフローをコンパイル — Sprint 80F",
+)
+def tc_compile(name: str = ""):
+    result = _tc_pipeline.compile(name=name)
+    return result.to_dict()
+
+
+@app.get(
+    "/v1/trace/workflows",
+    tags=["trace_compiler"],
+    summary="コンパイル済みワークフロー一覧 — Sprint 80F",
+)
+def tc_list_workflows():
+    wfs = _tc_pipeline.workflow_store.list_all()
+    return {"count": len(wfs), "workflows": [
+        {"workflow_id": w.workflow_id, "name": w.name,
+         "determinism_score": round(w.determinism_score, 3),
+         "step_count": w.step_count, "status": w.status.value}
+        for w in wfs
+    ]}
+
+
+@app.post(
+    "/v1/trace/workflows/{workflow_id}/execute",
+    tags=["trace_compiler"],
+    summary="ワークフローを実行 — Sprint 80F",
+)
+def tc_execute_workflow(workflow_id: str, context: dict = None):
+    result = _tc_pipeline.run(workflow_id, context=context or {})
+    if result is None:
+        raise HTTPException(404, f"Workflow not found: {workflow_id}")
+    return result.to_dict()
+
+
+@app.get(
+    "/v1/trace/summary",
+    tags=["trace_compiler"],
+    summary="TraceCompiler パイプラインサマリー — Sprint 80F",
+)
+def tc_summary():
+    return _tc_pipeline.summary()
