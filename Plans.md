@@ -471,6 +471,8 @@
 | **C** | **地図AI ナレッジグラフ** | `skills/city_knowledge_graph.py` | 駅・地区・施設をGraphで表現。NLQ「新宿から徒歩10分のカフェ」クエリ対応 |
 | **D** | **広告×地理情報 ジオターゲティング** | `skills/geo_targeting.py` | 地区データ×広告キャンペーンを統合。位置属性ベースのCTR予測 |
 | **E** | **都市シミュレーション エージェント** | `skills/city_agent.py` | 「電車遅延→混雑→広告効果低下」を自律エージェントでシミュレーション |
+| **F** | **トレースコンパイラ** ★論文移植 | `skills/trace_compiler.py` | arXiv:2608.02680 TraceCompiler — エージェント実行ログ (`.claude/harness-logs/`) を採掘し、成功パターンを再利用可能な決定論的スキルに自動コンパイル。Harness自己改善ループと直接連携 |
+| **G** | **自己適応LLM実行エンジン** ★論文移植 | `skills/self_adapting.py` | arXiv:2506.10943 Self-Adapting LMs — Sprint 20-30「育つAI」の延長。実行フィードバックでモデル挙動を動的調整するアダプタ層 |
 
 ---
 
