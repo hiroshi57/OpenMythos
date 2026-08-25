@@ -56,8 +56,9 @@
 | 77 | **災害アラート/水質モニタリング/騒音マッピング** | `skills/disaster_alert.py` `skills/water_quality.py` `skills/noise_mapper.py` | 4446 | v0.80 |
 | 78 | **3D 都市マップビジュアライゼーション** | `skills/city_map_viz.py` `tokyo_map_preview.html` | 4487 | v0.81 |
 | 79 | **都市マップ WebSocket リアルタイム更新** | `skills/city_map_realtime.py` | 4541 | v0.82 |
+| 80 | **TraceCompiler — LCSスキルマイニング → 決定論的WF** | `skills/trace_compiler.py` | 4613 | v0.83 |
 
-> **累計テスト数**: 4541 PASS (Sprint 79: +54) — **Sprint 80 候補検討中**
+> **累計テスト数**: 4613 PASS (Sprint 80: +72) — Sprint 81 候補検討中
 
 ---
 
@@ -493,6 +494,41 @@
 | **E** | **都市シミュレーション エージェント** | `skills/city_agent.py` | 「電車遅延→混雑→広告効果低下」を自律エージェントでシミュレーション |
 | **F** | **トレースコンパイラ** ★論文移植 | `skills/trace_compiler.py` | arXiv:2608.02680 TraceCompiler — エージェント実行ログを決定論的スキルに自動コンパイル |
 | **G** | **自己適応LLM実行エンジン** ★論文移植 | `skills/self_adapting.py` | arXiv:2506.10943 Self-Adapting LMs — 実行フィードバックでモデル挙動を動的適応 |
+
+## Sprint 80 詳細 (完了)
+
+### Sprint 80F: TraceCompiler — LCS スキルマイニング → 決定論的ワークフロー — v0.83.0
+> arXiv:2608.02680 "TraceCompiler: Skill-Guided Mining and Compilation of LLM Agent Traces" の OpenMythos 移植。
+> エージェント実行トレースから共通スキルパターンを採掘し、決定論的ワークフローにコンパイル。
+
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 80F.1 | `StepType` / `WorkflowStepKind` / `CompilationStatus` / `ExecutionStatus` (Enum 層) | cc:完了 |
+| 80F.2 | `TraceStep` / `AgentTrace` (実行トレースデータモデル) | cc:完了 |
+| 80F.3 | `SkillPattern` / `SkillStore` (採掘済みスキル管理) | cc:完了 |
+| 80F.4 | `WorkflowStep` / `CompiledWorkflow` / `CompilationResult` (コンパイル結果) | cc:完了 |
+| 80F.5 | `StepExecutionResult` / `ExecutionResult` (実行結果) | cc:完了 |
+| 80F.6 | `_lcs_length` / `_lcs_sequence` LCS DP アルゴリズム実装 | cc:完了 |
+| 80F.7 | `TraceMiner` — ペアワイズ LCS スキル採掘 + 重複除去 (頻度考慮) | cc:完了 |
+| 80F.8 | `TraceStore` / `TraceCompiler` — greedy 最長マッチコンパイル | cc:完了 |
+| 80F.9 | `WorkflowExecutor` — 決定論的優先実行 + LLM フォールバック | cc:完了 |
+| 80F.10 | `WorkflowStore` / `TraceCompilerPipeline` (全パイプラインファサード) | cc:完了 |
+| 80F.11 | `serve/api.py` — `/v1/trace/*` 9 エンドポイント (submit/mine/compile/execute/summary 等) | cc:完了 |
+| 80.T | `tests/test_sprint80.py` — 72 PASS (累計 4613) | cc:完了 |
+
+### 論文対応表
+| 論文 (arXiv:2608.02680) | trace_compiler.py | 役割 |
+|------------------------|-------------------|------|
+| Trace | `AgentTrace` | 1 回の実行トレース |
+| Step / Action | `TraceStep` | 個々のステップ |
+| Skill | `SkillPattern` | 採掘されたスキルパターン |
+| Skill Library | `SkillStore` | スキル CRUD ストア |
+| Compiled Workflow | `CompiledWorkflow` | コンパイル済みワークフロー |
+| Workflow Step | `WorkflowStep` | det. / llm 2 種 |
+| Determinism Score | `CompiledWorkflow.determinism_score` | DETERMINISTIC 比率 |
+| Mining (LCS 法) | `TraceMiner.mine_skills` | ペアワイズ LCS → 頻度フィルタ |
+| Compilation | `TraceCompiler.compile` | greedy 最長マッチ |
+| Execution | `WorkflowExecutor.execute` | 決定論的 + LLM フォールバック |
 
 ---
 
