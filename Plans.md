@@ -54,8 +54,11 @@
 | 75 | **環境センサー/乗り換え最適化/インフラダッシュボード** | `skills/env_sensor.py` `skills/transfer_optimizer.py` `skills/infra_dashboard.py` | 4319 | v0.78 |
 | 76 | **交通量分析/エネルギーモニタリング/群衆予測** | `skills/traffic_analyzer.py` `skills/energy_monitor.py` `skills/crowd_predictor.py` | 4381 | v0.79 |
 | 77 | **災害アラート/水質モニタリング/騒音マッピング** | `skills/disaster_alert.py` `skills/water_quality.py` `skills/noise_mapper.py` | 4446 | v0.80 |
+| 78 | **3D 都市マップビジュアライゼーション** | `skills/city_map_viz.py` `tokyo_map_preview.html` | 4487 | v0.81 |
+| 79 | **都市マップ WebSocket リアルタイム更新** | `skills/city_map_realtime.py` | 4541 | v0.82 |
+| 80 | **TraceCompiler — LCSスキルマイニング → 決定論的WF** | `skills/trace_compiler.py` | 4613 | v0.83 |
 
-> **累計テスト数**: 4446 PASS (Sprint 77: +65) — **Sprint 78 候補検討中**
+> **累計テスト数**: 4613 PASS (Sprint 80: +72) — Sprint 81 候補検討中
 
 ---
 
@@ -419,6 +422,113 @@
 | **A** | **駅環境センサー統合** | `skills/env_sensor.py` | 気温・湿度・CO2・騒音レベルの駅内環境モニタリング |
 | **B** | **乗り換え最適化** | `skills/transfer_optimizer.py` | 混雑・アクセシビリティ・所要時間を統合した最適乗換提案 |
 | **C** | **都市インフラダッシュボード** | `skills/infra_dashboard.py` | 混雑・アクセシビリティ・地下水位を統合した都市インフラ可視化 |
+
+---
+
+## Sprint 78 詳細 (完了)
+
+### Sprint 78: 3D 都市マップビジュアライゼーション — v0.81.0
+> SVGベースからThree.js WebGLへの昇華。東京都内20地区をリアルタイム3Dで描画。
+
+#### 78A: SVG 2D 都市マップ基盤 (`skills/city_map_viz.py`)
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 78A.1 | `MapLayer` (5種: 交通量/騒音/群衆密度/エネルギー/災害) × `DistrictData` | cc:完了 |
+| 78A.2 | `CityMapData` / `generate_html` — SVGダークテーマ+ツールチップ+凡例+統計サイドバー | cc:完了 |
+| 78A.3 | `TOKYO_DISTRICTS` プリセット — 20地区 (新宿〜荒川) | cc:完了 |
+| 78A.4 | カラーパレット: 交通量/騒音/群衆密度/エネルギー/災害アラート 5系統 | cc:完了 |
+
+#### 78B: Three.js 3D アニメーション拡張 (`skills/city_map_viz.py` + `tokyo_map_preview.html`)
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 78B.1 | Google Maps ライトテーマへカラーパレット刷新 | cc:完了 |
+| 78B.2 | 川アニメーション: 隅田川・多摩川・荒川 ShaderMaterial UV スクロール波紋 | cc:完了 |
+| 78B.3 | 地形: 富士山(雪冠付き) + 背景丘陵5本 (south-west) | cc:完了 |
+| 78B.4 | 背景ビル 320棟: `seededRandom` InstancedMesh (地区/川/東京湾と重複回避) | cc:完了 |
+| 78B.5 | ランドマーク: 東京都庁・東京タワー・東京スカイツリー・羽田空港滑走路×2 | cc:完了 |
+| 78B.6 | 電車アニメーション: 山手線(緑ループ)・中央線(橙)・東海道線(赤) | cc:完了 |
+| 78B.7 | 公園ツリー: `ConeGeometry` × 5本/公園, `seededRandom` 配置 | cc:完了 |
+| 78B.8 | レンダーループに `dt` クロック駆動を統合 | cc:完了 |
+
+#### 78C: API 公開 (`serve/api.py`)
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 78C.1 | `/v1/viz/citymap/{city}` — HTMLResponse (Three.js 3D マップ) | cc:完了 |
+| 78C.2 | `/v1/viz/citymap/{city}/data` — JSON データ取得 | cc:完了 |
+| 78C.3 | `/v1/viz/citymap` POST — カスタムデータ可視化 | cc:完了 |
+| 78C.4 | `/v1/viz/cities` — 対応都市一覧 | cc:完了 |
+
+| 78.T | `tests/test_sprint78.py` — 41 PASS (累計 4487) | cc:完了 |
+
+---
+
+## Sprint 79 詳細 (完了)
+
+### Sprint 79A: 都市マップ WebSocket リアルタイム更新 — v0.82.0
+> Sprint 78 の 3D 都市マップに WebSocket Push チャンネルを追加。電車位置・混雑・エネルギー・騒音・災害をリアルタイムストリーミング。
+
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 79A.1 | `UpdateType` / `TrainLine` / `ConnectionState` (Enum 層) | cc:完了 |
+| 79A.2 | `TrainPosition` / `DistrictUpdate` / `RealtimeEvent` (データモデル) | cc:完了 |
+| 79A.3 | `RealtimeSnapshot` / `RealtimeConfig` (設定・スナップショット) | cc:完了 |
+| 79A.4 | `TrainScheduler` — 山手線・中央線・東海道線の電車位置シミュレーション | cc:完了 |
+| 79A.5 | `DistrictStateSimulator` — 混雑/エネルギー/騒音/災害の確率的状態遷移 | cc:完了 |
+| 79A.6 | `RealtimeEngine` — asyncio 非依存純粋 tick ステートマシン | cc:完了 |
+| 79A.7 | `RealtimeSession` / `RealtimeManager` / `RealtimeManagerFactory` | cc:完了 |
+| 79A.8 | `serve/api.py` — WS `/v1/viz/citymap/{city}/ws` + REST 3エンドポイント | cc:完了 |
+| 79.T | `tests/test_sprint79.py` — 54 PASS (累計 4541) | cc:完了 |
+
+---
+
+## Sprint 80 候補テーマ
+
+> **方針**: Sprint 79A の WebSocket を活かした拡張か、論文移植か選択。
+
+| Option | テーマ | コアモジュール | 理由 |
+|--------|--------|--------------|------|
+| **A** | **WebSocket × Three.js フロント統合** | `tokyo_map_preview.html` 拡張 | Sprint 79A の WS クライアントを 3D プレビューに組み込み。電車が実際に動く |
+| **B** | **AR/VR 地図エクスポート** | `skills/city_map_xr.py` | glTF/USD 形式で3DモデルをExport。Unity/Unreal/Apple Vision Pro連携 |
+| **C** | **地図AI ナレッジグラフ** | `skills/city_knowledge_graph.py` | 駅・地区・施設をGraphで表現。NLQ「新宿から徒歩10分のカフェ」クエリ対応 |
+| **D** | **広告×地理情報 ジオターゲティング** | `skills/geo_targeting.py` | 地区データ×広告キャンペーンを統合。位置属性ベースのCTR予測 |
+| **E** | **都市シミュレーション エージェント** | `skills/city_agent.py` | 「電車遅延→混雑→広告効果低下」を自律エージェントでシミュレーション |
+| **F** | **トレースコンパイラ** ★論文移植 | `skills/trace_compiler.py` | arXiv:2608.02680 TraceCompiler — エージェント実行ログを決定論的スキルに自動コンパイル |
+| **G** | **自己適応LLM実行エンジン** ★論文移植 | `skills/self_adapting.py` | arXiv:2506.10943 Self-Adapting LMs — 実行フィードバックでモデル挙動を動的適応 |
+
+## Sprint 80 詳細 (完了)
+
+### Sprint 80F: TraceCompiler — LCS スキルマイニング → 決定論的ワークフロー — v0.83.0
+> arXiv:2608.02680 "TraceCompiler: Skill-Guided Mining and Compilation of LLM Agent Traces" の OpenMythos 移植。
+> エージェント実行トレースから共通スキルパターンを採掘し、決定論的ワークフローにコンパイル。
+
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 80F.1 | `StepType` / `WorkflowStepKind` / `CompilationStatus` / `ExecutionStatus` (Enum 層) | cc:完了 |
+| 80F.2 | `TraceStep` / `AgentTrace` (実行トレースデータモデル) | cc:完了 |
+| 80F.3 | `SkillPattern` / `SkillStore` (採掘済みスキル管理) | cc:完了 |
+| 80F.4 | `WorkflowStep` / `CompiledWorkflow` / `CompilationResult` (コンパイル結果) | cc:完了 |
+| 80F.5 | `StepExecutionResult` / `ExecutionResult` (実行結果) | cc:完了 |
+| 80F.6 | `_lcs_length` / `_lcs_sequence` LCS DP アルゴリズム実装 | cc:完了 |
+| 80F.7 | `TraceMiner` — ペアワイズ LCS スキル採掘 + 重複除去 (頻度考慮) | cc:完了 |
+| 80F.8 | `TraceStore` / `TraceCompiler` — greedy 最長マッチコンパイル | cc:完了 |
+| 80F.9 | `WorkflowExecutor` — 決定論的優先実行 + LLM フォールバック | cc:完了 |
+| 80F.10 | `WorkflowStore` / `TraceCompilerPipeline` (全パイプラインファサード) | cc:完了 |
+| 80F.11 | `serve/api.py` — `/v1/trace/*` 9 エンドポイント (submit/mine/compile/execute/summary 等) | cc:完了 |
+| 80.T | `tests/test_sprint80.py` — 72 PASS (累計 4613) | cc:完了 |
+
+### 論文対応表
+| 論文 (arXiv:2608.02680) | trace_compiler.py | 役割 |
+|------------------------|-------------------|------|
+| Trace | `AgentTrace` | 1 回の実行トレース |
+| Step / Action | `TraceStep` | 個々のステップ |
+| Skill | `SkillPattern` | 採掘されたスキルパターン |
+| Skill Library | `SkillStore` | スキル CRUD ストア |
+| Compiled Workflow | `CompiledWorkflow` | コンパイル済みワークフロー |
+| Workflow Step | `WorkflowStep` | det. / llm 2 種 |
+| Determinism Score | `CompiledWorkflow.determinism_score` | DETERMINISTIC 比率 |
+| Mining (LCS 法) | `TraceMiner.mine_skills` | ペアワイズ LCS → 頻度フィルタ |
+| Compilation | `TraceCompiler.compile` | greedy 最長マッチ |
+| Execution | `WorkflowExecutor.execute` | 決定論的 + LLM フォールバック |
 
 ---
 

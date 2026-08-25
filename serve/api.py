@@ -9283,3 +9283,372 @@ def noise_map(city: str):
 @app.get("/v1/noise/report/{city}", tags=["noise"], summary="都市騒音レポート — Sprint 77C")
 def noise_city_report(city: str):
     return _noise_mapper.city_report(city).to_dict()
+
+
+# ---------------------------------------------------------------------------
+# Sprint 78 — 都市マップビジュアライゼーション
+# ---------------------------------------------------------------------------
+
+from fastapi.responses import HTMLResponse
+from open_mythos.skills.city_map_viz import (
+    CityMapBuilder as _MapBuilder,
+    CityMapStore as _MapStore,
+    CityMapData as _CityMapData,
+    DistrictData as _DistrictData,
+    MapLayer as _MapLayer,
+    TOKYO_DISTRICTS as _TOKYO_DISTRICTS,
+    generate_html as _generate_html,
+)
+
+_map_store = _MapStore()
+_map_builder = _MapBuilder(store=_map_store)
+
+# 東京プリセットを初期ロード
+_map_builder.build("Tokyo", _TOKYO_DISTRICTS, active_layer=_MapLayer.TRAFFIC)
+
+
+@app.get(
+    "/v1/viz/citymap/{city}",
+    tags=["visualization"],
+    summary="都市マップ HTML — Sprint 78",
+    response_class=HTMLResponse,
+)
+def viz_citymap(city: str, layer: str = "traffic"):
+    try:
+        layer_e = _MapLayer(layer)
+    except ValueError:
+        raise HTTPException(400, f"Invalid layer: {layer}. Choose from: {[l.value for l in _MapLayer]}")
+    html = _map_builder.get_html(city, layer_e)
+    if html is None:
+        raise HTTPException(404, f"City map not found: {city}")
+    return HTMLResponse(content=html)
+
+
+@app.get(
+    "/v1/viz/citymap/{city}/data",
+    tags=["visualization"],
+    summary="都市マップ JSON データ — Sprint 78",
+)
+def viz_citymap_data(city: str):
+    data = _map_store.get(city)
+    if data is None:
+        raise HTTPException(404, f"City map not found: {city}")
+    return data.to_dict()
+
+
+class _DistrictIn(BaseModel):
+    name: str
+    x: float = Field(ge=0.0, le=100.0)
+    y: float = Field(ge=0.0, le=100.0)
+    width: float = Field(default=18.0, ge=1.0)
+    height: float = Field(default=14.0, ge=1.0)
+    traffic_level: Optional[str] = None
+    noise_status: Optional[str] = None
+    crowd_level: Optional[str] = None
+    energy_status: Optional[str] = None
+    disaster_level: Optional[str] = None
+
+
+class _CityMapIn(BaseModel):
+    city: str
+    districts: List[_DistrictIn]
+    active_layer: str = "traffic"
+
+
+@app.post(
+    "/v1/viz/citymap",
+    tags=["visualization"],
+    summary="都市マップ登録 — Sprint 78",
+)
+def viz_citymap_create(body: _CityMapIn):
+    try:
+        layer_e = _MapLayer(body.active_layer)
+    except ValueError:
+        raise HTTPException(400, f"Invalid active_layer: {body.active_layer}")
+    districts = [
+        _DistrictData(
+            name=d.name, x=d.x, y=d.y, width=d.width, height=d.height,
+            traffic_level=d.traffic_level, noise_status=d.noise_status,
+            crowd_level=d.crowd_level, energy_status=d.energy_status,
+            disaster_level=d.disaster_level,
+        )
+        for d in body.districts
+    ]
+    data = _map_builder.build(body.city, districts, active_layer=layer_e)
+    return {"ok": True, "city": data.city, "district_count": len(data.districts)}
+
+
+@app.get(
+    "/v1/viz/cities",
+    tags=["visualization"],
+    summary="登録済み都市一覧 — Sprint 78",
+)
+def viz_cities():
+    return {"cities": _map_store.list_cities(), "count": _map_store.count()}
+
+
+# ---------------------------------------------------------------------------
+# Sprint 79A — 都市マップ WebSocket リアルタイム更新
+# ---------------------------------------------------------------------------
+
+from fastapi import WebSocket, WebSocketDisconnect
+from open_mythos.skills.city_map_realtime import (
+    RealtimeManagerFactory as _RTFactory,
+    RealtimeConfig as _RTConfig,
+)
+from open_mythos.skills.city_map_viz import TOKYO_DISTRICTS as _TOKYO_DISTRICTS_VIZ
+
+# グローバル RealtimeManager（lifespan で start/stop する）
+_rt_manager = _RTFactory.create(
+    city="Tokyo",
+    tick_interval=2.0,
+    trains_per_line=3,
+    district_change_prob=0.15,
+    seed=None,
+)
+_rt_manager.init_engine(
+    district_names=[d.name for d in _TOKYO_DISTRICTS_VIZ]
+)
+
+
+@app.websocket("/v1/viz/citymap/{city}/ws")
+async def viz_citymap_ws(websocket: WebSocket, city: str):
+    """
+    WebSocket: 都市マップのリアルタイム更新ストリーム (Sprint 79A)
+
+    接続後、tick_interval 秒ごとに JSON イベントを Push する。
+    イベント形式:
+        {
+          "event_id": "...",
+          "city": "Tokyo",
+          "tick": 42,
+          "trains": [{...}],
+          "district_updates": [{...}],
+          "timestamp": 1234567890.0
+        }
+    """
+    await websocket.accept()
+
+    # マネージャーが未起動なら起動
+    if not _rt_manager._running:
+        await _rt_manager.start()
+
+    session_id = str(uuid.uuid4())[:12]
+
+    async def _send(msg: str) -> None:
+        await websocket.send_text(msg)
+
+    session = _rt_manager.register_session(session_id, _send)
+
+    # 接続直後にスナップショットを送信
+    import json as _json
+    snapshot = _rt_manager.snapshot()
+    if snapshot:
+        await websocket.send_text(
+            _json.dumps({"type": "snapshot", **snapshot.to_dict()}, ensure_ascii=False)
+        )
+
+    try:
+        while True:
+            # クライアントからのメッセージを受け付ける（ping / layer 切替等）
+            try:
+                data = await asyncio.wait_for(websocket.receive_text(), timeout=0.5)
+                msg = json.loads(data)
+                if msg.get("type") == "ping":
+                    await websocket.send_text('{"type":"pong"}')
+            except asyncio.TimeoutError:
+                pass  # タイムアウトは正常 — tick は別ループで送信済み
+            except Exception:
+                break
+    except WebSocketDisconnect:
+        pass
+    finally:
+        _rt_manager.remove_session(session_id)
+
+
+@app.get(
+    "/v1/viz/citymap/{city}/realtime/status",
+    tags=["visualization"],
+    summary="リアルタイムエンジン状態 — Sprint 79A",
+)
+def viz_realtime_status(city: str):
+    return _rt_manager.status()
+
+
+@app.get(
+    "/v1/viz/citymap/{city}/realtime/snapshot",
+    tags=["visualization"],
+    summary="現在の都市マップスナップショット — Sprint 79A",
+)
+def viz_realtime_snapshot(city: str):
+    snap = _rt_manager.snapshot()
+    if snap is None:
+        raise HTTPException(503, "リアルタイムエンジンが未初期化です")
+    return snap.to_dict()
+
+
+@app.post(
+    "/v1/viz/citymap/{city}/realtime/tick",
+    tags=["visualization"],
+    summary="手動 tick — Sprint 79A (テスト用)",
+)
+async def viz_realtime_tick(city: str):
+    """手動で 1 tick を実行してブロードキャスト（テスト・デモ用）。"""
+    if _rt_manager.engine is None:
+        raise HTTPException(503, "リアルタイムエンジンが未初期化です")
+    event = _rt_manager.engine.tick(dt=2.0)
+    sent = await _rt_manager.broadcast(event)
+    return {"ok": True, "tick": event.tick, "sent_to": sent, "event": event.to_dict()}
+
+
+# ---------------------------------------------------------------------------
+# Sprint 80F — TraceCompiler: LLMエージェントトレース → 決定論的ワークフロー
+# ---------------------------------------------------------------------------
+
+from open_mythos.skills.trace_compiler import (
+    AgentTrace as _AgentTrace,
+    TraceStep as _TraceStep,
+    StepType as _StepType,
+    SkillPattern as _SkillPattern,
+    CompiledWorkflow as _CompiledWorkflow,
+    TraceCompilerPipeline as _TCPipeline,
+    WorkflowExecutor as _WFExecutor,
+)
+
+_tc_pipeline = _TCPipeline(min_frequency=2, min_skill_length=2)
+
+
+class _TraceStepIn(BaseModel):
+    step_type: str = "llm_call"
+    action: str
+    inputs: dict = Field(default_factory=dict)
+    outputs: dict = Field(default_factory=dict)
+    duration_ms: float = 0.0
+    success: bool = True
+
+
+class _TraceIn(BaseModel):
+    task: str = ""
+    steps: List[_TraceStepIn]
+    success: bool = True
+    total_ms: float = 0.0
+    metadata: dict = Field(default_factory=dict)
+
+
+@app.post(
+    "/v1/trace/submit",
+    tags=["trace_compiler"],
+    summary="エージェントトレースを登録 — Sprint 80F",
+)
+def tc_submit_trace(body: _TraceIn):
+    steps = []
+    for i, s in enumerate(body.steps):
+        try:
+            stype = _StepType(s.step_type)
+        except ValueError:
+            stype = _StepType.LLM_CALL
+        steps.append(_TraceStep(
+            step_id=f"step-{i:03d}",
+            step_type=stype,
+            action=s.action,
+            inputs=s.inputs,
+            outputs=s.outputs,
+            duration_ms=s.duration_ms,
+            success=s.success,
+        ))
+    trace = _AgentTrace(task=body.task, steps=steps, success=body.success,
+                        total_ms=body.total_ms, metadata=body.metadata)
+    _tc_pipeline.ingest(trace)
+    return {"ok": True, "trace_id": trace.trace_id, "step_count": len(steps)}
+
+
+@app.get(
+    "/v1/trace/{trace_id}",
+    tags=["trace_compiler"],
+    summary="トレース詳細取得 — Sprint 80F",
+)
+def tc_get_trace(trace_id: str):
+    trace = _tc_pipeline.trace_store.get(trace_id)
+    if trace is None:
+        raise HTTPException(404, f"Trace not found: {trace_id}")
+    return trace.to_dict()
+
+
+@app.get(
+    "/v1/trace",
+    tags=["trace_compiler"],
+    summary="トレース一覧 — Sprint 80F",
+)
+def tc_list_traces():
+    traces = _tc_pipeline.trace_store.list_all()
+    return {"count": len(traces), "traces": [
+        {"trace_id": t.trace_id, "task": t.task, "step_count": len(t.steps), "success": t.success}
+        for t in traces
+    ]}
+
+
+@app.post(
+    "/v1/trace/mine",
+    tags=["trace_compiler"],
+    summary="スキルパターンをマイニング — Sprint 80F",
+)
+def tc_mine_skills():
+    skills = _tc_pipeline.mine()
+    return {"ok": True, "skills_found": len(skills),
+            "skills": [s.to_dict() for s in skills]}
+
+
+@app.get(
+    "/v1/trace/skills",
+    tags=["trace_compiler"],
+    summary="採掘済みスキル一覧 — Sprint 80F",
+)
+def tc_list_skills():
+    skills = _tc_pipeline.skill_store.list_all()
+    return {"count": len(skills), "skills": [s.to_dict() for s in skills]}
+
+
+@app.post(
+    "/v1/trace/compile",
+    tags=["trace_compiler"],
+    summary="ワークフローをコンパイル — Sprint 80F",
+)
+def tc_compile(name: str = ""):
+    result = _tc_pipeline.compile(name=name)
+    return result.to_dict()
+
+
+@app.get(
+    "/v1/trace/workflows",
+    tags=["trace_compiler"],
+    summary="コンパイル済みワークフロー一覧 — Sprint 80F",
+)
+def tc_list_workflows():
+    wfs = _tc_pipeline.workflow_store.list_all()
+    return {"count": len(wfs), "workflows": [
+        {"workflow_id": w.workflow_id, "name": w.name,
+         "determinism_score": round(w.determinism_score, 3),
+         "step_count": w.step_count, "status": w.status.value}
+        for w in wfs
+    ]}
+
+
+@app.post(
+    "/v1/trace/workflows/{workflow_id}/execute",
+    tags=["trace_compiler"],
+    summary="ワークフローを実行 — Sprint 80F",
+)
+def tc_execute_workflow(workflow_id: str, context: dict = None):
+    result = _tc_pipeline.run(workflow_id, context=context or {})
+    if result is None:
+        raise HTTPException(404, f"Workflow not found: {workflow_id}")
+    return result.to_dict()
+
+
+@app.get(
+    "/v1/trace/summary",
+    tags=["trace_compiler"],
+    summary="TraceCompiler パイプラインサマリー — Sprint 80F",
+)
+def tc_summary():
+    return _tc_pipeline.summary()
