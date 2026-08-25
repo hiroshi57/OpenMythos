@@ -9385,3 +9385,117 @@ def viz_citymap_create(body: _CityMapIn):
 )
 def viz_cities():
     return {"cities": _map_store.list_cities(), "count": _map_store.count()}
+
+
+# ---------------------------------------------------------------------------
+# Sprint 79A — 都市マップ WebSocket リアルタイム更新
+# ---------------------------------------------------------------------------
+
+from fastapi import WebSocket, WebSocketDisconnect
+from open_mythos.skills.city_map_realtime import (
+    RealtimeManagerFactory as _RTFactory,
+    RealtimeConfig as _RTConfig,
+)
+from open_mythos.skills.city_map_viz import TOKYO_DISTRICTS as _TOKYO_DISTRICTS_VIZ
+
+# グローバル RealtimeManager（lifespan で start/stop する）
+_rt_manager = _RTFactory.create(
+    city="Tokyo",
+    tick_interval=2.0,
+    trains_per_line=3,
+    district_change_prob=0.15,
+    seed=None,
+)
+_rt_manager.init_engine(
+    district_names=[d.name for d in _TOKYO_DISTRICTS_VIZ]
+)
+
+
+@app.websocket("/v1/viz/citymap/{city}/ws")
+async def viz_citymap_ws(websocket: WebSocket, city: str):
+    """
+    WebSocket: 都市マップのリアルタイム更新ストリーム (Sprint 79A)
+
+    接続後、tick_interval 秒ごとに JSON イベントを Push する。
+    イベント形式:
+        {
+          "event_id": "...",
+          "city": "Tokyo",
+          "tick": 42,
+          "trains": [{...}],
+          "district_updates": [{...}],
+          "timestamp": 1234567890.0
+        }
+    """
+    await websocket.accept()
+
+    # マネージャーが未起動なら起動
+    if not _rt_manager._running:
+        await _rt_manager.start()
+
+    session_id = str(uuid.uuid4())[:12]
+
+    async def _send(msg: str) -> None:
+        await websocket.send_text(msg)
+
+    session = _rt_manager.register_session(session_id, _send)
+
+    # 接続直後にスナップショットを送信
+    import json as _json
+    snapshot = _rt_manager.snapshot()
+    if snapshot:
+        await websocket.send_text(
+            _json.dumps({"type": "snapshot", **snapshot.to_dict()}, ensure_ascii=False)
+        )
+
+    try:
+        while True:
+            # クライアントからのメッセージを受け付ける（ping / layer 切替等）
+            try:
+                data = await asyncio.wait_for(websocket.receive_text(), timeout=0.5)
+                msg = json.loads(data)
+                if msg.get("type") == "ping":
+                    await websocket.send_text('{"type":"pong"}')
+            except asyncio.TimeoutError:
+                pass  # タイムアウトは正常 — tick は別ループで送信済み
+            except Exception:
+                break
+    except WebSocketDisconnect:
+        pass
+    finally:
+        _rt_manager.remove_session(session_id)
+
+
+@app.get(
+    "/v1/viz/citymap/{city}/realtime/status",
+    tags=["visualization"],
+    summary="リアルタイムエンジン状態 — Sprint 79A",
+)
+def viz_realtime_status(city: str):
+    return _rt_manager.status()
+
+
+@app.get(
+    "/v1/viz/citymap/{city}/realtime/snapshot",
+    tags=["visualization"],
+    summary="現在の都市マップスナップショット — Sprint 79A",
+)
+def viz_realtime_snapshot(city: str):
+    snap = _rt_manager.snapshot()
+    if snap is None:
+        raise HTTPException(503, "リアルタイムエンジンが未初期化です")
+    return snap.to_dict()
+
+
+@app.post(
+    "/v1/viz/citymap/{city}/realtime/tick",
+    tags=["visualization"],
+    summary="手動 tick — Sprint 79A (テスト用)",
+)
+async def viz_realtime_tick(city: str):
+    """手動で 1 tick を実行してブロードキャスト（テスト・デモ用）。"""
+    if _rt_manager.engine is None:
+        raise HTTPException(503, "リアルタイムエンジンが未初期化です")
+    event = _rt_manager.engine.tick(dt=2.0)
+    sent = await _rt_manager.broadcast(event)
+    return {"ok": True, "tick": event.tick, "sent_to": sent, "event": event.to_dict()}
