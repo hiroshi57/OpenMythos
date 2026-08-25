@@ -57,8 +57,9 @@
 | 78 | **3D 都市マップビジュアライゼーション** | `skills/city_map_viz.py` `tokyo_map_preview.html` | 4487 | v0.81 |
 | 79 | **都市マップ WebSocket リアルタイム更新** | `skills/city_map_realtime.py` | 4541 | v0.82 |
 | 80 | **TraceCompiler — LCSスキルマイニング → 決定論的WF** | `skills/trace_compiler.py` | 4613 | v0.83 |
+| 81 | **レコメンドエンジン統合** | `skills/recommender.py` | 4705 | v0.84 |
 
-> **累計テスト数**: 4613 PASS (Sprint 80: +72) — Sprint 81 候補検討中
+> **累計テスト数**: 4705 PASS (Sprint 81: +92) — Sprint 82 候補検討中
 
 ---
 
@@ -422,6 +423,39 @@
 | **A** | **駅環境センサー統合** | `skills/env_sensor.py` | 気温・湿度・CO2・騒音レベルの駅内環境モニタリング |
 | **B** | **乗り換え最適化** | `skills/transfer_optimizer.py` | 混雑・アクセシビリティ・所要時間を統合した最適乗換提案 |
 | **C** | **都市インフラダッシュボード** | `skills/infra_dashboard.py` | 混雑・アクセシビリティ・地下水位を統合した都市インフラ可視化 |
+
+## Sprint 81 詳細 (完了)
+
+### Sprint 81H: レコメンドエンジン統合 — v0.84.0
+> 参考: https://qiita.com/birdwatcher/items/b60822bdf9be267e1328
+> 「レコメンドアルゴリズム入門：基礎から応用まで実装に必要な知識を解説」(birdwatcher / DeNA)
+> 協調フィルタリング・コンテンツベース・行列分解・ハイブリッドを pure-Python で実装。
+
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 81H.1 | `FeedbackType` / `SimilarityMetric` / `RecommendMethod` (Enum 層) | cc:完了 |
+| 81H.2 | `Interaction` / `Item` / `RecommendationResult` / `EvaluationReport` (データモデル) | cc:完了 |
+| 81H.3 | `_cosine_similarity` / `_jaccard_similarity` / `_pearson_correlation` (類似度計算) | cc:完了 |
+| 81H.4 | `precision_at_k` / `recall_at_k` / `ndcg_at_k` / `average_precision_at_k` (評価指標) | cc:完了 |
+| 81H.5 | `InteractionStore` / `ItemStore` (CRUD ストア・ユーザー×アイテム行列構築) | cc:完了 |
+| 81H.6 | `UserBasedCF` — ユーザー類似度ベース協調フィルタリング (cosine/jaccard/pearson) | cc:完了 |
+| 81H.7 | `ItemBasedCF` — アイテム類似度ベース協調フィルタリング | cc:完了 |
+| 81H.8 | `ContentBasedFilter` — アイテム特徴ベクトル平均 × コサイン類似度 | cc:完了 |
+| 81H.9 | `MatrixFactorizer` — SGD MF pure-Python (numpy 不要) | cc:完了 |
+| 81H.10 | `HybridRecommender` — CF + CBF 重み付きブレンド | cc:完了 |
+| 81H.11 | `RecommenderPipeline` — 全手法ファサード + evaluate() | cc:完了 |
+| 81H.12 | `serve/api.py` — `/v1/rec/*` 7エンドポイント | cc:完了 |
+| 81.T | `tests/test_sprint81.py` — 92 PASS (累計 4705) | cc:完了 |
+
+### 手法対応表 (Qiita 記事)
+| Qiita 記事 | recommender.py | 役割 |
+|-----------|----------------|------|
+| 明示的/暗黙的フィードバック | `FeedbackType` (PURCHASE/RATING/CLICK/VIEW/SKIP) | フィードバック分類 |
+| ユーザーベース CF | `UserBasedCF` | ユーザー×アイテム行列 → 近傍推薦 |
+| アイテムベース CF | `ItemBasedCF` | アイテム×ユーザー行列 → 類似推薦 |
+| コンテンツベース | `ContentBasedFilter` | 特徴ベクトル平均でプロファイル構築 |
+| 行列分解 (MF) | `MatrixFactorizer` | SGD で潜在因子学習 |
+| Precision@K / NDCG@K | `precision_at_k` / `ndcg_at_k` | 推薦精度評価 |
 
 ---
 
