@@ -9652,3 +9652,122 @@ def tc_execute_workflow(workflow_id: str, context: dict = None):
 )
 def tc_summary():
     return _tc_pipeline.summary()
+
+
+# ══════════════════════════════════════════════════════════════════
+# Sprint 81H — レコメンドエンジン エンドポイント
+# ══════════════════════════════════════════════════════════════════
+from open_mythos.skills.recommender import (
+    RecommenderPipeline as _RecPipeline,
+    FeedbackType as _FBType,
+    RecommendMethod as _RecMethod,
+)
+
+_rec_pipeline = _RecPipeline()
+
+
+class _RecInteractionBody(BaseModel):
+    user_id:       str
+    item_id:       str
+    feedback_type: str = "purchase"
+    value:         float = 1.0
+
+
+class _RecItemBody(BaseModel):
+    item_id:  str
+    features: dict = Field(default_factory=dict)
+    metadata: dict = Field(default_factory=dict)
+
+
+class _RecTrainBody(BaseModel):
+    method:      str = "user_cf"
+    k_neighbors: int = 10
+    n_factors:   int = 10
+    n_epochs:    int = 20
+    cf_weight:   float = 0.5
+    cbf_weight:  float = 0.5
+
+
+class _RecEvalBody(BaseModel):
+    test_interactions: list = Field(default_factory=list)
+    k:                 int = 10
+    method:            str = "user_cf"
+
+
+@app.post("/v1/rec/interaction", tags=["recommender"], summary="インタラクション登録 — Sprint 81H")
+def rec_add_interaction(body: _RecInteractionBody):
+    try:
+        fb = _FBType(body.feedback_type)
+    except ValueError:
+        raise HTTPException(400, f"Invalid feedback_type: {body.feedback_type}")
+    inter = _rec_pipeline.add_interaction(body.user_id, body.item_id, fb, body.value)
+    return inter.to_dict()
+
+
+@app.post("/v1/rec/item", tags=["recommender"], summary="アイテム登録 — Sprint 81H")
+def rec_add_item(body: _RecItemBody):
+    item = _rec_pipeline.add_item(body.item_id, body.features, body.metadata)
+    return item.to_dict()
+
+
+@app.post("/v1/rec/train", tags=["recommender"], summary="モデル学習 — Sprint 81H")
+def rec_train(body: _RecTrainBody):
+    try:
+        method = _RecMethod(body.method)
+    except ValueError:
+        raise HTTPException(400, f"Invalid method: {body.method}")
+    _rec_pipeline.train(
+        method,
+        k_neighbors=body.k_neighbors,
+        n_factors=body.n_factors,
+        n_epochs=body.n_epochs,
+        cf_weight=body.cf_weight,
+        cbf_weight=body.cbf_weight,
+    )
+    return {"status": "trained", "method": body.method, **_rec_pipeline.status()}
+
+
+@app.get("/v1/rec/recommend/{user_id}", tags=["recommender"], summary="ユーザー推薦 — Sprint 81H")
+def rec_recommend(user_id: str, n: int = 10, method: str = "user_cf"):
+    try:
+        m = _RecMethod(method)
+    except ValueError:
+        raise HTTPException(400, f"Invalid method: {method}")
+    result = _rec_pipeline.recommend(user_id, n=n, method=m)
+    return result.to_dict()
+
+
+@app.get("/v1/rec/similar/{item_id}", tags=["recommender"], summary="類似アイテム — Sprint 81H")
+def rec_similar_items(item_id: str, n: int = 10, method: str = "item_cf"):
+    if method == "item_cf" and _rec_pipeline._item_cf:
+        sims = _rec_pipeline._item_cf.similar_items(item_id, n=n)
+    elif method == "content" and _rec_pipeline._cbf:
+        sims = _rec_pipeline._cbf.similar_items(item_id, n=n)
+    else:
+        sims = []
+    return {
+        "item_id": item_id,
+        "method": method,
+        "similar": [{"item_id": iid, "score": round(sc, 6)} for iid, sc in sims],
+    }
+
+
+@app.post("/v1/rec/evaluate", tags=["recommender"], summary="推薦精度評価 — Sprint 81H")
+def rec_evaluate(body: _RecEvalBody):
+    from open_mythos.skills.recommender import Interaction as _RecInter
+    try:
+        m = _RecMethod(body.method)
+    except ValueError:
+        raise HTTPException(400, f"Invalid method: {body.method}")
+    test_ints = [
+        _RecInter(user_id=d["user_id"], item_id=d["item_id"])
+        for d in body.test_interactions
+        if "user_id" in d and "item_id" in d
+    ]
+    report = _rec_pipeline.evaluate(test_ints, k=body.k, method=m)
+    return report.to_dict()
+
+
+@app.get("/v1/rec/status", tags=["recommender"], summary="パイプライン状態 — Sprint 81H")
+def rec_status():
+    return _rec_pipeline.status()
