@@ -9771,3 +9771,110 @@ def rec_evaluate(body: _RecEvalBody):
 @app.get("/v1/rec/status", tags=["recommender"], summary="パイプライン状態 — Sprint 81H")
 def rec_status():
     return _rec_pipeline.status()
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Sprint 82 — EmbeddingGemma RAG エンドポイント
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+from open_mythos.skills.gemma_rag import (
+    RAGPipeline as _RAGPipeline,
+    RAGDocument as _RAGDocument,
+    ChunkingConfig as _ChunkingConfig,
+    ChunkingStrategy as _ChunkingStrategy,
+)
+
+# シングルトン（サーバー起動時に Mock で初期化、API キーがあれば本番モードへ）
+_GEMMA_API_KEY = os.getenv("GEMMA_API_KEY", "")
+if _GEMMA_API_KEY:
+    _rag_pipeline: _RAGPipeline = _RAGPipeline.create_production(
+        embedding_api_key=_GEMMA_API_KEY,
+    )
+else:
+    _rag_pipeline: _RAGPipeline = _RAGPipeline.create_mock()
+
+
+# ── Pydantic モデル ───────────────────────────────────────────────
+
+class _RAGIndexBody(BaseModel):
+    id: str = Field(..., description="ドキュメント ID")
+    title: str = Field(..., description="ドキュメントタイトル")
+    content: str = Field(..., description="本文テキスト")
+    metadata: dict = Field(default_factory=dict)
+
+
+class _RAGBatchIndexBody(BaseModel):
+    documents: List[_RAGIndexBody]
+
+
+class _RAGQueryBody(BaseModel):
+    question: str = Field(..., description="質問文")
+    top_k: int = Field(5, ge=1, le=20)
+    doc_filter: Optional[List[str]] = Field(None, description="対象 doc_id リスト")
+    score_threshold: float = Field(0.0, ge=0.0, le=1.0)
+
+
+class _RAGSearchBody(BaseModel):
+    query: str
+    top_k: int = Field(5, ge=1, le=20)
+    doc_filter: Optional[List[str]] = None
+    score_threshold: float = Field(0.0, ge=0.0, le=1.0)
+
+
+# ── エンドポイント ────────────────────────────────────────────────
+
+@app.post("/v1/rag/index", tags=["rag"], summary="ドキュメントインデックス登録 — Sprint 82")
+def rag_index(body: _RAGIndexBody):
+    doc = _RAGDocument(
+        id=body.id, title=body.title,
+        content=body.content, metadata=body.metadata,
+    )
+    count = _rag_pipeline.index_document(doc)
+    return {"doc_id": body.id, "chunks_indexed": count}
+
+
+@app.post("/v1/rag/index/batch", tags=["rag"], summary="ドキュメント一括インデックス — Sprint 82")
+def rag_index_batch(body: _RAGBatchIndexBody):
+    docs = [
+        _RAGDocument(id=d.id, title=d.title, content=d.content, metadata=d.metadata)
+        for d in body.documents
+    ]
+    result = _rag_pipeline.index_batch(docs)
+    return {"indexed": result, "total_docs": len(result)}
+
+
+@app.delete("/v1/rag/index/{doc_id}", tags=["rag"], summary="ドキュメント削除 — Sprint 82")
+def rag_delete(doc_id: str):
+    removed = _rag_pipeline.delete_document(doc_id)
+    return {"doc_id": doc_id, "chunks_removed": removed}
+
+
+@app.post("/v1/rag/search", tags=["rag"], summary="セマンティック検索（生成なし）— Sprint 82")
+def rag_search(body: _RAGSearchBody):
+    results = _rag_pipeline.search(
+        body.query,
+        top_k=body.top_k,
+        doc_filter=body.doc_filter,
+        score_threshold=body.score_threshold,
+    )
+    return {
+        "query": body.query,
+        "results": [r.to_dict() for r in results],
+        "count": len(results),
+    }
+
+
+@app.post("/v1/rag/query", tags=["rag"], summary="RAG クエリ（検索 + 生成）— Sprint 82")
+def rag_query(body: _RAGQueryBody):
+    answer = _rag_pipeline.query(
+        body.question,
+        top_k=body.top_k,
+        doc_filter=body.doc_filter,
+        score_threshold=body.score_threshold,
+    )
+    return answer.to_dict()
+
+
+@app.get("/v1/rag/status", tags=["rag"], summary="RAG パイプライン状態 — Sprint 82")
+def rag_status():
+    return _rag_pipeline.to_status_dict()

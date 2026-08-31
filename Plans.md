@@ -58,8 +58,9 @@
 | 79 | **都市マップ WebSocket リアルタイム更新** | `skills/city_map_realtime.py` | 4541 | v0.82 |
 | 80 | **TraceCompiler — LCSスキルマイニング → 決定論的WF** | `skills/trace_compiler.py` | 4613 | v0.83 |
 | 81 | **レコメンドエンジン統合** | `skills/recommender.py` | 4705 | v0.84 |
+| 82 | **EmbeddingGemma RAG エンジン** | `skills/gemma_rag.py` | 4796 | v0.85 |
 
-> **累計テスト数**: 4705 PASS (Sprint 81: +92) — Sprint 82 候補検討中
+> **累計テスト数**: 4796 PASS (Sprint 82: +91) — Sprint 83 候補検討中
 
 ---
 
@@ -456,6 +457,39 @@
 | コンテンツベース | `ContentBasedFilter` | 特徴ベクトル平均でプロファイル構築 |
 | 行列分解 (MF) | `MatrixFactorizer` | SGD で潜在因子学習 |
 | Precision@K / NDCG@K | `precision_at_k` / `ndcg_at_k` | 推薦精度評価 |
+
+---
+
+## Sprint 82 詳細 (完了)
+
+### Sprint 82: EmbeddingGemma RAG エンジン — v0.85.0
+> Google EmbeddingGemma (text-embedding-004) を利用した Retrieval-Augmented Generation パイプライン。
+> awesome-gemma の知見をベースに Mock / 本番モード両対応で実装。
+
+| task-id | 説明 | 状態 |
+|---------|------|------|
+| 82.1 | `GemmaEmbeddingModel` / `ChunkingStrategy` / `RAGStatus` (Enum 層) | cc:完了 |
+| 82.2 | `EmbeddingConfig` / `RAGDocument` / `RAGChunk` / `ChunkingConfig` (データモデル) | cc:完了 |
+| 82.3 | `RetrievalResult` / `RAGAnswer` / `IndexStats` (結果モデル) | cc:完了 |
+| 82.4 | `GemmaEmbeddingProvider` — Mock (deterministic hash) + HTTP (Google AI Studio REST) | cc:完了 |
+| 82.5 | `DocumentChunker` — FIXED_SIZE / SENTENCE / PARAGRAPH 3戦略 + min_chars フィルタ | cc:完了 |
+| 82.6 | `_ChunkVectorStore` — in-memory コサイン類似度検索 + doc_filter 対応 | cc:完了 |
+| 82.7 | `RAGIndexer` — chunk → embed → store (上書き/削除/一括対応) | cc:完了 |
+| 82.8 | `RAGRetriever` — query embed → similarity search → RetrievalResult | cc:完了 |
+| 82.9 | `MockLLMGenerator` / `GemmaLLMGenerator` — 生成層 (FunctionGemma 統合ポイント) | cc:完了 |
+| 82.10 | `RAGPipeline` — create_mock / create_production ファクトリ + query / search / index 統合 | cc:完了 |
+| 82.11 | `serve/api.py` — `/v1/rag/*` 6 エンドポイント (index/batch/delete/search/query/status) | cc:完了 |
+| 82.T | `tests/test_sprint82.py` — 91 PASS (累計 4796) | cc:完了 |
+
+### コンポーネント対応表
+| EmbeddingGemma 概念 | gemma_rag.py | 役割 |
+|--------------------|--------------|------|
+| EmbeddingGemma API | `GemmaEmbeddingProvider._http_embed` | text-embedding-004 REST 呼び出し |
+| Mock embedding | `GemmaEmbeddingProvider._mock_embed` | MD5 ハッシュ → deterministic ベクター |
+| Chunk | `RAGChunk` | チャンキング後断片 |
+| Vector Store | `_ChunkVectorStore` | in-memory cosine 検索 (FAISS 代替) |
+| RAG Query | `RAGPipeline.query` | 検索 + 生成統合 |
+| Gemma 生成 | `GemmaLLMGenerator` | FunctionGemma / Gemma 4 E2B 統合ポイント |
 
 ---
 
