@@ -43,6 +43,7 @@ from open_mythos import __version__ as _OM_VERSION
 from open_mythos.main import MythosConfig, OpenMythos
 from open_mythos.agents import MythosAgent, OpenMythosLLM
 from serve.auth import RateLimitMiddleware, verify_api_key
+from serve.auth import _AUTH_DISABLED, _rpm_limit
 from serve.dashboard import router as _dashboard_router
 from serve.ad_router import router as _ad_router
 
@@ -379,9 +380,31 @@ class RawInferResponse(BaseModel):
     "/health",
     tags=["health"],
     summary="サーバヘルスチェック",
-    description="モデルパラメータ数・デバイス・対応タスク一覧を返す。認証・レート制限スキップ。",
+    description=(
+        "モデルパラメータ数・デバイス・対応タスク一覧に加え、依存サービス"
+        "(認証/レート制限/LLMプロバイダー鍵)ごとの個別状態を返す。認証・レート制限スキップ。"
+    ),
 )
 def health():
+    llm_providers = {
+        "anthropic": bool(os.getenv("ANTHROPIC_API_KEY") or os.getenv("CLAUDE_API_KEY")),
+        "openai": bool(os.getenv("OPENAI_API_KEY")),
+    }
+    checks = {
+        "model": {"status": "ok", "device": str(state.device)},
+        "auth": {
+            # _AUTH_DISABLED は起動時に読み込んだAPI_KEY/API_KEYSの有無で確定する
+            # (環境変数を後から変えてもプロセス再起動まで反映されない)
+            "status": "disabled" if _AUTH_DISABLED else "enabled",
+            "mode": "development" if _AUTH_DISABLED else "production",
+        },
+        "rate_limit": {"status": "ok", "rpm": _rpm_limit},
+        "llm_providers": {
+            # 疎通確認はしない(レイテンシ・コストが乗るため)。鍵の設定有無のみを返す
+            "status": "ok" if any(llm_providers.values()) else "not_configured",
+            "configured": llm_providers,
+        },
+    }
     return {
         "status": "ok",
         "params": state.n_params,
@@ -390,6 +413,7 @@ def health():
         "supported_tasks": list(TASK_LOOPS.keys()),
         "task_default_loops": TASK_LOOPS,
         "active_sessions": len(state.agents),
+        "checks": checks,
         "endpoints": {
             "POST /infer": "スコアリング・分類",
             "POST /infer/raw": "rawロジット取得",

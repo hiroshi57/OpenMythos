@@ -228,6 +228,29 @@ class TestHealthEndpoint:
         r = client.get("/health")
         assert "llmo_optimize" in r.json()["supported_tasks"]
 
+    def test_health_has_checks(self, client):
+        r = client.get("/health")
+        assert "checks" in r.json()
+
+    def test_health_checks_cover_model_auth_ratelimit_llm(self, client):
+        r = client.get("/health")
+        checks = r.json()["checks"]
+        assert set(checks.keys()) == {"model", "auth", "rate_limit", "llm_providers"}
+
+    def test_health_checks_auth_status_is_enabled_or_disabled(self, client):
+        r = client.get("/health")
+        assert r.json()["checks"]["auth"]["status"] in ("enabled", "disabled")
+
+    def test_health_checks_rate_limit_has_rpm(self, client):
+        r = client.get("/health")
+        assert "rpm" in r.json()["checks"]["rate_limit"]
+
+    def test_health_checks_llm_providers_reports_configured_flags(self, client):
+        r = client.get("/health")
+        configured = r.json()["checks"]["llm_providers"]["configured"]
+        assert set(configured.keys()) == {"anthropic", "openai"}
+        assert all(isinstance(v, bool) for v in configured.values())
+
 
 # ---------------------------------------------------------------------------
 # /generate
