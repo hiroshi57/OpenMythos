@@ -253,6 +253,24 @@ class TestHealthEndpoint:
 
 
 # ---------------------------------------------------------------------------
+# アプリ全体の description (U16: Swagger UI クイックリンク)
+# ---------------------------------------------------------------------------
+
+
+class TestAppDescription:
+
+    def test_description_has_quicklinks_section(self, client):
+        assert "クイックリンク" in client.app.description
+
+    def test_description_mentions_health_endpoint(self, client):
+        assert "/health" in client.app.description
+
+    def test_description_mentions_ad_and_map_screens(self, client):
+        assert "/ad" in client.app.description
+        assert "/map" in client.app.description
+
+
+# ---------------------------------------------------------------------------
 # /generate
 # ---------------------------------------------------------------------------
 

@@ -164,7 +164,21 @@ app = FastAPI(
     description=(
         "OpenMythos — Recurrent-Depth Transformer による SEO / LLMO / 広告最適化 API。\n\n"
         "**認証**: `Authorization: Bearer <api-key>` ヘッダ必須 (環境変数 `API_KEY` 設定時)。\n\n"
-        "**レート制限**: デフォルト 60 rpm (環境変数 `RATE_LIMIT_RPM` で変更可)。"
+        "**レート制限**: デフォルト 60 rpm (環境変数 `RATE_LIMIT_RPM` で変更可)。\n\n"
+        "---\n\n"
+        "### クイックリンク（用途別の入口）\n\n"
+        "- **まず動作確認したい** → `GET /health`（モデル・認証・レート制限・LLMプロバイダー鍵の状態）\n"
+        "- **テキスト生成・SEO/LLMO・広告コピー** → `generate` / `seo` タグ\n"
+        "- **チャットを組み込みたい（OpenAI互換）** → `chat` タグ (`/v1/chat/completions`)\n"
+        "- **社内文書に基づく回答がほしい** → `rag` タグ\n"
+        "- **多ターン対話エージェント** → `agent` タグ\n"
+        "- **広告運用（キャンペーン/コピー生成/A-B/予算最適化）** → `/ad` 画面（ブラウザUI）、"
+        "API は `campaign`/`abtest`/`budget`/`dashboard` 等のタグ (`serve/routers/ads.py`)\n"
+        "- **都市地図・インフラ可視化** → `/map` 画面（ブラウザUI）、"
+        "API は `map` タグ (`serve/routers/map.py`)\n"
+        "- **「育つAI」P1〜P10の個別パターンを試したい** → `debate`/`kpi`/`profiler`等の各タグ、"
+        "まとめて使うなら `grow` タグ（統合オーケストレーター）\n\n"
+        "タグの全体像は下のリスト（左サイドバー）を参照。"
     ),
     version=_OM_VERSION,
     lifespan=lifespan,
