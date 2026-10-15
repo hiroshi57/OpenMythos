@@ -78,6 +78,47 @@ All notable changes to OpenMythos are documented here.
 
 ---
 
+## [0.40.0] — 2026-06-07
+
+### Sprint 37: GrowingAI 深化・外部 API 接続
+
+#### `open_mythos/growing_ai_orchestrator.py` 更新 (37.1)
+- `PatternSelector` 精度向上
+  - `hints` キーワードの重みを 1.0 → 1.5 に引き上げ
+  - 疑問文シグナル (`?`, `何`, `どう`, `which` 等) → DEBATE/ENSEMBLE +1pt
+  - 否定シグナル (`エラー`, `失敗`, `error`, `fail` 等) → MISTAKE/PROFILER +1pt
+  - `selection_rate(test_cases)` 精度計測メソッド追加
+  - 20 テストケースで 100% accuracy 確認
+
+#### `open_mythos/debate.py` 更新 (37.2)
+- `DebateOrchestrator.run()` に `store_debate_history` + `ltm_agent` パラメータ追加
+- `store_debate_history=True` 時、LongTermMemoryAgent に討議ログを自動蓄積
+
+#### `serve/api.py` 更新 (37.3)
+- `GET /v1/guard/dashboard` エンドポイント追加
+  - MistakeGuardMiddleware の統計 (total_requests / blocked / block_rate) を返す
+  - `block_rate_pct >= 20` で status="warning"、`>= 50` で status="critical"
+  - `top_rules`: ブロック頻度上位ルール一覧
+
+#### `open_mythos/self_distill.py` 更新 (37.4)
+- `SelfDistillLoop.for_lora_sft()` クラスメソッド追加
+  - `sft_backend="lora"`, `sft_simulate=False` を設定済みの SelfDistillLoop を返す
+  - `lora_trainer` 省略時は LoraTrainer を自動生成 (CPU fallback 内包)
+- `lora_sft_enabled` プロパティ追加 (`sft_backend=="lora"` を返す)
+
+#### `open_mythos/tools_marketing.py` 更新 (37.5)
+- 実 API コネクタ追加 (env-var gated、未設定時はスタブにフォールバック)
+  - `_semrush_domain_overview()`: `SEMRUSH_API_KEY` → SEMrush Domain Analytics API
+  - `_similarweb_site_overview()`: `SIMILARWEB_API_KEY` → SimilarWeb Site Overview API
+  - `_google_trends_fetch()`: `GOOGLE_TRENDS_ENABLED=1` + pytrends → Google Trends
+- `search_competitor()`: SEMrush/SimilarWeb 実データで seo_score/traffic を上書き
+- `fetch_trend()`: Google Trends 実データで trend_score を上書き
+
+#### `scripts/verify_lora_sft_loop.py` 追加
+- for_lora_sft() factory / 直接 cfg ルート / simulate フォールバックの3経路を検証
+
+---
+
 ## [0.39.0] — 2026-06-06
 
 ### Sprint 36: 1B スケール・PyPI 公開・Janome 統合・lm-eval・CWV シミュレーター

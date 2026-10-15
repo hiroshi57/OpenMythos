@@ -6,17 +6,108 @@ calculate_roi      -- ROI / ROAS / CTR を計算
 fetch_trend        -- キーワードトレンド & LLMO 人気度を取得
 score_content      -- コンテンツの SEO/LLMO スコアを算出
 
-これらはすべてスタブ実装 (ハードコード or 計算ベース)。
-本番では外部 API (SimilarWeb・SEMrush・Google Trends 等) に差し替える。
+Sprint 37.5: 外部 API コネクタを追加。
+  環境変数が設定されていれば実 API を呼び出し、未設定時はスタブにフォールバック。
+    SEMRUSH_API_KEY    -- SEMrush Domain Analytics API (search_competitor)
+    SIMILARWEB_API_KEY -- SimilarWeb Site Overview API (search_competitor)
+    GOOGLE_TRENDS_ENABLED=1 -- pytrends 経由 Google Trends (fetch_trend, 要 pip install pytrends)
 """
 
 from __future__ import annotations
 
+import os
 import re
 import random
 from typing import Optional
 
 from open_mythos.tools import ToolRegistry, ParameterSchema, ToolDefinition
+
+# ---------------------------------------------------------------------------
+# Tool 実装
+# ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Sprint 37.5: 実 API コネクタ (env-var gated)
+# ---------------------------------------------------------------------------
+
+
+def _semrush_domain_overview(domain: str, period: str) -> Optional[dict]:
+    """SEMrush Domain Analytics API を呼び出す。失敗時は None を返す。"""
+    api_key = os.getenv("SEMRUSH_API_KEY")
+    if not api_key:
+        return None
+    try:
+        import urllib.request
+        import urllib.parse
+        database = "jp"
+        url = (
+            "https://api.semrush.com/"
+            f"?type=domain_organic&key={api_key}"
+            f"&domain={urllib.parse.quote(domain)}&database={database}&display_limit=1"
+        )
+        with urllib.request.urlopen(url, timeout=5) as resp:
+            raw = resp.read().decode()
+        # SEMrush returns CSV-like text; parse first data row
+        lines = [l for l in raw.splitlines() if l.strip()]
+        if len(lines) < 2:
+            return None
+        headers = [h.strip() for h in lines[0].split(";")]
+        values = [v.strip() for v in lines[1].split(";")]
+        row = dict(zip(headers, values))
+        return {
+            "seo_score": int(row.get("Authority Score", 0) or 0),
+            "organic_traffic_est": int(row.get("Organic Traffic", 0) or 0),
+            "data_source": "SEMrush API",
+        }
+    except Exception:
+        return None
+
+
+def _similarweb_site_overview(domain: str) -> Optional[dict]:
+    """SimilarWeb Site Overview API を呼び出す。失敗時は None を返す。"""
+    api_key = os.getenv("SIMILARWEB_API_KEY")
+    if not api_key:
+        return None
+    try:
+        import urllib.request
+        import json as _json
+        url = (
+            f"https://api.similarweb.com/v1/website/{domain}/total-traffic-and-engagement/visits"
+            f"?api_key={api_key}&start_date=2024-01&end_date=2024-12&country=jp&granularity=monthly&main_domain_only=false"
+        )
+        with urllib.request.urlopen(url, timeout=5) as resp:
+            data = _json.loads(resp.read())
+        visits = data.get("visits", [{}])
+        latest = visits[-1].get("visits", 0) if visits else 0
+        return {
+            "ad_spend_usd": None,  # SimilarWeb does not expose ad spend directly
+            "monthly_visits": int(latest),
+            "data_source": "SimilarWeb API",
+        }
+    except Exception:
+        return None
+
+
+def _google_trends_fetch(keyword: str, region: str) -> Optional[dict]:
+    """pytrends 経由で Google Trends データを取得する。失敗時は None を返す。"""
+    if os.getenv("GOOGLE_TRENDS_ENABLED", "").lower() not in ("1", "true", "yes"):
+        return None
+    try:
+        from pytrends.request import TrendReq
+        pt = TrendReq(hl="ja-JP", tz=540, timeout=(5, 10), retries=1)
+        pt.build_payload([keyword], cat=0, timeframe="today 3-m", geo=region if region != "global" else "")
+        df = pt.interest_over_time()
+        if df.empty or keyword not in df.columns:
+            return None
+        avg_score = int(df[keyword].mean())
+        return {
+            "trend_score": avg_score,
+            "data_source": "Google Trends (pytrends)",
+        }
+    except Exception:
+        return None
+
 
 # ---------------------------------------------------------------------------
 # Tool 実装
@@ -31,14 +122,21 @@ def search_competitor(
     """
     競合他社のマーケティング指標を検索する。
 
+    SEMRUSH_API_KEY または SIMILARWEB_API_KEY が設定されていれば実 API を使用。
+    未設定時はスタブ (決定論的乱数) にフォールバックする。
+
     Args:
-        company -- 競合企業名 (例: "Jasper AI", "Copy.ai")
+        company -- 競合企業名 or ドメイン (例: "jasper.ai", "copy.ai")
         metric  -- 取得する指標 ("ad_spend" / "ctr" / "seo_score" / "all")
         period  -- 期間 ("last_7_days" / "last_30_days" / "last_90_days")
 
     Returns:
         競合指標の辞書
     """
+    # 実 API 試行: SEMrush → SimilarWeb の順
+    semrush_data = _semrush_domain_overview(company, period)
+    similarweb_data = _similarweb_site_overview(company)
+
     # スタブ: 企業名のハッシュから決定論的な値を生成
     seed = sum(ord(c) for c in company)
     rng = random.Random(seed)
@@ -65,6 +163,18 @@ def search_competitor(
         result["organic_traffic_est"] = int(rng.randint(10_000, 500_000) * mult)
     if metric == "all":
         result["market_share_pct"] = round(rng.uniform(1.5, 18.0), 2)
+
+    # Sprint 37.5: 実 API データで上書き (取得できた項目のみ)
+    if semrush_data:
+        result["data_source"] = semrush_data["data_source"]
+        if "seo_score" in semrush_data and metric in ("seo_score", "all"):
+            result["seo_score"] = semrush_data["seo_score"]
+        if "organic_traffic_est" in semrush_data and metric in ("seo_score", "all"):
+            result["organic_traffic_est"] = semrush_data["organic_traffic_est"]
+    if similarweb_data and similarweb_data.get("monthly_visits"):
+        if not semrush_data:
+            result["data_source"] = similarweb_data["data_source"]
+        result["monthly_visits"] = similarweb_data["monthly_visits"]
 
     return result
 
@@ -124,6 +234,9 @@ def fetch_trend(
     """
     キーワードのトレンド情報と LLMO 人気度を取得する。
 
+    GOOGLE_TRENDS_ENABLED=1 + pytrends がインストール済みの場合は実データを使用。
+    未設定時はスタブ (決定論的乱数) にフォールバックする。
+
     Args:
         keyword  -- 検索キーワード (例: "LLMO", "SEO最適化", "AI広告")
         region   -- 地域コード ("JP" / "US" / "global")
@@ -138,6 +251,13 @@ def fetch_trend(
     trend_score = rng.randint(20, 95)
     llmo_popularity = round(rng.uniform(0.1, 0.9), 3)
     search_vol = rng.randint(1_000, 500_000)
+    data_source = "OpenMythos Trend API (stub)"
+
+    # Sprint 37.5: Google Trends 実データ上書き
+    gt_data = _google_trends_fetch(keyword, region)
+    if gt_data and gt_data.get("trend_score") is not None:
+        trend_score = gt_data["trend_score"]
+        data_source = gt_data["data_source"]
 
     related = [
         f"{keyword} 使い方",
@@ -157,7 +277,7 @@ def fetch_trend(
         "is_rising": trend_score > 60,
         "yoy_change_pct": round(rng.uniform(-30, 150), 1),
         "related_keywords": related[:3],
-        "data_source": "OpenMythos Trend API (stub)",
+        "data_source": data_source,
     }
 
 

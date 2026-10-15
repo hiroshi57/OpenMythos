@@ -495,6 +495,63 @@ class SelfDistillLoop:
             duration_ms=round(n * 10.0, 1),  # ダミー実行時間
         )
 
+    # ------------------------------------------------------------------
+    # Sprint 37.4: LoRA SFT factory
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def for_lora_sft(
+        cls,
+        n_rounds: int = 3,
+        score_threshold: float = 0.6,
+        samples_per_round: int = 10,
+        early_stop_score: float = 0.85,
+        lora_trainer=None,
+        generate_fn=None,
+        score_fn=None,
+    ) -> "SelfDistillLoop":
+        """
+        LoRA SFT バックエンド用ファクトリ。
+
+        `sft_backend="lora"` に設定された SelfDistillLoop を返す。
+        GPU が利用可能なら実 LoRA SFT が走り、
+        CPU 環境では LoraTrainer 内部のシミュレーションにフォールバックする。
+
+        Args:
+            n_rounds          : 蒸留ラウンド数
+            score_threshold   : フィルタ閾値
+            samples_per_round : 1ラウンドのサンプル数
+            early_stop_score  : アーリーストップ閾値
+            lora_trainer      : LoraTrainer インスタンス (省略時は自動生成)
+            generate_fn       : 生成関数 (省略時はデフォルト)
+            score_fn          : スコア関数 (省略時は LLMO)
+
+        Returns:
+            SelfDistillLoop (sft_backend="lora")
+        """
+        cfg = SelfDistillConfig(
+            n_rounds=n_rounds,
+            score_threshold=score_threshold,
+            samples_per_round=samples_per_round,
+            early_stop_score=early_stop_score,
+            sft_backend="lora",
+            sft_simulate=False,
+        )
+        if lora_trainer is None:
+            from open_mythos.lora_trainer import LoraTrainer
+            lora_trainer = LoraTrainer()
+        return cls(cfg=cfg, generate_fn=generate_fn, score_fn=score_fn, lora_trainer=lora_trainer)
+
+    @property
+    def lora_sft_enabled(self) -> bool:
+        """LoRA SFT バックエンドが有効かどうかを返す。
+
+        sft_backend="lora" であれば True を返す。
+        _lora_trainer が None の場合は run() 時に自動生成されるため、
+        None チェックは行わない。
+        """
+        return self.cfg.sft_backend == "lora"
+
     @staticmethod
     def _default_generate(prompt: str) -> str:
         """デフォルト生成関数: プロンプトに追記してエコー。"""

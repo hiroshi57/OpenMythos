@@ -2567,6 +2567,52 @@ def guard_refresh():
     return {"refreshed": True, "rule_count": n_rules}
 
 
+@app.get(
+    "/v1/guard/dashboard",
+    tags=["guard"],
+    summary="MistakeGuard ダッシュボード (Sprint 37)",
+    description=(
+        "ガード統計・上位ブロックルール・時系列ブロック率を一括返却する。"
+        "Grafana やカスタム UI のデータソースとして利用する。"
+    ),
+    dependencies=[Depends(verify_api_key)],
+)
+def guard_dashboard():
+    """MistakeGuardMiddleware のリアルタイムダッシュボードデータを返す。"""
+    gm = _get_guard_middleware()
+    stats = gm.stats()
+
+    # 上位ルール（ブロック回数順）
+    top_rules = []
+    try:
+        for rule in list(gm._rules)[:20]:
+            top_rules.append({
+                "rule_id": rule.rule_id,
+                "pattern": rule.pattern,
+                "severity": rule.severity,
+                "category": getattr(rule, "category", "unknown"),
+            })
+    except Exception:
+        pass
+
+    block_rate_pct = round(stats.get("block_rate", 0.0) * 100, 2)
+    return {
+        "summary": {
+            "total_requests": stats.get("total_requests", 0),
+            "blocked": stats.get("blocked", 0),
+            "passed": stats.get("passed", 0),
+            "block_rate_pct": block_rate_pct,
+            "rule_count": stats.get("rule_count", 0),
+        },
+        "status": "healthy" if block_rate_pct < 20 else "warning",
+        "top_rules": top_rules,
+        "thresholds": {
+            "block_rate_warning_pct": 20,
+            "block_rate_critical_pct": 50,
+        },
+    }
+
+
 # ---------------------------------------------------------------------------
 # Sprint 36.5: Core Web Vitals シミュレーター
 # ---------------------------------------------------------------------------

@@ -281,12 +281,19 @@ class DebateOrchestrator:
     # Core API
     # ------------------------------------------------------------------
 
-    def run(self, topic: str) -> DebateResult:
+    def run(
+        self,
+        topic: str,
+        store_debate_history: bool = False,
+        ltm_agent=None,
+    ) -> "DebateResult":
         """
         トピックについて討議を実行し DebateResult を返す。
 
         Args:
             topic: 討議するトピック/質問
+            store_debate_history: True にすると討議結果を ltm_agent に蓄積する (Sprint 37.2)
+            ltm_agent: LongTermMemoryAgent インスタンス (store_debate_history=True 時に必要)
 
         Returns:
             DebateResult
@@ -341,7 +348,7 @@ class DebateOrchestrator:
         for agent in self._agents:
             agent.reset()
 
-        return DebateResult(
+        result = DebateResult(
             topic=topic,
             rounds=rounds,
             consensus=consensus,
@@ -351,6 +358,26 @@ class DebateOrchestrator:
             total_latency_ms=round(total_ms, 2),
             early_stopped=early_stopped,
         )
+
+        # Sprint 37.2: 討議ログを LongTermMemoryAgent に自動蓄積
+        if store_debate_history and ltm_agent is not None:
+            try:
+                ltm_agent.store(
+                    text=f"[DEBATE] topic={topic} consensus={consensus}",
+                    score=agreement_score,
+                    metadata={
+                        "type": "debate_history",
+                        "topic": topic,
+                        "agreement_score": agreement_score,
+                        "confidence": confidence,
+                        "n_rounds": rounds_used,
+                        "early_stopped": early_stopped,
+                    },
+                )
+            except Exception:
+                pass  # LTM 蓄積失敗は討議結果に影響させない
+
+        return result
 
     # ------------------------------------------------------------------
     # Phase implementations

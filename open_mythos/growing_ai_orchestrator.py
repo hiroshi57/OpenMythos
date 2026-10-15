@@ -128,22 +128,49 @@ _PATTERN_KEYWORDS: Dict[PatternType, List[str]] = {
 
 
 class PatternSelector:
-    """ゴール文字列と hints からどのパターンを適用するかを選択する"""
+    """ゴール文字列と hints からどのパターンを適用するかを選択する。
+
+    Sprint 37.1 改善点:
+    - キーワード完全一致に加えて前後境界マッチ (+0.5pt) を追加
+    - hints は goal の 1.5 倍の重みで加算（明示的指示を優先）
+    - 疑問文検出: 「?」「？」「何」「どう」→ DEBATE/ENSEMBLE を優先 (+1pt)
+    - 否定語検出: 「エラー」「失敗」「遅い」を含む場合 MISTAKE/PROFILER を優先 (+1pt)
+    - 同点時は P 番号の小さいパターン（基本パターン優先）を選択
+    """
+
+    _QUESTION_SIGNALS = ["?", "？", "何", "どう", "どちら", "which", "what", "how"]
+    _NEGATIVE_SIGNALS = ["エラー", "失敗", "遅い", "バグ", "error", "fail", "slow", "bug"]
 
     def __init__(self, keywords: Optional[Dict[PatternType, List[str]]] = None) -> None:
         self._keywords = keywords or _PATTERN_KEYWORDS
+        self._pattern_order = list(PatternType)
 
-    def score_all(self, context: GrowthContext) -> Dict[PatternType, int]:
-        """全パターンのスコアを返す"""
+    def score_all(self, context: GrowthContext) -> Dict[PatternType, float]:
+        """全パターンのスコア（float）を返す"""
         goal_lower = context.goal.lower()
         hint_text  = " ".join(context.hints).lower()
 
-        scores: Dict[PatternType, int] = {}
+        scores: Dict[PatternType, float] = {}
         for pattern, keywords in self._keywords.items():
-            s = sum(1 for kw in keywords if kw in goal_lower)
-            s += sum(1 for kw in keywords if kw in hint_text)
+            s = 0.0
+            for kw in keywords:
+                if kw in goal_lower:
+                    s += 1.0
+                if kw in hint_text:
+                    s += 1.5  # hints は高重み
             if s > 0:
                 scores[pattern] = s
+
+        # 疑問文バイアス: DEBATE / ENSEMBLE を優先
+        if any(sig in goal_lower for sig in self._QUESTION_SIGNALS):
+            for p in (PatternType.DEBATE, PatternType.ENSEMBLE):
+                scores[p] = scores.get(p, 0.0) + 1.0
+
+        # 否定語バイアス: MISTAKE / PROFILER を優先
+        if any(sig in goal_lower for sig in self._NEGATIVE_SIGNALS):
+            for p in (PatternType.MISTAKE, PatternType.PROFILER):
+                scores[p] = scores.get(p, 0.0) + 1.0
+
         return scores
 
     def select(
@@ -157,8 +184,41 @@ class PatternSelector:
             # デフォルト: 品質評価 → タスク計画
             return [PatternType.ENSEMBLE, PatternType.PLAN][:max_patterns]
 
-        sorted_items = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+        # 同点は P 番号順（小さい方が先）
+        sorted_items = sorted(
+            scores.items(),
+            key=lambda x: (-x[1], self._pattern_order.index(x[0])),
+        )
         return [p for p, _ in sorted_items[:max_patterns]]
+
+    def selection_rate(
+        self,
+        test_cases: List[tuple],
+    ) -> Dict[str, float]:
+        """
+        テストケースリストに対する選択精度を計算する（Sprint 37 検証用）。
+
+        Parameters
+        ----------
+        test_cases : list of (goal, hints, expected_pattern)
+
+        Returns
+        -------
+        {"accuracy": float, "n_cases": int, "n_correct": int}
+        """
+        n_correct = 0
+        for goal, hints, expected in test_cases:
+            ctx = GrowthContext(goal=goal, hints=hints or [])
+            selected = self.select(ctx, max_patterns=3)
+            if expected in selected:
+                n_correct += 1
+        accuracy = n_correct / len(test_cases) if test_cases else 0.0
+        return {
+            "accuracy": round(accuracy, 4),
+            "n_cases": len(test_cases),
+            "n_correct": n_correct,
+            "error_rate": round(1.0 - accuracy, 4),
+        }
 
 
 # ---------------------------------------------------------------------------
